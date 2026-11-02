@@ -1,0 +1,19 @@
+[project]
+name = "micro-crm-backend"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "Django>=5.2,<5.3",
+    "djangorestframework>=3.16,<4",
+    "psycopg[binary]>=3.2,<4",
+    "python-dotenv>=1.1,<2",
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "pytest-django>=4.11,<5"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+pythonpath = ["."]
+testpaths = ["tests", "../tests/integration"]
+addopts = "--reuse-db"
