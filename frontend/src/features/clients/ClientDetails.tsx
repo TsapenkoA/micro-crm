@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { clients, type ClientDetail } from './api';
+import ClientHistory from './ClientHistory';
 
 export default function ClientDetails({ id, onEdit, onDelete }: {
   id: string;
@@ -37,8 +38,7 @@ export default function ClientDetails({ id, onEdit, onDelete }: {
     <section><h3>Deals ({client.deals.length})</h3>{client.deals.length ? <ul className="deal-list">
       {client.deals.map(deal => <li key={deal.id}><strong>{deal.title}</strong><p className="muted">{deal.status.replaceAll('_', ' ')} · {deal.amount} {deal.currency}</p>
         <p className="muted">{deal.deadline ? `Due ${new Date(deal.deadline).toLocaleDateString()}` : 'No deadline'}</p></li>)}
-    </ul> : <p className="muted">No related deals.</p>}</section>
-    <section><h3>Notes</h3><p className="muted">Notes will be available here.</p></section>
-    <section><h3>Links</h3><p className="muted">Links will be available here.</p></section>
+    </ul> : <p className="muted">No related deals.</p>}<p className="muted">Deal management will be available after the Deals module is implemented.</p></section>
+    <ClientHistory clientId={client.id} />
   </div>;
 }

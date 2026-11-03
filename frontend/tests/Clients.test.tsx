@@ -16,6 +16,8 @@ beforeEach(() => {
   vi.spyOn(clients, 'create').mockResolvedValue(record);
   vi.spyOn(clients, 'update').mockResolvedValue(record);
   vi.spyOn(clients, 'remove').mockResolvedValue(undefined);
+  vi.spyOn(clients, 'notes').mockResolvedValue({ count: 0, results: [], next: null, previous: null });
+  vi.spyOn(clients, 'links').mockResolvedValue({ count: 0, results: [], next: null, previous: null });
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -30,6 +32,18 @@ it('renders shared contacts without inventing deal counts and searches only on s
   expect(clients.list).toHaveBeenCalledTimes(1);
   await userEvent.click(screen.getByRole('button', { name: 'Search' }));
   await waitFor(() => expect(clients.list).toHaveBeenLastCalledWith('Acme', 1, expect.any(AbortSignal)));
+});
+
+it('clears an applied search and requests the first unfiltered page', async () => {
+  render(<ClientsPage />);
+  await screen.findByText('No clients yet');
+  await userEvent.type(screen.getByRole('searchbox'), 'Nobody');
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+  await screen.findByText('No matching clients');
+  await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
+  expect(screen.getByRole('searchbox')).toHaveValue('');
+  expect(await screen.findByText('No clients yet')).toBeInTheDocument();
+  expect(clients.list).toHaveBeenLastCalledWith('', 1, expect.any(AbortSignal));
 });
 
 it('renders a clear empty state and opens a create form', async () => {
@@ -142,10 +156,12 @@ it('opens real details, traps focus and restores focus after Escape', async () =
   const dialog = screen.getByRole('dialog', { name: 'Client details' });
   expect(document.body.style.overflow).toBe('hidden');
   expect(await within(dialog).findByText('Brand project')).toBeInTheDocument();
-  expect(within(dialog).getByText('Notes will be available here.')).toBeInTheDocument();
+  expect(await within(dialog).findByText('No notes yet. Add the first update for your colleagues.')).toBeInTheDocument();
   expect(clients.detail).toHaveBeenCalledWith(record.id, expect.any(AbortSignal));
-  const lastLink = within(dialog).getByRole('link', { name: record.phone });
-  lastLink.focus();
+  await within(dialog).findByText('No links yet. Add a brief, design, or repository URL.');
+  const lastButton = within(dialog).getByRole('button', { name: 'Add link' });
+  lastButton.focus();
+  expect(lastButton).toHaveFocus();
   await userEvent.tab();
   expect(within(dialog).getByRole('button', { name: 'Close' })).toHaveFocus();
   await userEvent.keyboard('{Escape}');

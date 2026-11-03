@@ -1,4 +1,4 @@
-export type User = { id: number; username: string; email: string };
+export type User = { id: number; username: string; email: string; workspace?: { id: string; name: string } | null };
 type Session = { user: User; csrfToken?: string };
 
 export class ApiError extends Error {

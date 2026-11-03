@@ -33,7 +33,8 @@ export default function Dialog({ title, children, onClose, busy = false, drawer 
     onKeyDown={event => {
       if (event.key === 'Escape') { event.preventDefault(); if (!busy) onClose(); }
       if (event.key === 'Tab') {
-        const controls = Array.from(ref.current!.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), a[href], [tabindex="0"]'));
+        const controls = Array.from(ref.current!.querySelectorAll<HTMLElement>('*')).filter(element =>
+          element.matches('button, input, textarea, a[href], [tabindex]') && element.tabIndex >= 0 && !element.matches(':disabled, [hidden], input[type="hidden"]'));
         const first = controls[0];
         const last = controls[controls.length - 1];
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }

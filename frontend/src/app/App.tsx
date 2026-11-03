@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ApiError, auth, type User } from '../api/client';
 import LoginForm from '../features/auth/LoginForm';
 import ClientsPage from '../features/clients/ClientsPage';
 import QuickActions from '../components/QuickActions';
+import ThemeSelect from '../components/ThemeSelect';
+import NavIcon from '../components/NavIcon';
 
 const pages = ['Dashboard', 'Deals', 'Clients', 'Invoices', 'Settings'] as const;
 type Page = typeof pages[number];
@@ -23,15 +25,8 @@ export default function App() {
   const [error, setError] = useState('');
   const [page, setPage] = useState<Page>(currentPage);
   const [createRequested, setCreateRequested] = useState(false);
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    try { return localStorage.getItem('theme') === 'dark' ? 'dark' : 'light'; }
-    catch { return 'light'; }
-  });
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    try { localStorage.setItem('theme', theme); } catch {}
-  }, [theme]);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const changed = () => setPage(currentPage());
@@ -42,10 +37,8 @@ export default function App() {
   function navigate(next: Page) {
     setPage(next);
     window.location.hash = `/${next.toLowerCase()}`;
+    if (menuOpen) { setMenuOpen(false); menuButton.current?.focus(); }
   }
-
-  const themeButton = <button className="secondary theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-    aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}>{theme === 'light' ? 'Dark theme' : 'Light theme'}</button>;
 
   useEffect(() => {
     let active = true;
@@ -64,26 +57,32 @@ export default function App() {
   }
 
   if (loading) return <p role="status" className="p-10">Loading…</p>;
-  if (!user) return <><div className="login-theme">{themeButton}</div>{error && <p role="alert" className="notice error">{error}</p>}<LoginForm onLogin={setUser} /></>;
+  if (!user) return <><div className="login-theme"><ThemeSelect /></div>{error && <p role="alert" className="notice error">{error}</p>}<LoginForm onLogin={setUser} /></>;
 
   return <div className="min-h-screen md:grid md:grid-cols-[240px_1fr]">
-    <aside className="sidebar flex flex-col p-6">
-      <div className="mb-10 text-lg font-bold tracking-tight">micro<span className="accent">crm</span><span className="ml-2 text-xs font-normal muted">workspace</span></div>
-      <p className="mb-3 text-[10px] font-semibold tracking-widest muted">WORKSPACE</p>
-      <nav aria-label="Main navigation" className="flex flex-wrap gap-2 md:flex-col">
-        {pages.map((name, index) => <button key={name} onClick={() => navigate(name)}
-          aria-current={page === name ? 'page' : undefined}
-          className={`nav-item flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm ${page === name ? 'active' : ''}`}>
-          <span aria-hidden="true" className="text-xs opacity-60">0{index + 1}</span>{name}
-        </button>)}
-      </nav>
-      <div className="account-menu mt-10 pt-5 md:mt-auto">
-        <p className="truncate text-sm font-medium">{user.username}</p>
-        <button onClick={logout} className="text-action mt-2 text-xs">Sign out</button>
-        <div className="mt-4">{themeButton}</div>
+    <a className="skip-link" href="#workspace-content" onClick={event => { event.preventDefault(); document.getElementById('workspace-content')?.focus(); }}>Skip to content</a>
+    <aside className="sidebar flex flex-col p-6" onKeyDown={event => {
+      if (event.key === 'Escape' && menuOpen) { setMenuOpen(false); menuButton.current?.focus(); }
+    }}>
+      <div className="sidebar-brand"><div className="text-lg font-bold tracking-tight">micro<span className="accent">crm</span></div>
+        <button ref={menuButton} className="secondary menu-toggle" aria-expanded={menuOpen} aria-controls="workspace-navigation" onClick={() => setMenuOpen(value => !value)}>{menuOpen ? 'Close menu' : 'Open menu'}</button></div>
+      <div id="workspace-navigation" className={`sidebar-content ${menuOpen ? 'is-open' : ''}`}>
+        <p className="workspace-name muted" title={user.workspace?.name}>{user.workspace?.name || 'Workspace unavailable'}</p>
+        <nav aria-label="Main navigation" className="flex flex-col gap-2">
+          {pages.map(name => <button key={name} onClick={() => navigate(name)}
+            aria-current={page === name ? 'page' : undefined}
+            className={`nav-item flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm ${page === name ? 'active' : ''}`}>
+            <NavIcon page={name} />{name}
+          </button>)}
+        </nav>
+        <div className="account-menu mt-10 pt-5 md:mt-auto">
+          <p className="truncate text-sm font-medium">{user.username}</p>
+          <button onClick={logout} className="text-action mt-2 text-xs">Sign out</button>
+          <div className="mt-4"><ThemeSelect /></div>
+        </div>
       </div>
     </aside>
-    <main className="workspace-main p-6 md:p-12">
+    <main id="workspace-content" tabIndex={-1} className="workspace-main p-6 md:p-12">
       <header className="workspace-header mb-8 pb-8">
         <p className="mb-3 text-xs muted">Workspace / {page}</p>
         <h1 className="text-3xl font-semibold tracking-tight">{page}</h1>
@@ -94,7 +93,8 @@ export default function App() {
       {page === 'Clients' ? <ClientsPage key={user.id} createRequested={createRequested} onCreateHandled={() => setCreateRequested(false)} /> : page === 'Settings' ? <section className="panel max-w-xl p-8">
         <h2 className="mb-5 font-semibold">Account</h2>
         <dl className="grid grid-cols-2 gap-4 text-sm"><dt className="muted">Username</dt><dd>{user.username}</dd>
-          <dt className="muted">Email</dt><dd>{user.email || 'Not provided'}</dd></dl>
+          <dt className="muted">Email</dt><dd>{user.email || 'Not provided'}</dd>
+          <dt className="muted">Workspace</dt><dd>{user.workspace?.name || 'Workspace unavailable'}</dd></dl>
       </section> : <section className="panel grid min-h-80 place-content-center p-10 text-center">
         <div aria-hidden="true" className="empty-icon">◇</div>
         <h2 className="text-lg font-medium">Your work starts here</h2>

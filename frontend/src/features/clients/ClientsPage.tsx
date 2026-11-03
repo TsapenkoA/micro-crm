@@ -57,6 +57,7 @@ export default function ClientsPage({ createRequested = false, onCreateHandled }
           <label className="sr-only" htmlFor="client-search">Search clients</label>
           <input id="client-search" type="search" placeholder="Search name, company or email" value={draft} onChange={event => setDraft(event.target.value)} />
           <button className="secondary">Search</button>
+          {(draft || search) && <button type="button" className="secondary" onClick={() => { setDraft(''); setSearch(''); setPage(1); setRevision(value => value + 1); }}>Clear</button>}
         </form>
         <div className="button-row"><button className="secondary" onClick={() => setRevision(value => value + 1)} disabled={loading}>Refresh</button>
           <button className="secondary" onClick={() => { setSuccess(''); setPanel({ kind: 'create' }); }}>Add client</button></div>
