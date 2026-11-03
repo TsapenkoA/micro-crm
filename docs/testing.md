@@ -42,28 +42,37 @@ Migration tests create a unique temporary schema inside the test database, migra
 - Refetch after create/edit/delete, deletion confirmation and 409 feedback, actual detail data, 404 handling, Escape, focus containment/restoration, light/dark rendering, and global quick actions.
 - Two employee accounts sharing a newly created client after a fresh request, and client state reset for an unrelated account. These UI tests mock API responses; PostgreSQL tests separately verify the server's workspace isolation.
 - Full cross-module browser E2E tests are not implemented.
+- Notes/links API: required fields and limits, server-controlled author/client/timestamp, chronological pagination, shared colleague access, other-company 404, missing membership, CSRF/Origin, input identity injection, http/https validation, and model rejection of non-http links.
+- History UI: empty/loading/error/retry states, personal authors and local timestamps, plain-text XSS-safe note rendering, safe external links, disabled unsafe legacy URLs, preserved rejected drafts, server field errors, confirmed writes and refetch, last-page navigation, remount persistence, and shared timelines across employee accounts.
+- Note deletion: author-only permissions and per-viewer can_delete, colleague/superuser denial, workspace and parent isolation, missing IDs, session/CSRF/membership checks, preserved related records, UI confirmation/cancel, pending-state protection, retained notes after failures, and recovery after deleting the only note on the last page.
 
 ## Verified results
 
-The latest backend regression run passed all 91 tests on PostgreSQL 18.6. The prior targeted client ordering and detail selection passed 6 tests (38 deselected). No backend schema or financial logic changes were introduced for the Clients interface.
+The latest backend regression run passed all 141 tests on PostgreSQL 18.6, including 49 notes/links checks. The migration check reported no changes. Authentication checks cover the active workspace display DTO and a missing membership returning null while Clients access remains denied. No schema or financial logic changes were introduced.
 
-Frontend verification passed all 22 tests across 3 files. TypeScript checking and the production build succeeded. Run the client UI checks separately with `npm.cmd test -- tests/Clients.test.tsx`.
+Frontend verification passed all 42 tests across 4 files. TypeScript checking and the production build succeeded. Added coverage includes workspace display, navigation toggle/Escape/focus restoration, applied-search reset, System theme changes and persisted explicit preferences. These are component tests, not responsive-browser proof. Targeted commands: `npm.cmd test -- tests/App.test.tsx tests/Clients.test.tsx` from frontend and `uv run pytest tests/test_auth.py tests/test_clients.py tests/test_client_history.py tests/test_workspaces.py tests/test_workspace_migration.py` from backend. The history UI file contains 16 passing tests.
 
 A live HTTP check also verified health, login/CSRF, client creation, shared access and updates, foreign-workspace detail/search isolation, workspace injection rejection, deletion, logout, and post-logout denial. Populated legacy data preservation is covered by isolated-schema integration tests.
 
 The actual frontend API modules were bundled in memory and exercised through the running Vite proxy with temporary employee accounts. Session/CSRF handling, creation, colleague visibility, restored-session reads/writes, field validation, editing, and deletion passed. This checks real HTTP integration, not browser layout or interaction.
 
+The history smoke check also exercised those modules against real HTTP endpoints: login → create client → add note and link → reload modules while retaining the session → read persisted history. A second employee read the first employee's note/link and added a note with their own author ID. Another workspace received 404 for history reads and writes. Unsafe URLs and author injection returned 400; client deletion with history returned 409. Temporary smoke records and accounts were removed afterward. This is not a browser reload test.
+
 ## Pending browser acceptance
 
-The browser interaction scenario was not completed. Visual appearance, actual-browser focus behavior, and mobile layout have not been visually verified. Automated component tests and successful HTTP checks do not substitute for this acceptance step.
+Token-level WCAG contrast calculations passed for normal text, muted text, accent/button text and status text on their corresponding backgrounds in both themes (at least 4.5:1), and for input borders on their surface (at least 3:1). Light muted text on the page background was corrected from 4.41:1 to 4.80:1. These calculations do not verify rendered browser states or replace the visual checks below.
+
+The browser interaction scenario was not completed. The embedded browser connection was unavailable; the native browser attempt was stopped before acceptance could be completed. No accepted Clients light/dark desktop/mobile screenshots were produced. Visual appearance, actual-browser focus behavior, and mobile layout have not been visually verified. Automated component tests and successful HTTP checks do not substitute for this acceptance step.
 
 With PostgreSQL, Django, and Vite running, sign in and open `#/clients`:
 
 1. Create a client, reload, and confirm the saved contact remains visible.
 2. Edit the contact, reload, and confirm the updated values.
 3. Sign in as a colleague of the same workspace and refresh; confirm the contact is shared.
-4. Open details, navigate by keyboard, close with Escape, and verify focus returns without losing the list position.
-5. Check light/dark themes and narrow-screen layout.
-6. Delete a disposable test client after confirmation; verify a protected client instead displays an error and remains intact.
+4. Add a note and an http/https link, reload and reopen the client, and confirm their persistence. Verify the note's author and local timestamp, plain-text rendering of markup, safe external navigation, and colleague history refresh.
+5. On your own disposable note, select Delete note, check Cancel, then confirm deletion and reopen the drawer. Verify the note remains deleted and colleagues have no deletion control for other authors' notes.
+6. Open details, navigate by keyboard including the note textarea, close with Escape, and verify focus returns without losing the list position.
+7. Check light/dark themes at widths 390, 768, 1280 and 1440px. Capture real Clients screenshots for both themes on desktop and mobile. Check contrast, long contacts, navigation toggle/Escape, dialog bounds, focus visibility and absence of horizontal page overflow. Check System theme changes and initial page appearance after reload.
+8. Delete a disposable client with no history after confirmation; verify a protected client instead displays an error and remains intact.
 
 Test coverage does not establish production readiness: rate limiting, backup policy, public registration, deployment security, and the remaining business-module flows require additional work.

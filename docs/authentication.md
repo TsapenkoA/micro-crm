@@ -1,6 +1,6 @@
 # Authentication and workspace access
 
-Authentication remains Django Sessions with DRF SessionAuthentication. Password hashing and session storage use Django. The sign-in identifier is username; email is not unique. Existing frontend login/logout/me response shapes are unchanged.
+Authentication remains Django Sessions with DRF SessionAuthentication. Password hashing and session storage use Django. The sign-in identifier is username; email is not unique. Login and me retain the existing user fields and add a read-only workspace object containing id and name, or null when membership is absent. This supplies display data without introducing membership-management endpoints.
 
 1. GET /api/v1/auth/csrf returns a masked csrfToken and sets csrftoken.
 2. POST /api/v1/auth/login sends username/password, cookies, and X-CSRFToken. Login is explicitly CSRF-protected for anonymous users.

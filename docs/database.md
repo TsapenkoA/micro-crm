@@ -19,6 +19,8 @@ Client/Deal/Invoice workspace and creator are immutable during normal model save
 
 All business relationships use PROTECT to avoid uncontrolled deletion. Membership's user relation uses CASCADE when an otherwise unreferenced user is deleted; membership's workspace uses PROTECT. Referenced creators and authors are protected. Empty workspaces are retained after employee assignment.
 
+Notes and links reuse their existing tables without a new schema migration. Note creation accepts nonblank text up to 10,000 characters through the API; author and created_at are server-controlled. Link validation requires http/https at both serializer and normal model-save levels. Stored legacy non-http links are not rewritten; the UI displays them without an active anchor. Authors may explicitly delete their own notes; the operation locks membership, client, and note, and removes only that note. Note editing and link editing/deletion are not exposed. Clients with remaining notes or links remain protected. The response's can_delete flag is computed per request and is not a stored database field.
+
 ## Upgrade from personal ownership
 
 1. Stop application writes and back up the existing database.

@@ -13,6 +13,8 @@
 - [x] Protected client deletion returns controlled 409 and preserves invoices and history.
 - [x] Migration tests preserve populated legacy models and reject inconsistent legacy relationships.
 - [x] `.env`, environments, caches, and logs are excluded from Git.
-- [ ] Workspace-scoped child, Deals, and Invoices APIs; Clients CRUD is implemented.
+- [x] Nested notes/links resolve the workspace-scoped parent before reading or validating writes; foreign parents return 404.
+- [x] Note authors and timestamps are server-controlled; identity injection, unsafe URL schemes, and plain-text XSS rendering are tested.
+- [ ] Workspace-scoped Deals and Invoices APIs; Clients CRUD and notes/links are implemented.
 - [ ] Atomic version/409 transitions, financial services, and snapshot immutability — respective modules.
 - [ ] HTTPS, Secure cookies, rate limiting, production settings, and backups — before deployment.

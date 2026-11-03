@@ -6,11 +6,13 @@ The base path is `/api/v1`, without a trailing slash. DRF endpoints use JSONRend
 | --- | --- | --- |
 | GET /health | Public | 200 `{"status":"ok","database":"ok"}`; 503 if the database is unavailable |
 | GET /auth/csrf | Public | 200 `{"csrfToken":"..."}` and a csrftoken cookie |
-| POST /auth/login | CSRF required | JSON `{"username":"alex","password":"..."}` → 200 `{"user":{"id":1,"username":"alex","email":""},"csrfToken":"..."}` |
-| GET /auth/me | Session | 200 `{"user":{"id":1,"username":"alex","email":""}}` |
+| POST /auth/login | CSRF required | JSON `{"username":"alex","password":"..."}` → 200 `{"user":{"id":1,"username":"alex","email":"","workspace":{"id":"<uuid>","name":"Example Studio"}},"csrfToken":"..."}` |
+| GET /auth/me | Session | 200 `{"user":{"id":1,"username":"alex","email":"","workspace":{"id":"<uuid>","name":"Example Studio"}}}` |
 | POST /auth/logout | Session + CSRF | 204 with no body; the session is deleted |
 
 Before login, fetch `/auth/csrf` and send the token in `X-CSRFToken` along with cookies. Login rotates the CSRF cookie; use the new csrfToken from its response. After restoring a session, fetch the token again through `/auth/csrf` if needed. The frontend does this before logout. Vite proxy preserves a single origin; requests from an untrusted Origin are rejected.
+
+The user DTO reports only the signed-in user's workspace ID and name, for display in navigation and Settings. It does not accept company assignment. An account without membership receives `workspace: null`; protected business endpoints still deny access with 403.
 
 400 indicates field validation errors. 403 indicates invalid credentials, an inactive account, a missing session, or a CSRF failure. 405 indicates a disallowed method. DRF and CSRF errors use the envelope `{"error":{"code":403,"details":"..."}}`; details may be a string or a field object. Health uses the separate format shown in the table. HTTP 500 with DEBUG=False returns a generic JSON message without internal details; DEBUG=True is for local development only. Application messages use English.
 
@@ -101,7 +103,66 @@ X-CSRFToken: <current-token>
 
 Validation example: `{"error":{"code":400,"details":{"email":["Enter a valid email address."]}}}`. A missing membership returns 403. Deletion protected by an invoice, deal, note, or link returns `{"error":{"code":409,"details":{"detail":"This client has related records and cannot be deleted. Remove or resolve those records first."}}}` without internal object IDs. No child is cascaded away.
 
-Notes/links APIs, Deals CRUD, Invoices, and Analytics APIs remain unimplemented. Client detail includes read-only related deals; history is not available yet. Login throttling and production perimeter protection require separate configuration before public deployment.
+Deals CRUD, Invoices, and Analytics APIs remain unimplemented. Client detail includes read-only related deals; notes and links are loaded through the nested endpoints below. Login throttling and production perimeter protection require separate configuration before public deployment.
+
+## Client notes and links
+
+| Method and path | Result |
+| --- | --- |
+| GET /clients/{uuid}/notes | 200 paginated notes in chronological order |
+| POST /clients/{uuid}/notes | 201 created note |
+| DELETE /clients/{uuid}/notes/{note_uuid} | 204 deleted note; only its author may delete it |
+| GET /clients/{uuid}/links | 200 paginated links in chronological order |
+| POST /clients/{uuid}/links | 201 created link |
+
+All routes require a session and workspace membership; POST also requires CSRF. The server resolves the parent client through the current workspace before reading children or validating creation input. A foreign or missing parent returns 404, including writes. Every member of the workspace can read all history and add their own notes or shared links. No per-client roles or realtime channel is used.
+
+Both lists use `created_at`, then `id`, ascending. Pagination matches the client list envelope with a default page size of 20 and maximum of 100. Example: `GET /api/v1/clients/{uuid}/notes?page=1&page_size=20`. An empty list is `{"count":0,"next":null,"previous":null,"results":[]}`.
+
+Note request:
+
+```json
+{"text":"Kickoff completed.\nWaiting for the revised brief."}
+```
+
+Note response:
+
+```json
+{
+  "id":"75d69ec1-4651-4bd3-940f-a6d0c56ee21f",
+  "client":"e2e9551e-f277-4fce-80ee-1bc0b7e03bdf",
+  "author":{"id":1,"username":"alex"},
+  "text":"Kickoff completed.\nWaiting for the revised brief.",
+  "created_at":"2026-01-01T12:00:00Z",
+  "can_delete":true
+}
+```
+
+Only text is writable. It must be nonblank and at most 10,000 characters; surrounding whitespace is trimmed and internal line breaks are retained. The author is the current session's User, and the timestamp comes from the backend. Client, author/author_id, workspace, IDs, timestamps, and unknown fields are rejected with 400. Notes are plain text, not HTML; markup-looking input is stored as text and rendered by React without HTML interpretation.
+
+`can_delete` is a read-only hint calculated for the current session: true only when the current user authored the note. It cannot be supplied in write input. The DELETE endpoint independently enforces session authentication, CSRF, workspace membership, the parent-client relationship, and authorship. A colleague of the same workspace receives 403 when deleting another author's note, including superusers. A foreign/missing client, missing note, or a note belonging to a different parent returns 404. Repeating a successful DELETE returns 404. Membership, client, and note are locked during deletion; only the selected note is removed.
+
+Link request:
+
+```json
+{"label":"Project brief","url":"https://docs.google.com/document/d/example"}
+```
+
+Link response:
+
+```json
+{
+  "id":"a98e1931-fb17-40d6-83c5-157bccdd1a1f",
+  "client":"e2e9551e-f277-4fce-80ee-1bc0b7e03bdf",
+  "label":"Project brief",
+  "url":"https://docs.google.com/document/d/example",
+  "created_at":"2026-01-01T12:00:00Z"
+}
+```
+
+Only label and url are writable. Label is required, nonblank, and at most 200 characters. URL is required, at most 2,048 characters, and must use a complete http:// or https:// address accepted by Django URL validation. javascript:, data:, file:, ftp:, and protocol-relative URLs are rejected. External URLs are never fetched by the backend. Validation errors retain the existing envelope, for example `{"error":{"code":400,"details":{"url":["Enter a valid URL."]}}}`.
+
+Notes support creation, reading, and author-only deletion; note editing is not implemented. Links support creation and reading only. ClientLink has no personal ownership field, so no unsupported "own link" deletion rule is inferred. Clients with remaining notes/links still return 409 on deletion; no history is silently cascaded away. No schema migration is required for these endpoints.
 
 ## Clients frontend integration
 
@@ -111,4 +172,10 @@ Create and edit forms map 400 field errors to their corresponding inputs and pre
 
 Successful create/update/delete operations refetch the list without reloading the page. Refresh performs another list request so colleagues can see each other's changes. The UI does not filter by created_by. Client data is discarded when the authenticated user changes. The list does not display deal counts because list responses do not provide them; the detail drawer displays the actual related deals and count from GET detail.
 
-Only client creation is connected in global quick actions. Deal and invoice actions are disabled and marked Coming soon. Notes and links are explicit placeholders, not fabricated records. Detail opening leaves the list mounted; Escape closes the drawer and focus returns to the trigger when it remains available.
+The drawer loads notes and links independently, with loading, empty, error, refresh, and pagination states. It shows each note's username, backend timestamp formatted in local time, and plain text with preserved line breaks. A successful POST clears that form and refetches the last chronological page so the new entry is visible. Failed writes keep the draft and never insert a local timeline item. Server field errors are attached to the relevant input. Colleagues see changes after refreshing history or reopening the drawer.
+
+For notes with can_delete=true, Delete note opens an inline confirmation with Cancel and Confirm deletion. Pending deletion disables duplicate requests. The note is retained until the server confirms deletion; failures keep the note and show an error. Success refetches the last available chronological page, including when the last note on a page was removed. There is no undo or automatic deletion of related records.
+
+External links open with target="_blank" and rel="noopener noreferrer". The frontend additionally refuses to activate any legacy URL with an unsupported scheme. Existing read-only deals remain visible when returned by the API, alongside an explicit message that deal management is not implemented; no fake deals are introduced.
+
+Only client creation is connected in global quick actions. Deal and invoice actions are disabled and marked Coming soon. Detail opening leaves the list mounted; Escape closes the drawer and focus returns to the trigger when it remains available.
