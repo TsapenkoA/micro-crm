@@ -21,9 +21,9 @@ export default function LoginForm({ onLogin }: { onLogin: (user: User) => void }
 
   return <main className="grid min-h-screen place-items-center px-6">
     <section className="panel w-full max-w-md p-9">
-      <p className="mb-8 text-sm font-bold tracking-widest text-indigo-600">MICRO / CRM</p>
+      <p className="mb-8 text-sm font-bold tracking-widest accent">MICRO / CRM</p>
       <h1 className="text-3xl font-semibold">Your workspace</h1>
-      <p className="mt-3 mb-8 text-sm text-slate-500">Sign in to continue your work.</p>
+      <p className="mt-3 mb-8 text-sm muted">Sign in to continue your work.</p>
       <form onSubmit={submit} className="grid gap-5">
         <label className="grid gap-2 text-sm">Username
           <input name="username" autoComplete="username" required maxLength={150} />
@@ -31,7 +31,7 @@ export default function LoginForm({ onLogin }: { onLogin: (user: User) => void }
         <label className="grid gap-2 text-sm">Password
           <input name="password" type="password" autoComplete="current-password" required />
         </label>
-        {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+        {error && <p role="alert" className="field-error">{error}</p>}
         <button className="primary" disabled={pending}>{pending ? 'Signing in…' : 'Sign in'}</button>
       </form>
     </section>
