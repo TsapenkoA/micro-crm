@@ -23,6 +23,15 @@ class ValidatedModel(UUIDModel):
         return super().save(*args, **kwargs)
 
 
-def validate_client_owner(instance):
-    if instance.client_id and instance.owner_id and instance.client.owner_id != instance.owner_id:
-        raise ValidationError({"client": "Client must belong to the same owner."})
+def validate_workspace(instance):
+    from apps.accounts.models import WorkspaceMembership
+
+    if instance.workspace_id and instance.created_by_id:
+        if not WorkspaceMembership.objects.filter(user_id=instance.created_by_id, workspace_id=instance.workspace_id).exists():
+            raise ValidationError({"created_by": "Creator must belong to the workspace."})
+    if not instance._state.adding:
+        previous = type(instance).objects.get(pk=instance.pk)
+        if previous.workspace_id != instance.workspace_id or previous.created_by_id != instance.created_by_id:
+            raise ValidationError("Workspace and creator cannot be changed after creation.")
+    if getattr(instance, "client_id", None) and instance.client.workspace_id != instance.workspace_id:
+        raise ValidationError({"client": "Client must belong to the same workspace."})

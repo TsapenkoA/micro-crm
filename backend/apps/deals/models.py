@@ -2,7 +2,7 @@ from django.conf import settings
 from django.db import models
 from django.db.models import Q
 
-from common.models import ValidatedModel, currency_validator, validate_client_owner
+from common.models import ValidatedModel, currency_validator, validate_workspace
 
 
 class Deal(ValidatedModel):
@@ -18,7 +18,8 @@ class Deal(ValidatedModel):
         LOST = "lost", "Lost"
         CANCELLED = "cancelled", "Cancelled"
 
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="deals")
+    workspace = models.ForeignKey("accounts.Workspace", on_delete=models.PROTECT, related_name="deals")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="deals")
     client = models.ForeignKey("clients.Client", on_delete=models.PROTECT, related_name="deals")
     title = models.CharField(max_length=250)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW_LEAD)
@@ -42,4 +43,4 @@ class Deal(ValidatedModel):
         ]
 
     def clean(self):
-        validate_client_owner(self)
+        validate_workspace(self)

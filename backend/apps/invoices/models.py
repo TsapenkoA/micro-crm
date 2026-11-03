@@ -2,7 +2,7 @@ from django.conf import settings
 from django.db import models
 from django.db.models import Q
 
-from common.models import ValidatedModel, currency_validator, validate_client_owner
+from common.models import ValidatedModel, currency_validator, validate_workspace
 
 
 class Invoice(ValidatedModel):
@@ -11,7 +11,8 @@ class Invoice(ValidatedModel):
         SENT = "sent", "Sent"
         PAID = "paid", "Paid"
 
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="invoices")
+    workspace = models.ForeignKey("accounts.Workspace", on_delete=models.PROTECT, related_name="invoices")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="invoices")
     client = models.ForeignKey("clients.Client", on_delete=models.PROTECT, related_name="invoices")
     invoice_number = models.CharField(max_length=50)
     currency = models.CharField(max_length=3, validators=[currency_validator])
@@ -27,7 +28,7 @@ class Invoice(ValidatedModel):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["owner", "invoice_number"], name="invoice_owner_number_unique"),
+            models.UniqueConstraint(fields=["workspace", "invoice_number"], name="invoice_workspace_number_unique"),
             models.CheckConstraint(condition=Q(tax_rate__gte=0), name="invoice_tax_nonnegative"),
             models.CheckConstraint(condition=Q(subtotal__gte=0) & Q(tax_total__gte=0) & Q(total_amount__gte=0), name="invoice_totals_nonnegative"),
             models.CheckConstraint(condition=Q(status__in=["draft", "sent", "paid"]), name="invoice_status_valid"),
@@ -35,7 +36,7 @@ class Invoice(ValidatedModel):
         ]
 
     def clean(self):
-        validate_client_owner(self)
+        validate_workspace(self)
 
 
 class InvoiceItem(ValidatedModel):
