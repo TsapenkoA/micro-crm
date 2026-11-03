@@ -17,7 +17,7 @@ def other_user(db):
 
 @pytest.fixture
 def client_record(user):
-    return Client.objects.create(owner=user, name="Acme", email="hello@example.com")
+    return Client.objects.create(workspace=user.workspace_membership.workspace, created_by=user, name="Acme", email="hello@example.com")
 
 
 @pytest.fixture
