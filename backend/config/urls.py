@@ -1,6 +1,7 @@
 from django.urls import path
 
 from apps.accounts import views
+from apps.clients.views import ClientDetail, ClientList
 from common.health import health
 
 handler500 = "common.errors.server_error"
@@ -11,4 +12,6 @@ urlpatterns = [
     path("api/v1/auth/login", views.login),
     path("api/v1/auth/logout", views.logout),
     path("api/v1/auth/me", views.me),
+    path("api/v1/clients", ClientList.as_view()),
+    path("api/v1/clients/<uuid:pk>", ClientDetail.as_view()),
 ]
