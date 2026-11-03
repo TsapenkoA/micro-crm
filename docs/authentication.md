@@ -7,7 +7,7 @@ Authentication remains Django Sessions with DRF SessionAuthentication. Password 
 3. Successful login establishes an HttpOnly sessionid cookie and rotates CSRF. Use the returned csrfToken for writes.
 4. GET /api/v1/auth/me returns the authenticated user. POST /api/v1/auth/logout requires the session and current CSRF token, then deletes the server-side session.
 
-Cookies use SameSite=Lax. Local HTTP does not use Secure; production HTTPS/cookie settings remain a deployment task. Vite proxies /api to preserve one origin. Untrusted Origin and missing/invalid CSRF are rejected.
+Cookies use SameSite=Lax. Local HTTP does not use Secure; production HTTPS/cookie settings remain a deployment task. Vite proxies /api to preserve one origin. Untrusted Origin and missing/invalid CSRF are rejected. After restoring a session, the shared frontend client obtains CSRF before the first write if no token is cached; it clears the cached token after 403 so a later attempt can fetch a fresh one. It does not automatically retry writes.
 
 ## Company membership
 

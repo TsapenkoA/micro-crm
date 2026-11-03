@@ -37,14 +37,33 @@ Migration tests create a unique temporary schema inside the test database, migra
 - New-user provisioning, database membership uniqueness, idempotent employee assignment, invalid targets, refusal to move populated workspaces, and shared model authorship.
 - Existing Decimal, UUID, status, version, nonnegative amount, snapshot persistence, and deletion constraints, updated for workspace ownership.
 - Full populated legacy migration preservation and atomic rejection of inconsistent old relationships.
-- Existing frontend navigation, login form behavior, and typed fetch CSRF handling. The Clients frontend and full business-flow E2E tests are not implemented.
+- Frontend navigation and sign-in, CSRF acquisition after session restoration, token rotation, normalized field/API/network errors, and no server traceback display.
+- Clients list rendering, explicit search submission, pagination, loading/retry/empty/no-match states, required name and invalid email, trimmed writable-field submissions, duplicate-submit prevention, and server field errors.
+- Refetch after create/edit/delete, deletion confirmation and 409 feedback, actual detail data, 404 handling, Escape, focus containment/restoration, light/dark rendering, and global quick actions.
+- Two employee accounts sharing a newly created client after a fresh request, and client state reset for an unrelated account. These UI tests mock API responses; PostgreSQL tests separately verify the server's workspace isolation.
+- Full cross-module browser E2E tests are not implemented.
 
 ## Verified results
 
-The latest backend run passed all 91 tests on PostgreSQL 18.6. The targeted client ordering and detail selection passed 6 tests (38 deselected). The migration check reported no changes; no schema migration is required for these API changes.
+The latest backend regression run passed all 91 tests on PostgreSQL 18.6. The prior targeted client ordering and detail selection passed 6 tests (38 deselected). No backend schema or financial logic changes were introduced for the Clients interface.
 
-The existing frontend baseline remains 3 passing tests, with successful TypeScript checking and production build. Frontend checks were not rerun for the client ordering and detail changes because no frontend source was changed.
+Frontend verification passed all 22 tests across 3 files. TypeScript checking and the production build succeeded. Run the client UI checks separately with `npm.cmd test -- tests/Clients.test.tsx`.
 
 A live HTTP check also verified health, login/CSRF, client creation, shared access and updates, foreign-workspace detail/search isolation, workspace injection rejection, deletion, logout, and post-logout denial. Populated legacy data preservation is covered by isolated-schema integration tests.
+
+The actual frontend API modules were bundled in memory and exercised through the running Vite proxy with temporary employee accounts. Session/CSRF handling, creation, colleague visibility, restored-session reads/writes, field validation, editing, and deletion passed. This checks real HTTP integration, not browser layout or interaction.
+
+## Pending browser acceptance
+
+The browser interaction scenario was not completed. Visual appearance, actual-browser focus behavior, and mobile layout have not been visually verified. Automated component tests and successful HTTP checks do not substitute for this acceptance step.
+
+With PostgreSQL, Django, and Vite running, sign in and open `#/clients`:
+
+1. Create a client, reload, and confirm the saved contact remains visible.
+2. Edit the contact, reload, and confirm the updated values.
+3. Sign in as a colleague of the same workspace and refresh; confirm the contact is shared.
+4. Open details, navigate by keyboard, close with Escape, and verify focus returns without losing the list position.
+5. Check light/dark themes and narrow-screen layout.
+6. Delete a disposable test client after confirmation; verify a protected client instead displays an error and remains intact.
 
 Test coverage does not establish production readiness: rate limiting, backup policy, public registration, deployment security, and the remaining business-module flows require additional work.

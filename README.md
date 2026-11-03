@@ -1,6 +1,6 @@
 # Micro-CRM
 
-A local CRM for freelancers and small agencies, built with Django/DRF, React/TypeScript/Vite/Tailwind, and PostgreSQL. It provides session authentication, workspace-based company access, and the Clients REST API. Frontend business sections currently display placeholders.
+A local CRM for freelancers and small agencies, built with Django/DRF, React/TypeScript/Vite/Tailwind, and PostgreSQL. It provides session authentication, workspace-based company access, and a Clients interface connected to the REST API. Dashboard, Deals, and Invoices currently display placeholders.
 
 ## Environment
 
@@ -96,6 +96,8 @@ npm.cmd run dev
 ```
 
 Open http://127.0.0.1:5173 and sign in with the user you created. Vite proxies `/api` to `http://127.0.0.1:8000`, so CORS is not needed. Use a consistent hostname in the browser. Development servers bind only to loopback by default.
+
+Open `http://127.0.0.1:5173/#/clients` to search, create, edit, inspect, or delete shared company clients. Search runs on submission; Refresh retrieves colleagues' latest changes. The selected section survives reload. Light/dark themes are available in the sidebar. The global New client action works from every section; deal and invoice creation remain disabled. Browser acceptance status and the remaining manual checklist are recorded in [testing.md](docs/testing.md).
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:5173/api/v1/health

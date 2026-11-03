@@ -102,3 +102,13 @@ X-CSRFToken: <current-token>
 Validation example: `{"error":{"code":400,"details":{"email":["Enter a valid email address."]}}}`. A missing membership returns 403. Deletion protected by an invoice, deal, note, or link returns `{"error":{"code":409,"details":{"detail":"This client has related records and cannot be deleted. Remove or resolve those records first."}}}` without internal object IDs. No child is cascaded away.
 
 Notes/links APIs, Deals CRUD, Invoices, and Analytics APIs remain unimplemented. Client detail includes read-only related deals; history is not available yet. Login throttling and production perimeter protection require separate configuration before public deployment.
+
+## Clients frontend integration
+
+The Clients page at `#/clients` consumes these endpoints through the shared session/CSRF API client. It sends only name, company, email, and phone for create/update; workspace and creator are never submitted. Email and phone are optional, matching the backend model. Search runs on explicit submission. Pagination uses the response's next/previous availability and page numbers, with newest-first server ordering.
+
+Create and edit forms map 400 field errors to their corresponding inputs and preserve entered values after failure. The UI reports 403 access/session errors, 404 missing clients, 409 protected deletion, server failures, and network loss without displaying internal response text. After restoring a session, the shared client obtains CSRF before its first write. A 403 clears the cached token for the next attempt; writes are not automatically retried.
+
+Successful create/update/delete operations refetch the list without reloading the page. Refresh performs another list request so colleagues can see each other's changes. The UI does not filter by created_by. Client data is discarded when the authenticated user changes. The list does not display deal counts because list responses do not provide them; the detail drawer displays the actual related deals and count from GET detail.
+
+Only client creation is connected in global quick actions. Deal and invoice actions are disabled and marked Coming soon. Notes and links are explicit placeholders, not fabricated records. Detail opening leaves the list mounted; Escape closes the drawer and focus returns to the trigger when it remains available.
