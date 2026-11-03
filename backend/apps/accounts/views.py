@@ -8,9 +8,13 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .models import WorkspaceMembership
+
 
 def user_data(user):
-    return {"id": user.pk, "username": user.username, "email": user.email}
+    membership = WorkspaceMembership.objects.select_related("workspace").filter(user=user).first()
+    workspace = {"id": str(membership.workspace_id), "name": membership.workspace.name} if membership else None
+    return {"id": user.pk, "username": user.username, "email": user.email, "workspace": workspace}
 
 
 @api_view(["GET"])

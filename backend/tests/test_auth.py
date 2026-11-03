@@ -13,10 +13,13 @@ def test_login_me_logout_and_csrf_rotation(api, user):
     old_cookie = api.cookies["csrftoken"].value
     response = login(api, user)
     assert response.status_code == 200
-    assert response.json()["user"] == {"id": user.pk, "username": user.username, "email": user.email}
+    assert response.json()["user"] == {
+        "id": user.pk, "username": user.username, "email": user.email,
+        "workspace": {"id": str(user.workspace_membership.workspace_id), "name": user.workspace_membership.workspace.name},
+    }
     assert api.cookies["csrftoken"].value != old_cookie
     assert api.cookies["sessionid"]["httponly"]
-    assert api.get("/api/v1/auth/me").json()["user"]["id"] == user.pk
+    assert api.get("/api/v1/auth/me").json()["user"] == response.json()["user"]
     assert api.post("/api/v1/auth/logout", HTTP_X_CSRFTOKEN=old_token).status_code == 403
     token = response.json()["csrfToken"]
     assert api.post("/api/v1/auth/logout", HTTP_X_CSRFTOKEN=token).status_code == 204
@@ -65,3 +68,12 @@ def test_session_cannot_be_reused_after_logout(api, user):
     api.post("/api/v1/auth/logout", HTTP_X_CSRFTOKEN=response.json()["csrfToken"])
     api.cookies["sessionid"] = session_id
     assert api.get("/api/v1/auth/me").status_code == 403
+
+
+def test_session_reports_no_workspace_when_membership_is_missing(api, user):
+    user.workspace_membership.delete()
+    response = login(api, user)
+    assert response.status_code == 200
+    assert response.json()["user"]["workspace"] is None
+    assert api.get("/api/v1/auth/me").json()["user"]["workspace"] is None
+    assert api.get("/api/v1/clients").status_code == 403
