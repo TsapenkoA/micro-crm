@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import URLValidator
 from django.db import models
 
 from common.models import ValidatedModel, validate_workspace
@@ -41,3 +42,10 @@ class ClientLink(ValidatedModel):
     label = models.CharField(max_length=200)
     url = models.URLField(max_length=2048)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def clean(self):
+        if self.url:
+            try:
+                URLValidator(schemes=["http", "https"])(self.url)
+            except ValidationError as exc:
+                raise ValidationError({"url": exc.messages}) from exc
