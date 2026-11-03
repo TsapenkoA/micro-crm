@@ -15,11 +15,11 @@ pytestmark = pytest.mark.django_db
 
 
 def make_deal(user, client, **fields):
-    return Deal.objects.create(owner=user, client=client, title="Design", amount=Decimal("1500.25"), currency="USD", **fields)
+    return Deal.objects.create(workspace=user.workspace_membership.workspace, created_by=user, client=client, title="Design", amount=Decimal("1500.25"), currency="USD", **fields)
 
 
 def make_invoice(user, client, **fields):
-    return Invoice.objects.create(owner=user, client=client, invoice_number="INV-001", currency="EUR", **fields)
+    return Invoice.objects.create(workspace=user.workspace_membership.workspace, created_by=user, client=client, invoice_number="INV-001", currency="EUR", **fields)
 
 
 def test_models_preserve_uuid_decimal_and_relations(user, client_record):
@@ -44,7 +44,7 @@ def test_models_preserve_uuid_decimal_and_relations(user, client_record):
 
 
 @pytest.mark.parametrize("model", ["deal", "invoice", "note"])
-def test_cross_owner_relations_rejected(model, user, other_user, client_record):
+def test_cross_workspace_relations_rejected(model, user, other_user, client_record):
     with pytest.raises(ValidationError):
         if model == "deal":
             make_deal(other_user, client_record)
@@ -60,7 +60,7 @@ def test_cross_owner_relations_rejected(model, user, other_user, client_record):
     {"paid_at": timezone.now()},
 ])
 def test_deal_constraints(user, client_record, changes):
-    deal = Deal(owner=user, client=client_record, title="Test", amount=1, currency="EUR")
+    deal = Deal(workspace=user.workspace_membership.workspace, created_by=user, client=client_record, title="Test", amount=1, currency="EUR")
     for field, value in changes.items():
         setattr(deal, field, value)
     with pytest.raises(ValidationError):
@@ -78,13 +78,13 @@ def test_database_rejects_negative_amount_on_bulk_update(user, client_record):
         Deal.objects.filter(pk=deal.pk).update(amount=-1)
 
 
-def test_invoice_number_unique_per_owner(user, other_user, client_record):
+def test_invoice_number_unique_per_workspace(user, other_user, client_record):
     from apps.clients.models import Client
 
     make_invoice(user, client_record)
     with pytest.raises(ValidationError):
         make_invoice(user, client_record)
-    other_client = Client.objects.create(owner=other_user, name="Other")
+    other_client = Client.objects.create(workspace=other_user.workspace_membership.workspace, created_by=other_user, name="Other")
     assert make_invoice(other_user, other_client).invoice_number == "INV-001"
 
 
