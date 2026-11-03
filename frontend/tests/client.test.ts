@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { auth } from '../src/api/client';
+import { ApiError, auth, request } from '../src/api/client';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -15,4 +15,28 @@ it('sends CSRF for login and refreshes it after session rotation', async () => {
   await auth.logout();
   expect(fetch.mock.calls[3][1].headers['X-CSRFToken']).toBe('fresh');
   expect(fetch.mock.calls[3][1].credentials).toBe('same-origin');
+});
+
+it('gets CSRF for writes after restoring a session and retains field validation errors', async () => {
+  const fetch = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ error: { details: 'No session.' } }), { status: 403 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ csrfToken: 'restored' })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ error: { details: { email: ['Invalid email.'] } } }), { status: 400 }));
+  vi.stubGlobal('fetch', fetch);
+  await expect(auth.me()).rejects.toBeInstanceOf(ApiError);
+  await expect(request('/clients', { method: 'POST', body: JSON.stringify({ name: 'Alex', email: 'invalid' }) }))
+    .rejects.toMatchObject({ status: 400, details: { email: ['Invalid email.'] } });
+  expect(fetch.mock.calls[1][0]).toBe('/api/v1/auth/csrf');
+  expect(fetch.mock.calls[2][1].headers['X-CSRFToken']).toBe('restored');
+});
+
+it('reports a missing record, server failure and lost network without exposing server internals', async () => {
+  const fetch = vi.fn()
+    .mockResolvedValueOnce(new Response('{}', { status: 404 }))
+    .mockResolvedValueOnce(new Response('private traceback', { status: 500 }))
+    .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  vi.stubGlobal('fetch', fetch);
+  await expect(request('/clients/missing')).rejects.toMatchObject({ status: 404, message: expect.stringContaining('could not be found') });
+  await expect(request('/clients')).rejects.toMatchObject({ status: 500, message: expect.not.stringContaining('traceback') });
+  await expect(request('/clients')).rejects.toThrow('Unable to reach the server.');
 });
