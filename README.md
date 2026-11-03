@@ -97,7 +97,7 @@ npm.cmd run dev
 
 Open http://127.0.0.1:5173 and sign in with the user you created. Vite proxies `/api` to `http://127.0.0.1:8000`, so CORS is not needed. Use a consistent hostname in the browser. Development servers bind only to loopback by default.
 
-Open `http://127.0.0.1:5173/#/clients` to search, create, edit, inspect, or delete shared company clients. Search runs on submission; Refresh retrieves colleagues' latest changes. The selected section survives reload. Light/dark themes are available in the sidebar. The global New client action works from every section; deal and invoice creation remain disabled. Browser acceptance status and the remaining manual checklist are recorded in [testing.md](docs/testing.md).
+Open `http://127.0.0.1:5173/#/clients` to search, create, edit, inspect, or delete shared company clients. Search runs on submission; Clear resets it, and Refresh retrieves colleagues' latest changes. Open a client to read or add shared notes and http/https links. Notes show their personal author and local time; Refresh notes/links retrieves colleagues' updates. Authors may select Delete note and confirm deletion for their own notes. Colleagues cannot delete another author's notes; links have no edit/delete actions. Remaining history protects clients from deletion. The selected section survives reload. System/Light/Dark themes are available in the sidebar, which displays the workspace name and collapses behind Open menu on mobile. The global New client action works from every section; deal and invoice creation remain disabled. Browser acceptance status and the remaining manual checklist are recorded in [testing.md](docs/testing.md).
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:5173/api/v1/health
