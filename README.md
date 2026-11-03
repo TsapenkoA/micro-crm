@@ -1,6 +1,6 @@
 # Micro-CRM
 
-A local CRM for freelancers and small agencies. The Day 1–2 foundation includes Django/DRF, React/TypeScript/Vite/Tailwind, PostgreSQL, data models, session authentication, navigation, and basic tests. Business modules are not available yet; their interface sections display placeholders.
+A local CRM for freelancers and small agencies, built with Django/DRF, React/TypeScript/Vite/Tailwind, and PostgreSQL. It provides session authentication, workspace-based company access, and the Clients REST API. Frontend business sections currently display placeholders.
 
 ## Environment
 
@@ -54,7 +54,36 @@ uv run python manage.py createsuperuser
 uv run python manage.py runserver 127.0.0.1:8000
 ```
 
-`createsuperuser` prompts for credentials to sign in to the UI. There is no admin UI or registration flow yet. No public seed data or default password is provided; creating a user is sufficient for Days 1–2. Django hashes user passwords.
+`createsuperuser` prompts for credentials to sign in to the UI and automatically creates a workspace and membership. There is no admin UI or public registration flow. No public seed data or default password is provided. Django hashes user passwords.
+
+## Company workspaces and employees
+
+Each user belongs to one workspace, enforced by a unique user relationship in WorkspaceMembership. Members share their company's clients. Even superusers receive only their workspace's Clients API data. There are no company roles, public invitations, or membership editing APIs.
+
+To create a regular employee, run `uv run python manage.py shell` from `backend/`, then enter:
+
+```python
+from getpass import getpass
+from django.contrib.auth import get_user_model
+get_user_model().objects.create_user(username="teammate", password=getpass("Password: "))
+```
+
+Exit the shell. Find the existing company's workspace UUID (replace `admin` if needed):
+
+```powershell
+uv run python manage.py shell -c "from apps.accounts.models import WorkspaceMembership; print(WorkspaceMembership.objects.get(user__username='admin').workspace_id)"
+uv run python manage.py assign_workspace teammate <workspace-uuid>
+```
+
+Replace `<workspace-uuid>` with the printed UUID; do not include angle brackets. The command requires trusted local shell/database access. It is idempotent and refuses to move a user out of a workspace containing clients, deals, or invoices. It does not transfer records or delete the old empty workspace. Use a reviewed migration for moving existing company data.
+
+New users created through normal Django saves receive their own workspace automatically, then may be explicitly assigned as above. Bulk user creation and raw fixtures bypass provisioning; explicitly create their membership before enabling access. An account without membership receives HTTP 403 from Clients API.
+
+### Upgrading a database with personal ownership
+
+Stop application processes and take a PostgreSQL backup before `uv run python manage.py migrate`. Keep the existing database and migration history. New migrations create one workspace per existing user, including `admin`, rename owner to created_by, backfill workspace, and make workspace required. Existing IDs, credentials, timestamps, financial values, snapshots, and child relationships are preserved. Users are never grouped automatically by a company name.
+
+Inconsistent legacy ownership stops the data migration for manual review. The data migration is intentionally irreversible: after colleagues share data, returning to personal ownership is not safe. Use the pre-upgrade backup for recovery, not a reset or automatic reverse migration. Details: [database](docs/database.md) and [decisions](docs/decisions.md).
 
 ## Frontend
 
@@ -88,4 +117,4 @@ npm.cmd run build
 
 `build` includes TypeScript checking; run it separately with `npm.cmd run typecheck`. Backend tests require a running PostgreSQL server, a valid `.env`, and a precreated test database. PostgreSQL is not replaced with SQLite.
 
-API contracts: [docs/api.md](docs/api.md). Architecture and scope: [docs/architecture.md](docs/architecture.md). Requirement clarifications: [docs/decisions.md](docs/decisions.md). Access policy: [security/README.md](security/README.md).
+API contracts: [docs/api.md](docs/api.md). Architecture and scope: [docs/architecture.md](docs/architecture.md). Schema and migration: [docs/database.md](docs/database.md). Authentication: [docs/authentication.md](docs/authentication.md). Decisions: [docs/decisions.md](docs/decisions.md). Test results: [docs/testing.md](docs/testing.md). Progress: [docs/progress.md](docs/progress.md). Access policy: [security/README.md](security/README.md).
