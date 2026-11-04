@@ -54,7 +54,7 @@ uv run python manage.py createsuperuser
 uv run python manage.py runserver 127.0.0.1:8000
 ```
 
-`createsuperuser` prompts for credentials to sign in to the UI and automatically creates a workspace and membership. There is no admin UI or public registration flow. No public seed data or default password is provided. Django hashes user passwords.
+`createsuperuser` is optional for a trusted local administrator and automatically creates a workspace and membership. Regular users can register at `/sign-up`. No admin UI, public seed data or default password is provided. Django hashes user passwords.
 
 ## Company workspaces and employees
 
@@ -105,7 +105,17 @@ Invoke-RestMethod http://127.0.0.1:5173/api/v1/health
 
 Expect `status=ok` and `database=ok`. An unavailable database returns HTTP 503. Django does not serve the frontend build; local development uses Vite. Production deployment is outside the current scope.
 
-## Checks
+## Account access
+
+Open http://127.0.0.1:5173/login to sign in by email or username, or `/sign-up` to create an independent personal workspace with a chosen Username. Signup never joins a company by email domain. Existing users can change their nickname in Settings → Account → Profile; generated personal workspace names follow the change, while shared/custom company names are preserved. Forms support password visibility, validation and pending states. `/forgot-password` requests a one-hour, single-use reset link. Development email is printed in the backend terminal, not delivered to an inbox.
+
+Settings → Account lists password/provider methods, supports password changes and explicit provider connection/disconnection, and prevents removal of the last method. Provider changes require a sign-in within five minutes or password confirmation. Social accounts are not automatically merged by email.
+
+Google/GitHub/Microsoft are disabled with Not configured until CLIENT_ID and CLIENT_SECRET environment variables are set. Create Web OAuth apps, register the exact callback URIs, add credentials only to the ignored .env, then restart Django. Provider setup, scopes and SMTP settings: [authentication.md](docs/authentication.md#local-oauth-apps). Live provider sign-in and SMTP delivery remain unverified without external configuration.
+
+Production uses `config.settings.production`, an HTTPS FRONTEND_URL and SMTP configuration. It enables HTTPS redirects/Secure cookies and rejects a missing SMTP host. Deployment is not performed by these setup steps. PostgreSQL-backed auth rate limits are enabled; periodically run `uv run python manage.py clear_auth_attempts` from backend to remove old buckets.
+
+## Verification commands
 
 ```powershell
 Set-Location backend

@@ -17,4 +17,14 @@
 - [x] Note authors and timestamps are server-controlled; identity injection, unsafe URL schemes, and plain-text XSS rendering are tested.
 - [ ] Workspace-scoped Deals and Invoices APIs; Clients CRUD and notes/links are implemented.
 - [ ] Atomic version/409 transitions, financial services, and snapshot immutability — respective modules.
-- [ ] HTTPS, Secure cookies, rate limiting, production settings, and backups — before deployment.
+- [x] Public signup/reset/OAuth initiation require CSRF; password validation and transactional workspace provisioning are tested.
+- [x] PostgreSQL-backed auth limits return controlled 429 and Retry-After across workers.
+- [x] Reset tokens expire, cannot be reused and invalidate old sessions; password changes require the current password.
+- [x] OAuth callbacks use single-use state and PKCE; email collisions cannot silently merge accounts or membership.
+- [x] Recent authentication gates provider connection/disconnection; another user's provider and the last usable method are protected.
+- [x] Missing credentials disable provider actions; secrets stay server-side and provider tokens are not retained.
+- [x] Username signup/profile validation, concurrent claims, session/CSRF, preserved authorship and shared-company names are tested.
+- [ ] Live Google consent/callback acceptance — local credentials and start endpoint are configured/checked, actual sign-in remains unverified.
+- [ ] Live GitHub consent/callback acceptance — local credentials and start endpoint are configured/checked, actual sign-in remains unverified.
+- [ ] Live Microsoft consent/callback acceptance — local credentials/common tenant/start endpoint checked, actual sign-in remains unverified.
+- [ ] Production SMTP delivery, HTTPS deployment, proxy limits, operational backups and production security verification.
