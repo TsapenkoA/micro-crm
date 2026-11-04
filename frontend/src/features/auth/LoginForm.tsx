@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { auth, type User } from '../../api/client';
+import { AuthLink, PasswordField } from './fields';
 
 export default function LoginForm({ onLogin }: { onLogin: (user: User) => void }) {
   const [error, setError] = useState('');
@@ -7,6 +8,7 @@ export default function LoginForm({ onLogin }: { onLogin: (user: User) => void }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (pending) return;
     const fields = new FormData(event.currentTarget);
     setError('');
     setPending(true);
@@ -19,21 +21,14 @@ export default function LoginForm({ onLogin }: { onLogin: (user: User) => void }
     }
   }
 
-  return <main className="grid min-h-screen place-items-center px-6">
-    <section className="panel w-full max-w-md p-9">
-      <p className="mb-8 text-sm font-bold tracking-widest accent">MICRO / CRM</p>
-      <h1 className="text-3xl font-semibold">Your workspace</h1>
-      <p className="mt-3 mb-8 text-sm muted">Sign in to continue your work.</p>
-      <form onSubmit={submit} className="grid gap-5">
-        <label className="grid gap-2 text-sm">Username
-          <input name="username" autoComplete="username" required maxLength={150} />
+  return <form onSubmit={submit} className="auth-form">
+        <label className="field">Email or username
+          <input name="username" autoComplete="username" required maxLength={254} disabled={pending} autoCapitalize="none" spellCheck={false} />
         </label>
-        <label className="grid gap-2 text-sm">Password
-          <input name="password" type="password" autoComplete="current-password" required />
-        </label>
+        <PasswordField name="password" current disabled={pending} />
         {error && <p role="alert" className="field-error">{error}</p>}
         <button className="primary" disabled={pending}>{pending ? 'Signing in…' : 'Sign in'}</button>
-      </form>
-    </section>
-  </main>;
+        <AuthLink to="/forgot-password">Forgot password?</AuthLink>
+        <p className="muted">New to Micro-CRM? <AuthLink to="/sign-up">Create an account</AuthLink></p>
+      </form>;
 }
