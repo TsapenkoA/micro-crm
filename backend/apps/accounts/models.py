@@ -31,3 +31,9 @@ class WorkspaceMembership(ValidatedModel):
             workspace = previous.workspace
             if workspace.clients.exists() or workspace.deals.exists() or workspace.invoices.exists():
                 raise ValidationError({"workspace": "Cannot leave a workspace containing business records. A reviewed data transfer is required."})
+
+
+class AuthAttempt(models.Model):
+    key = models.CharField(max_length=64, primary_key=True)
+    window_start = models.DateTimeField()
+    attempts = models.PositiveIntegerField(default=0)
