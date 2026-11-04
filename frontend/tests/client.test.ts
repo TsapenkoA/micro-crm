@@ -40,3 +40,19 @@ it('reports a missing record, server failure and lost network without exposing s
   await expect(request('/clients')).rejects.toMatchObject({ status: 500, message: expect.not.stringContaining('traceback') });
   await expect(request('/clients')).rejects.toThrow('Unable to reach the server.');
 });
+
+it('distinguishes expired sessions from CSRF denial and reports rate limits', async () => {
+  const expired = vi.fn();
+  window.addEventListener('session-expired', expired);
+  vi.stubGlobal('fetch', vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ error: { details: 'CSRF verification failed.' } }), { status: 403 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ error: { details: { detail: 'Authentication credentials were not provided.' } } }), { status: 403 }))
+    .mockResolvedValueOnce(new Response('{}', { status: 429 })));
+  try {
+    await expect(request('/clients')).rejects.toMatchObject({ status: 403 });
+    expect(expired).not.toHaveBeenCalled();
+    await expect(request('/clients')).rejects.toMatchObject({ status: 403 });
+    expect(expired).toHaveBeenCalledOnce();
+    await expect(request('/auth/providers')).rejects.toMatchObject({ status: 429, message: expect.stringContaining('Too many attempts') });
+  } finally { window.removeEventListener('session-expired', expired); }
+});

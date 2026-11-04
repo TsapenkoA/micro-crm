@@ -23,7 +23,7 @@ it('requires credentials and reports a failed login', async () => {
   render(<LoginForm onLogin={vi.fn()} />);
   await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
   expect(login).not.toHaveBeenCalled();
-  await userEvent.type(screen.getByLabelText('Username'), 'alex');
+  await userEvent.type(screen.getByLabelText('Email or username'), 'alex');
   await userEvent.type(screen.getByLabelText('Password'), 'incorrect');
   await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Invalid credentials');
