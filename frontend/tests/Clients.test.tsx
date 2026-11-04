@@ -218,7 +218,7 @@ it('shows a colleague’s newly created client after a fresh request and clears 
   expect(await screen.findByRole('button', { name: 'Company contact' })).toBeInTheDocument();
   for (const username of ['bob', 'outsider']) {
     await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
-    await userEvent.type(screen.getByLabelText('Username'), username);
+    await userEvent.type(screen.getByLabelText('Email or username'), username);
     await userEvent.type(screen.getByLabelText('Password'), 'password');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
     if (username === 'bob') {
