@@ -9,10 +9,29 @@ The base path is `/api/v1`, without a trailing slash. DRF endpoints use JSONRend
 | POST /auth/login | CSRF required | JSON `{"username":"alex","password":"..."}` → 200 `{"user":{"id":1,"username":"alex","email":"","workspace":{"id":"<uuid>","name":"Example Studio"}},"csrfToken":"..."}` |
 | GET /auth/me | Session | 200 `{"user":{"id":1,"username":"alex","email":"","workspace":{"id":"<uuid>","name":"Example Studio"}}}` |
 | POST /auth/logout | Session + CSRF | 204 with no body; the session is deleted |
+| POST /auth/sign-up | CSRF | username, email, password, password_confirm → 201 user and rotated csrfToken |
+| PATCH /auth/profile | Session + CSRF | username only → 200 user with refreshed workspace display |
+| POST /auth/forgot-password | CSRF | email → neutral 202 message, regardless of eligibility |
+| POST /auth/reset-password | CSRF | uid, token, password, password_confirm → 200; invalid/expired/reused token gives 400 |
+| POST /auth/password | Session + CSRF | password, password_confirm, current_password when already set → 200 |
+| POST /auth/reauthenticate | Session + CSRF | password → 200; verification lasts five minutes |
+| GET /auth/providers | Public | providers: array of id, name, configured; no secrets |
+| GET /auth/methods | Session | password: boolean, recent_auth: boolean, providers: connected IDs |
+| DELETE /auth/providers/{provider} | Recent session + CSRF | 204; 400 for last-method removal, 403 for stale verification, 404 if absent |
+| POST /auth/oauth/{provider}/start | CSRF; recent session for connect | process: login or connect → 200 with provider authorization url |
+| GET /auth/oauth/{provider}/callback/ | Session-bound OAuth state | Server-side exchange, then 302 to the fixed frontend result |
 
 Before login, fetch `/auth/csrf` and send the token in `X-CSRFToken` along with cookies. Login rotates the CSRF cookie; use the new csrfToken from its response. After restoring a session, fetch the token again through `/auth/csrf` if needed. The frontend does this before logout. Vite proxy preserves a single origin; requests from an untrusted Origin are rejected.
 
 The user DTO reports only the signed-in user's workspace ID and name, for display in navigation and Settings. It does not accept company assignment. An account without membership receives `workspace: null`; protected business endpoints still deny access with 403.
+
+Login accepts either username (including email entered in that field) or email, plus password. Email lookup is case-insensitive and rejects ambiguous legacy addresses. Signup creates an independent workspace, ignores company assignment input, validates passwords with Django and rejects existing primary/social email identities. Concurrent public creation is serialized by email. Password reset clears the requesting session and invalidates previous sessions. A social-only user sets the first password after a recent provider sign-in; a password user submits current_password.
+
+OAuth provider IDs are google, github and microsoft. Missing credentials return configured=false; start returns 404. django-allauth generates the authorization URL and handles state, PKCE and callback processing on the server. Callback routes deliberately retain the slash registered with providers. Errors/collisions redirect to /oauth-result with a fixed status, without internal exceptions or credentials. No automatic email-based social merging is enabled. See [authentication.md](authentication.md) for setup and verification rules.
+
+Auth write limits return 429 in the standard error envelope and Retry-After. Limits and cleanup commands are in [authentication.md](authentication.md). Forgot-password 202 does not guarantee delivery; development uses console email.
+
+Username is required for password signup, has a 150-character limit, uses Django's Unicode username validation, and excludes @ to keep username/email login unambiguous. Usernames are checked case-insensitively; signup/profile changes serialize same-name claims with an advisory lock. Profile updates affect only the signed-in user and reject other fields. IDs, authorship, sessions and existing business records are preserved. An automatically generated personal workspace name follows a username change only when it still equals the old username plus "'s workspace" and has exactly one member. Custom/shared company names are never renamed by this endpoint.
 
 400 indicates field validation errors. 403 indicates invalid credentials, an inactive account, a missing session, or a CSRF failure. 405 indicates a disallowed method. DRF and CSRF errors use the envelope `{"error":{"code":403,"details":"..."}}`; details may be a string or a field object. Health uses the separate format shown in the table. HTTP 500 with DEBUG=False returns a generic JSON message without internal details; DEBUG=True is for local development only. Application messages use English.
 

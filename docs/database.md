@@ -1,5 +1,17 @@
 # Database
 
+## Authentication storage
+
+accounts/0003_authattempt adds rate-limit buckets: hashed key (primary key), window_start and attempts. Row locks share limits across workers. clear_auth_attempts removes buckets older than one day.
+
+django-allauth account/socialaccount migrations add provider identity/email/configuration tables. SocialAccount uniquely identifies a provider/UID pair. Provider access tokens are not retained; app credentials come from environment settings. Built-in User and business schemas are not replaced. Legacy duplicate emails remain unchanged and cannot be used for ambiguous email login/reset.
+
+Public password/social signup wraps user/workspace/membership/provider registration in transactions and serializes creation by normalized email with a PostgreSQL advisory lock. This is an application invariant, not a new auth_user.email uniqueness constraint. Trusted imports must avoid duplicate identities. Reset and method removal lock the user to prevent token reuse/final-method races.
+
+Auth migration was preceded by a custom-format PostgreSQL backup in ignored .local. Before/after comparison preserved all fields of two existing users, two workspaces/memberships, one client, two notes and two links; no deals/invoices existed. Existing records were not reset or reassigned.
+
+## Business data
+
 PostgreSQL 18 is used for development and integration tests. Django migrations are the schema source of truth. All domain IDs are UUIDs; the built-in Django User retains its standard integer primary key. Timestamps are timezone-aware UTC.
 
 | Model | Ownership and important fields |

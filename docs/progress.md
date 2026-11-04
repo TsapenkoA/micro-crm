@@ -4,6 +4,18 @@
 
 Django/DRF, React/TypeScript/Vite/Tailwind, PostgreSQL configuration, health API, session/CSRF authentication, six business models, migrations, navigation, and automated tests are implemented.
 
+## Account access
+
+Account-access code and automated verification are implemented. Final acceptance is PARTIAL: Google/GitHub/Microsoft credentials and start endpoints are configured/checked, but live provider signup/repeat-login/link flows and real-browser mobile/keyboard acceptance have not been completed. Console email and separate production SMTP settings are implemented; production delivery is not claimed.
+
+Password signup now asks for a unique Username. Settings → Profile lets existing users replace generated technical names without changing account IDs, ownership or sessions. An unchanged generated personal workspace name follows the new nickname only when it has one member; shared/custom company names are preserved. Google credentials are stored only in ignored local configuration; the running Google start/callback URI was checked without completing external sign-in.
+
+Standalone auth screens implement email/legacy-username login, signup, password reset and OAuth results with shared themes and pending/error/field states. Settings lists account/workspace and sign-in methods, supports password change/first-password setup, identity confirmation and confirmed provider disconnection. The shared client handles expired sessions without treating every permission/CSRF error as logout.
+
+Public signup provisions a separate workspace transactionally; same-domain emails never join a company automatically. Reset tokens expire after one hour, cannot be reused and invalidate previous sessions. Auth write limits persist in PostgreSQL. django-allauth integrates Google/GitHub/Microsoft authorization-code callbacks with state/PKCE and provider-UID identity. Automatic email merging is disabled, connection requires recent authentication, and the last method cannot be removed.
+
+The real HTTP auth smoke passed signup, personal-workspace separation, explicit A/B assignment/sharing, C isolation, reset/reuse/session checks and email login. Temporary test accounts/records were cleaned up. Live Google/GitHub/Microsoft sign-in is NOT VERIFIED: credentials and start endpoints are configured locally, but consent/callback completion is pending; development email is console-only and production SMTP delivery is NOT VERIFIED. Actual-browser auth/mobile checks remain pending. No production deployment or subsequent feature module was performed.
+
 ## Company access and Clients API
 
 Workspace and WorkspaceMembership provide company access, with database enforcement of one workspace per user, automatic user provisioning, a trusted local assign_workspace command, and migration from personal ownership. Client/Deal/Invoice belong to workspaces and preserve original owner identity as created_by. Child records retain their parent relationships and inherit workspace through them. Invoice numbers are unique per workspace.
@@ -26,7 +38,7 @@ Authors can delete their own notes through the nested DELETE endpoint and a conf
 
 ## Validation
 
-The backend regression run passed all 141 tests on PostgreSQL, including 49 notes/links checks. Frontend verification passed all 42 tests, TypeScript checking, and the production build. Coverage includes author-only note deletion, workspace isolation, CSRF, confirmation/cancel, errors, pagination after deletion, shared history, safe rendering, navigation/theme/workspace display, search reset, and existing client workflows. No new migration was detected.
+The latest backend regression passed all 193 tests on PostgreSQL, including 32 new auth-flow checks and existing company/client/history/migration coverage. Frontend verification passed all 59 tests, TypeScript checking and the production build. Local and production configuration checks passed (production with temporary configuration values, without sending SMTP mail). makemigrations --check --dry-run reported no additional changes after accounts/0003_authattempt was generated. The new auth migrations were applied locally after a backup and before/after data comparison.
 
 The actual frontend API modules passed a real Vite-proxy smoke check for login, client creation, note/link creation, restored-session history reads, colleague access/authorship, unsafe URL and identity-injection rejection, and foreign-workspace 404. Protected history correctly prevents client deletion. This HTTP check is not a browser interaction test.
 
@@ -53,6 +65,8 @@ READY means implemented with passing automated coverage. PARTIAL means implement
 Clients is implemented for integration with future Deals work. Final visual and browser acceptance remains NOT VERIFIED; it is not signed off as complete.
 
 ## Limitations and remaining features
+
+Password registration, email/legacy-username login, reset, password changes and provider-method settings are implemented. Social callback integration is implemented and tested with mocked provider responses. Google, GitHub and Microsoft are configured locally and their start endpoints are verified; actual external sign-in remains NOT VERIFIED. Microsoft uses common with User.Read. SMTP delivery and real-browser auth/mobile acceptance remain NOT VERIFIED. No production deployment is performed.
 
 Company assignment is a trusted local operation and cannot transfer populated workspaces. Cross-workspace model relationships are checked by application validation; bulk/direct SQL bypasses those checks. Raw fixtures and bulk user imports need explicit membership provisioning. The data migration is intentionally irreversible; recovery requires a backup or a reviewed forward migration.
 

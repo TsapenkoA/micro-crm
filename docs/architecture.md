@@ -1,5 +1,7 @@
 # Architecture
 
+Authentication extends sessions with transactional signup, one-hour Django reset tokens and django-allauth Google/GitHub/Microsoft callbacks. Public auth writes require CSRF; PostgreSQL counters rate-limit attempts across workers. Auth pages use browser paths, while business sections retain hashes. Provider UID identifies returning users; email does not automatically merge accounts. New users receive personal workspaces; company assignment stays local. See [authentication.md](authentication.md).
+
 Browser → React + TypeScript → Vite proxy `/api` → Django 5.2 / DRF → PostgreSQL 18. Two development processes share one application database. Django provides the ORM, migrations, password hashing, sessions, and CSRF protection.
 
 `backend/config/settings/` contains shared, local, and test settings; tests also use PostgreSQL. `backend/apps/` contains accounts, clients, deals, invoices, and analytics. Accounts owns Workspace, WorkspaceMembership, user provisioning, session authentication, and the trusted employee assignment command. `backend/common/` contains error handling, health checks, and workspace access checks. The repository follows the detailed tree in section 13.2 of the technical plan.

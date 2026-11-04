@@ -48,9 +48,11 @@ Migration tests create a unique temporary schema inside the test database, migra
 
 ## Verified results
 
-The latest backend regression run passed all 141 tests on PostgreSQL 18.6, including 49 notes/links checks. The migration check reported no changes. Authentication checks cover the active workspace display DTO and a missing membership returning null while Clients access remains denied. No schema or financial logic changes were introduced.
+The latest backend regression passed all 193 tests on PostgreSQL 18.6, including 32 auth-flow checks and all existing client/history/workspace/migration tests. Local and production settings passed manage.py check; production used temporary SMTP/HTTPS configuration values without sending mail. makemigrations --check --dry-run reported no additional changes after accounts/0003_authattempt was generated. Financial models and rules were not changed.
 
-Frontend verification passed all 42 tests across 4 files. TypeScript checking and the production build succeeded. Added coverage includes workspace display, navigation toggle/Escape/focus restoration, applied-search reset, System theme changes and persisted explicit preferences. These are component tests, not responsive-browser proof. Targeted commands: `npm.cmd test -- tests/App.test.tsx tests/Clients.test.tsx` from frontend and `uv run pytest tests/test_auth.py tests/test_clients.py tests/test_client_history.py tests/test_workspaces.py tests/test_workspace_migration.py` from backend. The history UI file contains 16 passing tests.
+Frontend verification passed all 59 tests across 5 files. TypeScript and production build succeeded. Existing workspace/menu/theme/search checks remain passing. Auth.test.tsx contains 16 cases; client.test.ts verifies rate-limit messages and distinguishes session expiry from CSRF errors. Component tests do not establish responsive-browser acceptance. Targeted commands: `npm.cmd test -- tests/Auth.test.tsx tests/client.test.ts` from frontend and `uv run pytest tests/test_auth_flows.py` from backend.
+
+Auth appearance checks also cover accessible System/Light/Dark icon buttons, their pressed state and persisted preference, plus decorative provider SVGs retaining clear text labels and disabled-provider behavior.
 
 A live HTTP check also verified health, login/CSRF, client creation, shared access and updates, foreign-workspace detail/search isolation, workspace injection rejection, deletion, logout, and post-logout denial. Populated legacy data preservation is covered by isolated-schema integration tests.
 
@@ -75,4 +77,36 @@ With PostgreSQL, Django, and Vite running, sign in and open `#/clients`:
 7. Check light/dark themes at widths 390, 768, 1280 and 1440px. Capture real Clients screenshots for both themes on desktop and mobile. Check contrast, long contacts, navigation toggle/Escape, dialog bounds, focus visibility and absence of horizontal page overflow. Check System theme changes and initial page appearance after reload.
 8. Delete a disposable client with no history after confirmation; verify a protected client instead displays an error and remains intact.
 
-Test coverage does not establish production readiness: rate limiting, backup policy, public registration, deployment security, and the remaining business-module flows require additional work.
+Test coverage does not establish production readiness: SMTP/provider acceptance, operational backup policy, proxy/deployment security, browser acceptance and remaining business-module flows require further verification. Public registration and database-backed auth rate limits are implemented.
+
+## Authentication acceptance
+
+Seven Google-specific tests in test_google_signup.py use the installed GoogleOAuth2Adapter.complete_login and GoogleProvider profile mapping without replacing them. Only the external token exchange and decoded ID-token/userinfo boundary are mocked. Both profile formats create User/Workspace/Membership and a verified social email, establish a session and retain the same account/workspace on repeat login. Further checks cover an existing password account with a shared workspace, explicit connection, returning UID with changed email, a different UID claiming the same email, and provisioning rollback. The frontend also checks Dashboard navigation after an OAuth success result. Targeted runs passed 7 Google backend cases and all 16 Auth UI cases; the full suites passed 193 backend and 59 frontend tests.
+
+The account-conflict result is intentional for an unconnected provider whose email already belongs to a local primary/social identity. It does not indicate that a new, unused email was rejected. Existing provider UID lookup precedes this collision check. These tests do not replace real external-provider consent/callback acceptance.
+
+Username/profile coverage adds 13 PostgreSQL cases for required/invalid/taken names, concurrent same-name signup with different emails, authenticated profile changes, CSRF/Origin, rejection of foreign account fields, retained note authorship, and preservation of custom/shared workspace names. Auth UI tests check chosen-username submission, field errors and existing-profile edits. Targeted command: `uv run pytest tests/test_profile.py tests/test_auth_flows.py` (45 passed).
+
+The running Google start endpoint also passed a real HTTP check with local credentials: configured=true, expected redirect_uri, matching configured client, state and S256 PKCE. The check did not complete Google consent or exchange an actual authorization code. Its temporary session/state and rate-limit attempt were removed; signup counters were untouched.
+
+Backend tests cover atomic signup/provisioning rollback, concurrent same-email signup on separate PostgreSQL connections, email normalization and legacy ambiguity, domain/workspace assignment rejection, password validation, anonymous CSRF and untrusted Origins, neutral reset responses, malformed/expired/reused tokens, SMTP failure privacy, current/other session behavior, persistent throttles/window recovery and recent identity confirmation.
+
+Each provider's real allauth start/callback pipeline is exercised with the token exchange and provider profile response mocked. Checks include PKCE authorization parameters, single-use state/replay rejection, new/returning identity, stable workspace, inactive accounts, primary/historical email collisions, invalid profile email, explicit connection, foreign account ownership, recent-auth gates and final-method protection. These are mocked integration tests, not live-provider sign-in.
+
+UI tests cover password visibility, keyboard submission, signup validation/field errors/pending state, reset request errors and neutral messages, reset-token submission/removal, invalid links, OAuth failure/results, disabled unconfigured providers, protected-route restoration/session expiry, password settings, and disconnect confirmation/final-method protection.
+
+A real HTTP smoke check through the running Vite proxy passed signup for three independent workspaces, trusted assignment of B to A, shared client/note/link reads, C isolation, reset request/submission, token-reuse rejection, old-session denial, email login, method metadata and unconfigured-provider rejection. The reset token for this check was generated directly for the temporary test account; inbox delivery was not tested. Temporary users/business records/sessions were removed afterward. This was HTTP integration, not browser interaction.
+
+| Acceptance | Status | Evidence or limitation |
+| --- | --- | --- |
+| Password/signup/reset backend and Clients regression | PASS | 193 PostgreSQL tests; real HTTP smoke |
+| Auth component flows and build | PASS | 59 UI/API-client tests; TypeScript/Vite build |
+| Google/GitHub/Microsoft mocked callback pipelines | PASS | State/PKCE, identity, collision, linking and error integration tests |
+| Existing working data preserved | PASS | Full field comparison around backed-up auth migration |
+| Google live sign-in | NOT VERIFIED | Local credentials/start endpoint configured and checked; Google consent/callback completion pending |
+| GitHub live sign-in | NOT VERIFIED | Local credentials/start endpoint configured and checked; GitHub consent/callback completion pending |
+| Microsoft live sign-in | NOT VERIFIED | Local credentials/start endpoint configured and checked with common/User.Read; consent/callback completion pending |
+| SMTP delivery | NOT VERIFIED | Console development backend; no production SMTP configured |
+| Actual-browser keyboard/mobile/theme flow | NOT VERIFIED | Browser access host unavailable |
+
+For manual acceptance, open /sign-up, create a disposable account, sign out and sign in by email with keyboard/password toggle, request a reset and use the backend console link, verify the old password/session fails, then change the password in Settings. Check widths 390/768/1280–1440 and both themes. With real provider credentials, separately test signup, repeat login, cancellation, existing-email collision, Settings connect/unlink and social-only first-password setup for each provider. Never mark a provider PASS solely from mocks.

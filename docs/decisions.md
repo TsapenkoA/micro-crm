@@ -1,7 +1,9 @@
 # Decisions and clarifications
 
+Authentication uses django-allauth for provider protocol/state/PKCE processing while preserving existing users, sessions and CSRF. Only the project API and provider callbacks are exposed; alternate account-management pages are not added. Public password/social signup is transactional and serialized by normalized email. Provider UID determines identity, email collisions require explicit connection, recent verification gates method changes, and user locking protects the last method. Auth counters use PostgreSQL rather than per-process cache. Local email uses console output; production settings require SMTP/HTTPS, without claiming live delivery or deployment.
+
 - The detailed tree in section 13.2 refines the shorter tree in section 3: Django modules live in `backend/apps/`.
-- Sign-in uses the standard Django User's username and password. Email is not unique and is not a login identifier. Public registration and password recovery are not implemented.
+- Keep standard Django users and sessions. New users register/sign in by email; legacy username login remains compatible. Ambiguous legacy emails cannot select an arbitrary user. Signup and password recovery are implemented without rewriting existing email identities.
 - Company records belong to Workspace, and employees share access through WorkspaceMembership. OneToOne(user) enforces at most one workspace per user in PostgreSQL; normal user creation provisions membership. There are no team roles, invitations, billing, or public membership APIs.
 - Legacy owner fields are renamed to created_by instead of discarded, preserving record provenance. Workspace controls access; created_by does not restrict colleagues. Workspace and creator are immutable through normal model saves and Clients CRUD.
 - Existing users receive separate workspaces during data migration. Automatic grouping by company name is unsafe. The local assign_workspace command moves only users whose source workspace contains no business records. Existing data transfers require separate review; no automatic company merge is provided.
