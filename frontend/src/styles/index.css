@@ -101,6 +101,33 @@
   .workspace-header { border-top: 0; border-bottom: 1px solid var(--border); }
   .workspace-main { min-width: 0; }
   .login-theme { position: absolute; top: 24px; right: 24px; }
+  .auth-page { min-height: 100dvh; display: grid; place-items: center; padding: var(--space-6); }
+  .auth-card { width: 100%; max-width: 460px; padding: var(--space-8); }
+  .auth-theme { display: flex; justify-content: flex-end; margin-bottom: var(--space-6); }
+  .auth-theme .theme-control { width: 120px; }
+  .theme-switch { display: inline-flex; gap: var(--space-1); padding: var(--space-1); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-raised); }
+  .theme-option { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-control); color: var(--text-muted); }
+  .theme-option:hover { background: var(--accent-soft); color: var(--accent); }
+  .theme-option[aria-pressed="true"] { background: var(--surface); color: var(--accent); box-shadow: var(--shadow-panel); }
+  .provider-icon { width: 20px; height: 20px; flex-shrink: 0; }
+  .provider-button, .provider-identity { display: flex; align-items: center; gap: var(--space-3); }
+  .provider-button { justify-content: center; }
+  .auth-brand { font-size: var(--font-sm); font-weight: 700; letter-spacing: 0.12em; margin-bottom: var(--space-6); }
+  .auth-card h1 { font-size: var(--font-title); line-height: 1.2; font-weight: 600; }
+  .auth-description { margin: var(--space-3) 0 var(--space-6); }
+  .auth-form { display: grid; gap: var(--space-4); font-size: var(--font-sm); }
+  .password-control { display: flex; gap: var(--space-2); }
+  .password-control input { flex: 1; width: 100%; }
+  .auth-card .notice, .account-settings .notice { margin: var(--space-4) 0; }
+  .social-providers { display: grid; gap: var(--space-3); margin-top: var(--space-6); padding-top: var(--space-6); border-top: 1px solid var(--border); }
+  .social-providers > p { font-size: var(--font-sm); text-align: center; }
+  .account-settings { max-width: 640px; padding: var(--space-6); overflow-wrap: anywhere; }
+  .account-settings > h2 { font-size: var(--font-lg); font-weight: 600; margin-bottom: var(--space-6); }
+  .account-settings > section { border-top: 1px solid var(--border); padding-top: var(--space-6); margin-top: var(--space-6); }
+  .account-settings h3 { font-weight: 600; margin-bottom: var(--space-4); }
+  .account-settings .theme-control { max-width: 160px; }
+  .account-providers { display: grid; gap: var(--space-4); margin: var(--space-4) 0; }
+  .account-providers li { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-3); }
   .quick-actions, .button-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space); }
   .quick-actions small { margin-left: var(--space); font-size: var(--font-xs); }
   .text-action { padding: var(--space-2); border-radius: var(--space); color: var(--accent); font-size: var(--font-sm); }
@@ -164,6 +191,8 @@
   .link-url { overflow-wrap: anywhere; font-size: var(--font-xs); margin-top: var(--space); }
   .history-pagination { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space); justify-content: space-between; margin-top: var(--space-4); font-size: var(--font-xs); }
   @media (max-width: 767px) {
+    .auth-page { padding: var(--space-4); }
+    .auth-card { padding: var(--space-6); }
     .sidebar { border-right: 0; border-bottom: 1px solid var(--border); }
     .menu-toggle { display: inline-flex; }
     .sidebar-content { display: none; }

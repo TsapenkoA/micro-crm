@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, auth, type User } from '../api/client';
-import LoginForm from '../features/auth/LoginForm';
+import AuthScreen, { authPaths } from '../features/auth/AuthScreen';
+import AccountSettings from '../features/auth/AccountSettings';
+import { navigateAuth } from '../features/auth/fields';
 import ClientsPage from '../features/clients/ClientsPage';
 import QuickActions from '../components/QuickActions';
 import ThemeSelect from '../components/ThemeSelect';
@@ -24,15 +26,37 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [page, setPage] = useState<Page>(currentPage);
+  const [path, setPath] = useState(window.location.pathname);
   const [createRequested, setCreateRequested] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const changed = () => setPage(currentPage());
+    const routeChanged = () => { setPath(window.location.pathname); setPage(currentPage()); };
+    const expired = () => { setUser(null); setCreateRequested(false); setError('Your session has expired. Please sign in again.'); };
+    const cleared = () => setUser(null);
     window.addEventListener('hashchange', changed);
-    return () => window.removeEventListener('hashchange', changed);
+    window.addEventListener('popstate', routeChanged);
+    window.addEventListener('session-expired', expired);
+    window.addEventListener('session-cleared', cleared);
+    return () => {
+      window.removeEventListener('hashchange', changed);
+      window.removeEventListener('popstate', routeChanged);
+      window.removeEventListener('session-expired', expired);
+      window.removeEventListener('session-cleared', cleared);
+    };
   }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user && !authPaths.includes(path)) navigateAuth('/login' + window.location.hash, true);
+    if (user && ['/login', '/sign-up'].includes(path)) navigateAuth('/' + window.location.hash, true);
+    if (user && path === '/oauth-result') {
+      const status = new URLSearchParams(window.location.search).get('status');
+      if (status === 'success' || status === 'connected') navigateAuth('/#/' + (status === 'connected' ? 'settings' : 'dashboard'), true);
+    }
+  }, [loading, user, path]);
 
   function navigate(next: Page) {
     setPage(next);
@@ -52,12 +76,16 @@ export default function App() {
   }, []);
 
   async function logout() {
-    try { await auth.logout(); setUser(null); setError(''); setCreateRequested(false); }
+    try { await auth.logout(); setUser(null); setError(''); setCreateRequested(false); setMenuOpen(false); navigateAuth('/login' + window.location.hash, true); }
     catch { setError('Unable to sign out. Please try again.'); }
   }
 
   if (loading) return <p role="status" className="p-10">Loading…</p>;
-  if (!user) return <><div className="login-theme"><ThemeSelect /></div>{error && <p role="alert" className="notice error">{error}</p>}<LoginForm onLogin={setUser} /></>;
+  if (!user && !authPaths.includes(path)) return <p role="status" className="p-10">Opening sign-in…</p>;
+  if (user && path === '/oauth-result' && ['success', 'connected'].includes(new URLSearchParams(window.location.search).get('status') ?? '')) return <p role="status" className="p-10">Completing sign-in…</p>;
+  if (!user || ['/forgot-password', '/reset-password', '/oauth-result'].includes(path)) return <AuthScreen key={path} path={path} notice={error} onLogin={account => {
+    setUser(account); setError(''); navigateAuth('/' + window.location.hash, true);
+  }} />;
 
   return <div className="min-h-screen md:grid md:grid-cols-[240px_1fr]">
     <a className="skip-link" href="#workspace-content" onClick={event => { event.preventDefault(); document.getElementById('workspace-content')?.focus(); }}>Skip to content</a>
@@ -78,7 +106,7 @@ export default function App() {
         <div className="account-menu mt-10 pt-5 md:mt-auto">
           <p className="truncate text-sm font-medium">{user.username}</p>
           <button onClick={logout} className="text-action mt-2 text-xs">Sign out</button>
-          <div className="mt-4"><ThemeSelect /></div>
+          {page !== 'Settings' && <div className="mt-4"><ThemeSelect /></div>}
         </div>
       </div>
     </aside>
@@ -90,12 +118,7 @@ export default function App() {
         <QuickActions onNewClient={() => { navigate('Clients'); setCreateRequested(true); }} />
       </header>
       {error && <p role="alert" className="notice error">{error}</p>}
-      {page === 'Clients' ? <ClientsPage key={user.id} createRequested={createRequested} onCreateHandled={() => setCreateRequested(false)} /> : page === 'Settings' ? <section className="panel max-w-xl p-8">
-        <h2 className="mb-5 font-semibold">Account</h2>
-        <dl className="grid grid-cols-2 gap-4 text-sm"><dt className="muted">Username</dt><dd>{user.username}</dd>
-          <dt className="muted">Email</dt><dd>{user.email || 'Not provided'}</dd>
-          <dt className="muted">Workspace</dt><dd>{user.workspace?.name || 'Workspace unavailable'}</dd></dl>
-      </section> : <section className="panel grid min-h-80 place-content-center p-10 text-center">
+      {page === 'Clients' ? <ClientsPage key={user.id} createRequested={createRequested} onCreateHandled={() => setCreateRequested(false)} /> : page === 'Settings' ? <AccountSettings key={user.id} user={user} onUserUpdated={setUser} /> : <section className="panel grid min-h-80 place-content-center p-10 text-center">
         <div aria-hidden="true" className="empty-icon">◇</div>
         <h2 className="text-lg font-medium">Your work starts here</h2>
         <p className="mx-auto mt-3 max-w-sm text-sm leading-6 muted">The {page} section is not available yet. Your account is ready.</p>
