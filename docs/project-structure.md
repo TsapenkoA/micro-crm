@@ -7,7 +7,7 @@
 | backend/apps/clients/ | Client models, scoped CRUD, search, pagination, nested notes/links, and read-only related deals |
 | backend/apps/deals/ | Deal model, scoped CRUD/status API, validated DTOs, version compare-and-swap, search/filters and currency totals |
 | backend/apps/invoices/ | Invoice/item models and constraints; no invoice editor or PDF endpoint yet |
-| backend/apps/analytics/ | Reserved for financial aggregation |
+| backend/apps/analytics/ | Workspace-scoped Dashboard aggregation |
 | backend/common/ | Shared validation, workspace permissions, health checks, and API errors |
 | backend/tests/ | PostgreSQL integration, model, authentication, workspace, and migration tests |
 | frontend/src/app/App.tsx | Existing sidebar layout, hash navigation, session restoration, theme selection, and global quick actions |
@@ -30,6 +30,8 @@
 | frontend/src/features/deals/DealsPage.tsx | Live Kanban/table, filters, side-panel coordination, drag/status updates, confirmed deletion, and server refresh |
 | frontend/src/features/deals/DealDetails.tsx | Inline deal details styled after the preview, English dates, overview/client-notes navigation, status and archive outcome |
 | frontend/src/features/deals/deals.css | Scoped board, table, drawer and form styles across themes and viewport widths |
+| frontend/src/features/dashboard/ | Live workspace analytics API client, KPI cards and Recharts revenue chart |
+| frontend/src/features/invoices/ | Live invoice list, editor, document view, PDF download and browser print |
 | frontend/src/features/preview/VisualWorkspace.tsx | Authenticated design preview: shell, Kanban/table/details, dashboard, clients, invoice editor/document and settings |
 | frontend/src/features/preview/data.ts | Preview DTO types, stage metadata and display formatting; no client or deal records |
 | frontend/src/features/preview/preview.css | Scoped compact light/dark design and responsive layouts at desktop/tablet/phone widths |

@@ -124,7 +124,7 @@ X-CSRFToken: <current-token>
 
 Validation example: `{"error":{"code":400,"details":{"email":["Enter a valid email address."]}}}`. A missing membership returns 403. Deletion protected by an invoice, deal, note, or link returns `{"error":{"code":409,"details":{"detail":"This client has related records and cannot be deleted. Remove or resolve those records first."}}}` without internal object IDs. No child is cascaded away.
 
-Deals CRUD is documented below. Invoices and Analytics APIs remain unimplemented. Client detail includes read-only related deals; notes and links are loaded through the nested endpoints below. Production perimeter protection requires separate configuration before public deployment.
+Deals and Invoices APIs are documented below. Analytics remains unimplemented. Client detail includes read-only related deals; notes and links are loaded through the nested endpoints below. Production perimeter protection requires separate configuration before public deployment.
 
 ## Client notes and links
 
@@ -289,6 +289,56 @@ The authenticated `#/deals` route uses the same session/CSRF client as Clients. 
 New deal creates a backend record. The five-stage board supports handle-based dragging, while the inline detail panel offers a keyboard-accessible status selector and archive outcome. Table shows the same loaded records with client-side sorting and 20-row pages. Search runs on submit; status/currency filters and Refresh request current server data. The client detail's related-deal links open the matching deal panel, and a deal's client link opens the matching client drawer. Displayed deadline and timestamp text uses English month names in the viewer's local time. The create/edit form uses an English month/weekday calendar with 24-hour time controls; it submits an ISO 8601 UTC datetime or null. The Notes tab links to shared client notes; deal-specific notes, creator names, service categories and next-step text are not present in the deal API and are not invented in the live UI.
 
 Edit and status writes send the observed version. A 409 keeps the form draft and offers a separate load of current server values for comparison before the user explicitly discards the draft. A failed drag restores the previous board state and reports the error; the board then refetches authoritative records/totals. Delete requires confirmation and sends the observed version; 409 or other failures leave the deal visible. Successful writes refetch the list. Paid status is a pipeline state, not an invoice payment or revenue event.
+
+## Invoices API
+
+All routes require session authentication and workspace membership. They have no trailing slash. Writes require the session's CSRF token. Foreign or missing invoices and foreign client IDs return 404; the browser cannot set workspace, creator, snapshots, number, totals or timestamps.
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| GET, POST | `/api/v1/invoices` | List/search/filter or create a draft |
+| GET, PATCH | `/api/v1/invoices/{id}` | Read or edit a draft |
+| PATCH | `/api/v1/invoices/{id}/status` | Draft → Sent → Paid |
+
+List results use the same page-number envelope as Clients: `count`, `next`, `previous`, `results`, with page size 20 and a maximum of 100. Ordering is `-created_at`, `-id`. `search` matches invoice number and client name/company; `status` and `currency` are exact filters. An empty workspace returns `results: []`.
+
+Create example:
+
+```http
+POST /api/v1/invoices
+Content-Type: application/json
+X-CSRFToken: <current-token>
+
+{"client":"<workspace-client-uuid>","currency":"EUR","seller":{"name":"Sample Studio","email":"billing@example.test"},"items":[{"description":"Design service","quantity":"2.000","unit_price":"49.9950","tax_rate":"20.0000"}]}
+```
+
+The server assigns a workspace-unique sequential number such as `INV-000001`, a Draft status, seller and buyer snapshots, item positions and totals. Its response includes `id`, `invoice_number`, `client`, `created_by`, `currency`, `status`, `issued_at`, `paid_at`, `seller_snapshot`, `buyer_snapshot`, `items`, `subtotal`, `tax_total`, `total_amount`, `created_at` and `updated_at`. Each item includes `id`, `position`, `description`, `quantity`, `unit_price`, `tax_rate`, `line_total` and `tax_amount`. Amounts and rates are JSON strings; for the example, one line has `line_total: "99.99"`, `tax_amount: "20.00"`, and the invoice has `total_amount: "119.99"`.
+
+`quantity` must be greater than zero with at most three fractional digits; `unit_price` is nonnegative with at most four; `tax_rate` is per item from 0 through 100 percent with at most four. At least one and at most 100 items are required. The supported currencies are AUD, CAD, CHF, EUR, GBP, PLN, UAH, USD (two minor digits), JPY (zero), KWD (three) and CLF (four). Other codes are rejected for new writes until their precision is configured. The precision choices follow the [ISO 4217 maintenance agency](https://www.six-group.com/en/products-services/financial-information/market-reference-data/data-standards.html). There is no currency conversion.
+
+Each line's `quantity × unit_price` is rounded to the currency's minor unit using Decimal `ROUND_HALF_UP`; that rounded line amount × `tax_rate / 100` is rounded the same way. Invoice subtotal and tax total are sums of these rounded line values; total is their sum. Unit prices remain four-decimal strings even for currencies whose final amounts have fewer minor digits. The server rejects amounts beyond its 16-integer-digit storage limit. Browser-supplied calculations are rejected.
+
+`PATCH /api/v1/invoices/{id}` can change a Draft's client, currency, seller details or complete `items` array. Supplying `items` replaces the draft's existing positions transactionally; omitting them retains and recalculates them. Changing the draft's client refreshes its buyer snapshot. Seller details may include name, email, address and tax ID. If seller details are omitted at creation, the current workspace name and creator email are captured. After status changes, snapshots and values cannot be edited. Existing historical invoice values are preserved by migration.
+
+```http
+PATCH /api/v1/invoices/{id}/status
+Content-Type: application/json
+X-CSRFToken: <current-token>
+
+{"status":"sent"}
+```
+
+Only Draft → Sent and Sent → Paid are allowed. Sent records `issued_at` but does not email the client; Paid records `paid_at` but does not process a payment. Sent and Paid are immutable, cannot be reopened, and the API has no DELETE route. A disallowed change returns a structured 400 error. Client and InvoiceItem relations use PROTECT, so deleting a client cannot remove an invoice. The visual preview uses its own sample dataset.
+
+`GET /api/v1/invoices/{id}/pdf` returns `application/pdf` with a safe attachment filename based on the server-generated invoice number. The same workspace and authentication checks as invoice detail apply; foreign or missing records return 404. The PDF renders saved seller/buyer snapshots, all line items, tax and totals, status and issue date, with Unicode text and repeated table headings across pages. The live Invoices screen offers Download PDF and browser Print. A PDF failure leaves the saved invoice and any open editor unchanged. Printing and sending status do not email or charge anyone.
+
+## Dashboard analytics
+
+`GET /api/v1/analytics/dashboard?currency=USD&period=month` requires a signed-in workspace member. `currency` defaults to USD and accepts AUD, CAD, CHF, CLF, EUR, GBP, JPY, KWD, PLN, UAH or USD. `period` defaults to `month` and accepts `month` or `quarter`; invalid values return the standard 400 error. The endpoint has no trailing slash.
+
+The response includes `currency`, `period`, inclusive `start` and exclusive `end` ISO timestamps, `pipeline_value`, nullable `win_rate`, nullable `average_deal_size`, `revenue`, `revenue_rows`, `deal_counts`, and up to four `recent_deals`. Monetary KPI and row values are Decimal strings at the selected currency precision; win rate is a percentage string with two decimals. The last 12 calendar months or eight calendar quarters include zero-revenue rows. Boundaries and grouping use the configured Django timezone. `revenue` covers only the displayed window; pipeline, win rate, average and stage counts use all workspace deals in that currency. A missing win-rate denominator or paid-deal count returns `null` for the corresponding KPI.
+
+Pipeline sums new lead, negotiation and in-progress deals. Win rate is paid deals / (paid + archived lost), excluding archived cancelled. Average deal size uses paid deals. Revenue sums paid invoices by `paid_at`; paid deals do not add revenue. No currency conversion occurs. All queries filter the authenticated workspace. The live Dashboard requests this endpoint again when currency or period changes; the design preview remains separate sample data.
 
 ## Visual preview boundary
 

@@ -16,6 +16,14 @@ Targeted client ordering and detail checks:
 uv run pytest tests/test_clients.py -k "list_empty_and_stable_pagination or detail"
 ```
 
+Targeted Invoices API, concurrent numbering and historical migration checks:
+
+```powershell
+uv run pytest tests/test_invoices.py tests/test_workspace_migration.py
+```
+
+Invoice tests cover per-item 0/5/20/100 percent tax, Decimal and 0/2/3/4-digit currency rounding, invalid/oversized input rollback, seller/buyer snapshots, draft replacement, Sent/Paid immutability, paid_at, colleague access, foreign-workspace 404, CSRF, filters/pagination and concurrent numbering. The migration test starts with populated legacy invoice/item records and verifies that original values remain after both invoice migrations. PDF tests additionally check content type, filename, Cyrillic extraction, multiple pages, totals, anonymous denial and foreign-workspace 404. Component tests cover list/detail, draft validation and save/refetch, PDF failure and empty state. Actual-browser create/refresh/print acceptance is still unverified.
+
 Targeted Deals API and actual PostgreSQL concurrency checks:
 
 ```powershell
@@ -137,3 +145,17 @@ For manual acceptance, open /sign-up, create a disposable account, sign out and 
 ## Workspace preview data
 
 The local admin workspace preview snapshot was moved from frontend source into its own PostgreSQL `PreviewDataset` row. It is fetched only after sign-in. `python -m pytest tests/test_workspace_counts.py -q` passed 2 tests, including anonymous denial and workspace isolation. `npm test -- --run tests/Preview.test.tsx` passed 8 component tests with generic mock records. `npm run build` passed TypeScript checking and Vite production compilation. Browser visual verification was not performed because browser control was unavailable. Live business records were not changed by the preview snapshot migration.
+
+## Dashboard checks
+
+`cd backend && uv run python -m pytest tests/test_dashboard.py -q` verifies empty and invalid filters, workspace and currency isolation, separate paid-deal and paid-invoice metrics, lost/cancelled outcomes, month/quarter rows, and currency precision against PostgreSQL. `cd frontend && npm test -- Dashboard.test.tsx` verifies server KPI rendering, currency/period refetches, empty values and API retry.
+
+After Dashboard integration, the full PostgreSQL suite passed 317 tests in 27.79 seconds; the four Dashboard-focused tests passed separately. The full frontend suite passed 91 tests across nine files; TypeScript and the production build passed. Browser screenshots, real viewport checks and real-browser chart interaction remain unverified.
+
+## Live invoices and PDF
+
+After Invoices UI and PDF integration, `uv run python -m pytest` passed 318 PostgreSQL tests in 47.10 seconds; the 25 invoice-focused tests also passed separately. `npm test` passed 95 tests across 10 frontend files in 16.71 seconds when run separately from the build. `npm run build` passed TypeScript and Vite compilation. A concurrent frontend test/build/backend run had one App test hit the 5-second timeout; a clean standalone rerun passed all 95 tests. A locally generated PDF was rendered and visually checked after fixing its tax-rate display. The local admin workspace API smoke returned 12 invoices and nonzero revenue buckets for both USD and EUR. Browser invoice editing, PDF download and print dialog remain unverified.
+
+The Invoice UI follow-up checks the USD/EUR summary totals independently of list filters, the status buttons, and the retained search request. The `createRequested` flow now waits for clients to load before opening the form. Local API smoke after adding EUR examples returned 16 invoices, an EUR active pipeline of `21900.00`, EUR paid-invoice revenue of `12810.00` and five nonzero monthly buckets. These are local demonstration data, not test fixtures in source.
+
+The full frontend suite then passed 96 tests across 10 files in 13.05 seconds. TypeScript and the Vite production build passed. The backend code was unchanged in this follow-up; its previous 318-test PostgreSQL run remains the latest full backend result. Browser visual acceptance for the revised Invoices layout remains unverified.
