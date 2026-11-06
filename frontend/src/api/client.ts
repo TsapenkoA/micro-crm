@@ -1,4 +1,7 @@
+import type { PreviewData } from '../features/preview/data';
+
 export type User = { id: number; username: string; email: string; workspace?: { id: string; name: string } | null };
+export type WorkspaceCounts = { clients: number; deals: number; invoices: number };
 type Session = { user: User; csrfToken?: string };
 
 export class ApiError extends Error {
@@ -82,6 +85,11 @@ export const auth = {
     await request<void>('/auth/logout', { method: 'POST' });
     csrfToken = '';
   },
+};
+
+export const workspace = {
+  counts: (signal?: AbortSignal) => request<WorkspaceCounts>('/workspace/counts', { signal }),
+  preview: (signal?: AbortSignal) => request<PreviewData>('/workspace/preview', { signal }),
 };
 
 export type Provider = { id: string; name: string; configured: boolean };
