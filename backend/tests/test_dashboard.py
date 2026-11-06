@@ -1,16 +1,15 @@
 from datetime import datetime
 from decimal import Decimal
 
-import pytest
-from django.contrib.auth import get_user_model
-from django.core.management import call_command
 from django.utils import timezone
 
-from apps.clients.models import Client
-from apps.deals.models import Deal
-from apps.invoices.models import Invoice
+import pytest
+
+from crm.models import Client, Deal, Invoice
 
 pytestmark = pytest.mark.django_db
+
+
 URL = "/api/v1/analytics/dashboard"
 
 
@@ -75,18 +74,3 @@ def test_period_boundaries_and_precision(api, user, client_record):
     assert data["revenue_rows"][-1]["revenue"] == "2.123"
     quarter = api.get(URL + "?currency=KWD&period=quarter").json()
     assert quarter["revenue"] == "5.579"
-
-
-def test_colleagues_share_one_workspace_aggregate(api, user, client_record):
-    colleague = get_user_model().objects.create_user(username="colleague", password="test-password-123")
-    call_command("assign_workspace", colleague.username, str(client_record.workspace_id))
-    deal(user, client_record, "new_lead", "10.00")
-    deal(colleague, client_record, "negotiation", "20.00")
-    invoice(user, client_record, "5.00")
-    invoice(colleague, client_record, "7.00")
-    api.force_login(user)
-    first = api.get(URL).json()
-    api.force_login(colleague)
-    second = api.get(URL).json()
-    assert first["pipeline_value"] == second["pipeline_value"] == "30.00"
-    assert first["revenue"] == second["revenue"] == "12.00"

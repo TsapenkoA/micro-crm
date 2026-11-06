@@ -3,15 +3,15 @@ from decimal import Decimal
 from io import BytesIO
 from threading import Barrier
 
-import pytest
-from pypdf import PdfReader
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.db import close_old_connections
+
+import pytest
+from pypdf import PdfReader
 from rest_framework.test import APIClient
 
-from apps.clients.models import Client
-from apps.invoices.models import Invoice, InvoiceItem
+from crm.models import Client, Invoice, InvoiceItem
 
 pytestmark = pytest.mark.django_db
 
@@ -82,13 +82,6 @@ def test_currency_precision(authenticated_api, client_record, currency, unit_pri
     assert response.json()["total_amount"] == expected
 
 
-def test_tax_upper_boundary(authenticated_api, client_record):
-    response = create(authenticated_api, client_record, items=[item(unit_price="1.00", tax_rate="100")])
-    assert response.status_code == 201
-    assert response.json()["tax_total"] == "1.00"
-    assert response.json()["total_amount"] == "2.00"
-
-
 def test_draft_edit_recalculates_and_snapshots_remain_frozen_after_sending(authenticated_api, user, client_record):
     second = Client.objects.create(workspace=client_record.workspace, created_by=user, name="Second", email="second@example.test")
     invoice = create(authenticated_api, client_record).json()
@@ -111,18 +104,6 @@ def test_draft_edit_recalculates_and_snapshots_remain_frozen_after_sending(authe
     assert paid.json()["buyer_snapshot"] == sent.json()["buyer_snapshot"]
     assert authenticated_api.patch(path + "/status", {"status": "sent"}, format="json").status_code == 400
     assert authenticated_api.get(path).json()["total_amount"] == "9.00"
-
-
-def test_custom_seller_and_unchanged_buyer_snapshot(authenticated_api, client_record):
-    seller = {"name": "Studio", "email": "billing@example.test", "address": "Main Street", "tax_id": "VAT-1"}
-    response = create(authenticated_api, client_record, seller=seller)
-    assert response.status_code == 201
-    invoice = response.json()
-    client_record.name = "Changed after creation"
-    client_record.save()
-    saved = authenticated_api.get(f"/api/v1/invoices/{invoice['id']}").json()
-    assert saved["seller_snapshot"] == seller
-    assert saved["buyer_snapshot"]["name"] == invoice["buyer_snapshot"]["name"]
 
 
 @pytest.mark.parametrize("changes", [

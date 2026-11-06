@@ -16,9 +16,14 @@ INSTALLED_APPS = [
     "django.contrib.messages", "allauth", "allauth.account", "allauth.socialaccount",
     "allauth.socialaccount.providers.google", "allauth.socialaccount.providers.github",
     "allauth.socialaccount.providers.microsoft",
-    "rest_framework", "apps.accounts", "apps.clients", "apps.deals",
-    "apps.invoices", "apps.analytics",
+    "rest_framework", "crm.apps.CRMConfig",
+    "crm.apps.AccountsConfig", "crm.apps.ClientsConfig",
+    "crm.apps.DealsConfig", "crm.apps.InvoicesConfig",
 ]
+MIGRATION_MODULES = {
+    label: f"crm.migrations.{label}"
+    for label in ("accounts", "clients", "deals", "invoices")
+}
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -51,9 +56,9 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework.authentication.SessionAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
-    "EXCEPTION_HANDLER": "common.errors.exception_handler",
+    "EXCEPTION_HANDLER": "crm.api.errors.exception_handler",
 }
-CSRF_FAILURE_VIEW = "common.errors.csrf_failure"
+CSRF_FAILURE_VIEW = "crm.api.errors.csrf_failure"
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SAMESITE = "Lax"
@@ -68,8 +73,8 @@ TEMPLATES = [{"BACKEND": "django.template.backends.django.DjangoTemplates", "APP
               "OPTIONS": {"context_processors": ["django.template.context_processors.request", "django.contrib.messages.context_processors.messages"]}}]
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://127.0.0.1:5173").rstrip("/")
 LOGIN_REDIRECT_URL = FRONTEND_URL + "/oauth-result?status=success"
-ACCOUNT_ADAPTER = "apps.accounts.adapters.AccountAdapter"
-SOCIALACCOUNT_ADAPTER = "apps.accounts.adapters.SocialAdapter"
+ACCOUNT_ADAPTER = "crm.auth.adapters.AccountAdapter"
+SOCIALACCOUNT_ADAPTER = "crm.auth.adapters.SocialAdapter"
 ACCOUNT_EMAIL_VERIFICATION = "none"
 ACCOUNT_LOGIN_METHODS = {"email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]

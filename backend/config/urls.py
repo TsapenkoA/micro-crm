@@ -1,17 +1,12 @@
 from django.urls import path
 
-from apps.accounts import views
-from apps.accounts.oauth import OAuthStartView, PROVIDERS, callback
-from apps.clients.views import ClientDetail, ClientLinks, ClientList, ClientNoteDetail, ClientNotes
-from apps.deals.views import DealDetail, DealList, DealStatus
-from apps.invoices.views import InvoiceDetail, InvoiceList, InvoicePDF, InvoiceStatus
-from apps.analytics.views import Dashboard
-from common.health import health
+from crm.api import views
+from crm.auth.oauth import OAuthStartView, PROVIDERS, callback
 
-handler500 = "common.errors.server_error"
+handler500 = "crm.api.errors.server_error"
 
 urlpatterns = [
-    path("api/v1/health", health),
+    path("api/v1/health", views.health),
     path("api/v1/auth/csrf", views.csrf),
     path("api/v1/auth/login", views.login),
     path("api/v1/auth/logout", views.logout),
@@ -28,19 +23,19 @@ urlpatterns = [
     path("api/v1/auth/methods", views.methods),
     path("api/v1/auth/providers/<str:provider>", views.DisconnectView.as_view()),
     path("api/v1/auth/oauth/<str:provider>/start", OAuthStartView.as_view()),
-    path("api/v1/clients", ClientList.as_view()),
-    path("api/v1/clients/<uuid:pk>", ClientDetail.as_view()),
-    path("api/v1/clients/<uuid:pk>/notes", ClientNotes.as_view()),
-    path("api/v1/clients/<uuid:pk>/notes/<uuid:note_id>", ClientNoteDetail.as_view()),
-    path("api/v1/clients/<uuid:pk>/links", ClientLinks.as_view()),
-    path("api/v1/deals", DealList.as_view()),
-    path("api/v1/deals/<uuid:pk>", DealDetail.as_view()),
-    path("api/v1/deals/<uuid:pk>/status", DealStatus.as_view()),
-    path("api/v1/invoices", InvoiceList.as_view()),
-    path("api/v1/invoices/<uuid:pk>", InvoiceDetail.as_view()),
-    path("api/v1/invoices/<uuid:pk>/status", InvoiceStatus.as_view()),
-    path("api/v1/invoices/<uuid:pk>/pdf", InvoicePDF.as_view()),
-    path("api/v1/analytics/dashboard", Dashboard.as_view()),
+    path("api/v1/clients", views.ClientList.as_view()),
+    path("api/v1/clients/<uuid:pk>", views.ClientDetail.as_view()),
+    path("api/v1/clients/<uuid:pk>/notes", views.ClientNotes.as_view()),
+    path("api/v1/clients/<uuid:pk>/notes/<uuid:note_id>", views.ClientNoteDetail.as_view()),
+    path("api/v1/clients/<uuid:pk>/links", views.ClientLinks.as_view()),
+    path("api/v1/deals", views.DealList.as_view()),
+    path("api/v1/deals/<uuid:pk>", views.DealDetail.as_view()),
+    path("api/v1/deals/<uuid:pk>/status", views.DealStatus.as_view()),
+    path("api/v1/invoices", views.InvoiceList.as_view()),
+    path("api/v1/invoices/<uuid:pk>", views.InvoiceDetail.as_view()),
+    path("api/v1/invoices/<uuid:pk>/status", views.InvoiceStatus.as_view()),
+    path("api/v1/invoices/<uuid:pk>/pdf", views.InvoicePDF.as_view()),
+    path("api/v1/analytics/dashboard", views.Dashboard.as_view()),
 ]
 
 for provider in PROVIDERS:
