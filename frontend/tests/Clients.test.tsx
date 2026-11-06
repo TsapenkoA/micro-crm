@@ -21,13 +21,14 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-it('renders shared contacts without inventing deal counts and searches only on submit', async () => {
-  vi.mocked(clients.list).mockResolvedValue(page([record]));
+it('renders shared contacts with server deal counts and searches only on submit', async () => {
+  vi.mocked(clients.list).mockResolvedValue(page([{ ...record, deal_count: 2 }]));
   render(<ClientsPage />);
   expect(await screen.findByRole('button', { name: record.name })).toBeInTheDocument();
   expect(screen.getByText(record.email)).toBeInTheDocument();
   expect(screen.getByText(record.phone)).toBeInTheDocument();
-  expect(screen.queryByRole('columnheader', { name: /deals/i })).not.toBeInTheDocument();
+  expect(screen.getByRole('columnheader', { name: 'Deals' })).toBeInTheDocument();
+  expect(screen.getByText('2')).toBeInTheDocument();
   await userEvent.type(screen.getByRole('searchbox'), 'Acme');
   expect(clients.list).toHaveBeenCalledTimes(1);
   await userEvent.click(screen.getByRole('button', { name: 'Search' }));
@@ -112,22 +113,24 @@ it.each([new ApiError(403, 'Session expired.'), new ApiError(500, 'Server error.
 
 it('refetches after create and edit, then confirms a persisted deletion', async () => {
   vi.mocked(clients.list).mockResolvedValue(page([record]));
-  render(<ClientsPage />);
+  render(<ClientsPage createRequested />);
   await screen.findByRole('button', { name: record.name });
-  await userEvent.click(screen.getByRole('button', { name: 'Add client' }));
+  await screen.findByRole('dialog', { name: 'New client' });
   await userEvent.type(screen.getByLabelText('Name'), 'Created contact');
   await userEvent.click(screen.getByRole('button', { name: 'Save client' }));
   expect(await screen.findByText('Client created.')).toBeInTheDocument();
   expect(clients.create).toHaveBeenCalledWith({ name: 'Created contact', company: '', email: '', phone: '' });
   await waitFor(() => expect(clients.list).toHaveBeenCalledTimes(2));
-  await userEvent.click(screen.getByRole('button', { name: `Edit ${record.name}` }));
+  await userEvent.click(screen.getByRole('button', { name: `Open ${record.name}` }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Edit client' }));
   await userEvent.clear(screen.getByLabelText('Name'));
   await userEvent.type(screen.getByLabelText('Name'), 'Edited contact');
   await userEvent.click(screen.getByRole('button', { name: 'Save client' }));
   expect(await screen.findByText('Client updated.')).toBeInTheDocument();
   expect(clients.update).toHaveBeenCalledWith(record.id, { name: 'Edited contact', company: record.company, email: record.email, phone: record.phone });
   await waitFor(() => expect(clients.list).toHaveBeenCalledTimes(3));
-  await userEvent.click(screen.getByRole('button', { name: `Delete ${record.name}` }));
+  await userEvent.click(screen.getByRole('button', { name: `Open ${record.name}` }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Delete client' }));
   expect(clients.remove).not.toHaveBeenCalled();
   vi.mocked(clients.list).mockResolvedValue(page());
   await userEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete client' }));
@@ -140,7 +143,8 @@ it('keeps protected clients visible when deletion returns 409', async () => {
   vi.mocked(clients.list).mockResolvedValue(page([record]));
   vi.mocked(clients.remove).mockRejectedValue(new ApiError(409, 'Protected.'));
   render(<ClientsPage />);
-  await userEvent.click(await screen.findByRole('button', { name: `Delete ${record.name}` }));
+  await userEvent.click(await screen.findByRole('button', { name: `Open ${record.name}` }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Delete client' }));
   await userEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete client' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('invoices');
   expect(screen.getByRole('alertdialog')).toBeInTheDocument();
@@ -168,6 +172,19 @@ it('opens real details, traps focus and restores focus after Escape', async () =
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(trigger).toHaveFocus();
   expect(document.body.style.overflow).toBe('');
+});
+
+it('shows real client identity, contacts and a linked deal with an English deadline', async () => {
+  vi.mocked(clients.list).mockResolvedValue(page([record]));
+  vi.mocked(clients.detail).mockResolvedValue({ ...record, deals: [{ id: 'deal-1', title: 'Brand project', amount: '123.45', currency: 'EUR', status: 'in_progress', deadline: '2026-12-01T12:00:00Z' }] });
+  render(<ClientsPage />);
+  await userEvent.click(await screen.findByRole('button', { name: record.name }));
+  const dialog = screen.getByRole('dialog', { name: 'Client details' });
+  expect(await within(dialog).findByRole('heading', { name: 'Acme contact' })).toBeInTheDocument();
+  expect(within(dialog).getByRole('heading', { name: 'Related deals 1' })).toBeInTheDocument();
+  expect(within(dialog).getByRole('link', { name: record.email })).toHaveAttribute('href', `mailto:${record.email}`);
+  expect(within(dialog).getByRole('link', { name: 'Brand project' })).toHaveAttribute('href', '#/deals?deal=deal-1');
+  expect(within(dialog).getByText('123.45 EUR · Due Dec 1, 2026')).toBeInTheDocument();
 });
 
 it('handles a deleted or inaccessible detail with a retry and close action', async () => {
@@ -199,7 +216,7 @@ it.each(['light', 'dark'])('renders clients and the global create action in the 
   expect(document.documentElement).toHaveAttribute('data-theme', theme);
   expect(screen.getByRole('heading', { name: 'Clients', level: 1 })).toBeInTheDocument();
   expect(screen.getByRole('dialog', { name: 'New client' })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /New deal/ })).toBeDisabled();
+  expect(screen.getByRole('button', { name: /View deals/ })).toBeEnabled();
 });
 
 it('shows a colleague’s newly created client after a fresh request and clears data across accounts', async () => {
@@ -218,6 +235,8 @@ it('shows a colleague’s newly created client after a fresh request and clears 
   expect(await screen.findByRole('button', { name: 'Company contact' })).toBeInTheDocument();
   for (const username of ['bob', 'outsider']) {
     await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/login');
     await userEvent.type(screen.getByLabelText('Email or username'), username);
     await userEvent.type(screen.getByLabelText('Password'), 'password');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));

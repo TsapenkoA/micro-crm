@@ -42,7 +42,7 @@ it('renders note text safely with a personal author and local timestamp', async 
   expect(screen.getByText('alice')).toBeInTheDocument();
   const timestamp = container.querySelector('time')!;
   expect(timestamp).toHaveAttribute('datetime', note.created_at);
-  expect(timestamp).toHaveTextContent(new Date(note.created_at).toLocaleString());
+  expect(timestamp).toHaveTextContent(new Date(note.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }));
 });
 
 it('opens validated external URLs safely and does not activate unsafe legacy URLs', async () => {

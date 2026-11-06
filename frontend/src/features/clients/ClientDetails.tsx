@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { clients, type ClientDetail } from './api';
 import ClientHistory from './ClientHistory';
+import { date, money, stages } from '../deals/api';
+
+const initials = (value: string) => value.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase() || '?';
+const timestamp = (value: string) => new Date(value).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
 
 export default function ClientDetails({ id, onEdit, onDelete }: {
   id: string;
@@ -28,17 +32,18 @@ export default function ClientDetails({ id, onEdit, onDelete }: {
   if (!client) return null;
 
   return <div className="dialog-body client-details">
-    <div><p className="eyebrow">SHARED CLIENT</p><h3>{client.name}</h3><p className="muted">{client.company || 'No company provided'}</p></div>
-    <div className="button-row"><button className="secondary" onClick={() => onEdit(client)}>Edit client</button>
+    <div className="client-detail-identity"><span className="client-detail-avatar" aria-hidden="true">{initials(client.company || client.name)}</span><h3>{client.name}</h3><p className="muted">{client.company || 'No company provided'}</p></div>
+    <div className="button-row client-detail-actions"><button className="secondary" onClick={() => onEdit(client)}>Edit client</button>
       <button className="secondary danger" onClick={() => onDelete(client)}>Delete client</button></div>
     <section><h3>Contact information</h3><dl className="contact-list">
       <dt>Email</dt><dd>{client.email ? <a href={`mailto:${client.email}`}>{client.email}</a> : 'Not provided'}</dd>
       <dt>Phone</dt><dd>{client.phone ? <a href={`tel:${client.phone}`}>{client.phone}</a> : 'Not provided'}</dd>
+      <dt>Created</dt><dd>{timestamp(client.created_at)}</dd>
+      <dt>Updated</dt><dd>{timestamp(client.updated_at)}</dd>
     </dl></section>
-    <section><h3>Deals ({client.deals.length})</h3>{client.deals.length ? <ul className="deal-list">
-      {client.deals.map(deal => <li key={deal.id}><strong>{deal.title}</strong><p className="muted">{deal.status.replaceAll('_', ' ')} · {deal.amount} {deal.currency}</p>
-        <p className="muted">{deal.deadline ? `Due ${new Date(deal.deadline).toLocaleDateString()}` : 'No deadline'}</p></li>)}
-    </ul> : <p className="muted">No related deals.</p>}<p className="muted">Deal management will be available after the Deals module is implemented.</p></section>
+    <section><h3>Related deals <span className="client-deal-count">{client.deals.length}</span></h3>{client.deals.length ? <ul className="deal-list">
+      {client.deals.map(deal => { const stage = stages.find(item => item.id === deal.status); return <li key={deal.id} className="client-related-deal"><a href={`#/deals?deal=${encodeURIComponent(deal.id)}`}>{deal.title}</a><span className={`deal-badge deal-${stage?.color ?? 'gray'}`}><i />{stage?.label ?? deal.status.replaceAll('_', ' ')}</span><p className="muted">{money(deal.amount, deal.currency)} · {deal.deadline ? `Due ${date(deal.deadline)}` : 'No deadline'}</p></li>; })}
+    </ul> : <p className="muted">No related deals.</p>}</section>
     <ClientHistory clientId={client.id} />
   </div>;
 }
