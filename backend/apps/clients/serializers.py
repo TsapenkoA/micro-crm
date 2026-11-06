@@ -22,6 +22,14 @@ class ClientSerializer(StrictModelSerializer):
         read_only_fields = ["id", "workspace", "created_by", "created_at", "updated_at"]
 
 
+class ClientListSerializer(ClientSerializer):
+    deal_count = serializers.IntegerField(read_only=True)
+
+    class Meta(ClientSerializer.Meta):
+        fields = [*ClientSerializer.Meta.fields, "deal_count"]
+        read_only_fields = [*ClientSerializer.Meta.read_only_fields, "deal_count"]
+
+
 class ClientDealSerializer(serializers.ModelSerializer):
     class Meta:
         model = Deal

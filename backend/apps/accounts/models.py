@@ -33,6 +33,11 @@ class WorkspaceMembership(ValidatedModel):
                 raise ValidationError({"workspace": "Cannot leave a workspace containing business records. A reviewed data transfer is required."})
 
 
+class PreviewDataset(ValidatedModel):
+    workspace = models.OneToOneField(Workspace, on_delete=models.CASCADE, related_name="preview_dataset")
+    payload = models.JSONField(default=dict)
+
+
 class AuthAttempt(models.Model):
     key = models.CharField(max_length=64, primary_key=True)
     window_start = models.DateTimeField()
