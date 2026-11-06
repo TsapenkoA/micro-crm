@@ -18,7 +18,7 @@ export default function AuthScreen({ path, onLogin, notice = '' }: { path: strin
   const forgot = path === '/forgot-password';
   const reset = path === '/reset-password';
   const result = path === '/oauth-result';
-  const titles = signup ? ['Create your account', 'Your own workspace, ready for your clients.'] : forgot ? ['Reset your password', 'Enter your email to request a reset link.'] : reset ? ['Choose a new password', 'Use a strong password you have not used elsewhere.'] : result ? ['Sign-in result', 'Return to your account to continue.'] : ['Welcome back', 'Sign in to your Micro-CRM workspace.'];
+  const titles = signup ? ['Create your account', 'Your own workspace, ready for your clients.'] : forgot ? ['Reset your password', 'Enter your email to request a reset link.'] : reset ? ['Choose a new password', 'Use a strong password you have not used elsewhere.'] : result ? ['Sign-in result', 'Return to your account to continue.'] : ['Welcome back', 'Sign in to your MicroFlow workspace.'];
   const params = new URLSearchParams(window.location.search);
   const validReset = Boolean(params.get('uid') && params.get('token'));
 
@@ -68,7 +68,7 @@ export default function AuthScreen({ path, onLogin, notice = '' }: { path: strin
 
   return <main className="auth-page"><section className="panel auth-card">
     <div className="auth-theme"><ThemeSelect icons /></div>
-    <p className="auth-brand accent">MICRO / CRM</p><h1>{titles[0]}</h1><p className="muted auth-description">{titles[1]}</p>
+    <p className="auth-brand accent">MICROFLOW</p><h1>{titles[0]}</h1><p className="muted auth-description">{titles[1]}</p>
     {notice && <p role="alert" className="notice error">{notice}</p>}
     {error && <p role="alert" className="notice error">{error}</p>}
     {errors.token && <p role="alert" className="field-error">{errors.token}</p>}

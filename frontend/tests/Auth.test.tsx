@@ -205,6 +205,7 @@ it('protects routes, restores the selected section after login and clears an exp
 it('does not allow the UI to disconnect a social-only accounts final method', async () => {
   vi.mocked(auth.methods).mockResolvedValue({ password: false, recent_auth: true, providers: ['google'] });
   render(<AccountSettings user={user} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Security' }));
   expect(await screen.findByRole('button', { name: 'Disconnect Google' })).toBeDisabled();
   expect(screen.getByRole('heading', { name: 'Set a password' })).toBeInTheDocument();
 });
@@ -214,6 +215,7 @@ it('requires confirmation before disconnecting and refreshes methods after savin
   const disconnect = vi.spyOn(auth, 'disconnect').mockResolvedValue(undefined);
   const change = vi.spyOn(auth, 'changePassword').mockResolvedValue(undefined);
   render(<AccountSettings user={user} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Security' }));
   await userEvent.click(await screen.findByRole('button', { name: 'Disconnect Google' }));
   await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(disconnect).not.toHaveBeenCalled();
