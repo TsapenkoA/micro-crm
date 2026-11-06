@@ -33,7 +33,7 @@ def test_migration_preserves_all_business_records_and_admin(legacy_database):
     note = apps.get_model("clients", "ClientNote").objects.create(client=client, author_id=admin.pk, text="Keep this note")
     link = apps.get_model("clients", "ClientLink").objects.create(client=client, label="Brief", url="https://example.com")
     deal = apps.get_model("deals", "Deal").objects.create(owner_id=admin.pk, client=client, title="Legacy deal", amount=Decimal("123.45"), currency="EUR")
-    invoice = apps.get_model("invoices", "Invoice").objects.create(owner_id=admin.pk, client=client, invoice_number="LEGACY-001", currency="EUR", buyer_snapshot={"name": "Legacy Acme"}, seller_snapshot={"name": "Seller"}, subtotal=Decimal("10.00"), tax_total=Decimal("2.00"), total_amount=Decimal("12.00"))
+    invoice = apps.get_model("invoices", "Invoice").objects.create(owner_id=admin.pk, client=client, invoice_number="LEGACY-001", currency="EUR", tax_rate=20, buyer_snapshot={"name": "Legacy Acme"}, seller_snapshot={"name": "Seller"}, subtotal=Decimal("10.00"), tax_total=Decimal("2.00"), total_amount=Decimal("12.00"))
     item = apps.get_model("invoices", "InvoiceItem").objects.create(invoice=invoice, description="Legacy service", quantity=1, unit_price=10, line_total=10)
     records = [admin, other, client, note, link, deal, invoice, item]
     before = {}
@@ -50,6 +50,13 @@ def test_migration_preserves_all_business_records_and_admin(legacy_database):
     for (app, model, pk), expected in before.items():
         actual = migrated.get_model(app, model).objects.filter(pk=pk).values().get()
         actual.pop("workspace_id", None)
+        if model == "invoice":
+            assert actual.pop("updated_at") == expected["created_at"]
+            assert actual.pop("issued_at") is None
+        if model == "invoiceitem":
+            assert actual.pop("position") == 0
+            assert actual.pop("tax_rate") == Decimal("20.0000")
+            assert actual.pop("tax_amount") == Decimal("2.0000")
         assert actual == expected
     Membership = migrated.get_model("accounts", "WorkspaceMembership")
     workspace_id = Membership.objects.get(user_id=admin.pk).workspace_id
