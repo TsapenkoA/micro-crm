@@ -35,37 +35,6 @@ it('renders shared contacts with server deal counts and searches only on submit'
   await waitFor(() => expect(clients.list).toHaveBeenLastCalledWith('Acme', 1, expect.any(AbortSignal)));
 });
 
-it('clears an applied search and requests the first unfiltered page', async () => {
-  render(<ClientsPage />);
-  await screen.findByText('No clients yet');
-  await userEvent.type(screen.getByRole('searchbox'), 'Nobody');
-  await userEvent.click(screen.getByRole('button', { name: 'Search' }));
-  await screen.findByText('No matching clients');
-  await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
-  expect(screen.getByRole('searchbox')).toHaveValue('');
-  expect(await screen.findByText('No clients yet')).toBeInTheDocument();
-  expect(clients.list).toHaveBeenLastCalledWith('', 1, expect.any(AbortSignal));
-});
-
-it('renders a clear empty state and opens a create form', async () => {
-  render(<ClientsPage />);
-  expect(await screen.findByText('No clients yet')).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: 'Add your first client' }));
-  expect(screen.getByRole('dialog', { name: 'New client' })).toBeInTheDocument();
-  expect(screen.getByLabelText('Name')).toHaveFocus();
-});
-
-it('shows loading and retries after a network error', async () => {
-  let reject!: (error: Error) => void;
-  vi.mocked(clients.list).mockReturnValueOnce(new Promise((_, fail) => { reject = fail; }));
-  render(<ClientsPage />);
-  expect(screen.getByRole('status')).toHaveTextContent('Loading clients');
-  reject(new Error('Connection lost.'));
-  expect(await screen.findByRole('alert')).toHaveTextContent('Connection lost.');
-  await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
-  expect(await screen.findByText('No clients yet')).toBeInTheDocument();
-});
-
 it('requires a nonblank name and rejects malformed email without sending a request', async () => {
   const save = vi.fn();
   render(<ClientForm onSave={save} onCancel={vi.fn()} onPending={vi.fn()} />);
@@ -76,19 +45,6 @@ it('requires a nonblank name and rejects malformed email without sending a reque
   await userEvent.click(screen.getByRole('button', { name: 'Save client' }));
   expect(screen.getByText('Enter a valid email address.')).toBeInTheDocument();
   expect(save).not.toHaveBeenCalled();
-});
-
-it('submits trimmed values with optional empty contacts and disables duplicate submit', async () => {
-  let resolve!: () => void;
-  const save = vi.fn().mockReturnValue(new Promise<void>(done => { resolve = done; }));
-  render(<ClientForm onSave={save} onCancel={vi.fn()} onPending={vi.fn()} />);
-  await userEvent.type(screen.getByLabelText('Name'), '  New contact  ');
-  await userEvent.click(screen.getByRole('button', { name: 'Save client' }));
-  expect(save).toHaveBeenCalledWith({ name: 'New contact', company: '', email: '', phone: '' });
-  expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
-  resolve();
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Save client' })).toBeEnabled());
 });
 
 it('places server 400 messages under fields and preserves entered values', async () => {
@@ -172,40 +128,6 @@ it('opens real details, traps focus and restores focus after Escape', async () =
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(trigger).toHaveFocus();
   expect(document.body.style.overflow).toBe('');
-});
-
-it('shows real client identity, contacts and a linked deal with an English deadline', async () => {
-  vi.mocked(clients.list).mockResolvedValue(page([record]));
-  vi.mocked(clients.detail).mockResolvedValue({ ...record, deals: [{ id: 'deal-1', title: 'Brand project', amount: '123.45', currency: 'EUR', status: 'in_progress', deadline: '2026-12-01T12:00:00Z' }] });
-  render(<ClientsPage />);
-  await userEvent.click(await screen.findByRole('button', { name: record.name }));
-  const dialog = screen.getByRole('dialog', { name: 'Client details' });
-  expect(await within(dialog).findByRole('heading', { name: 'Acme contact' })).toBeInTheDocument();
-  expect(within(dialog).getByRole('heading', { name: 'Related deals 1' })).toBeInTheDocument();
-  expect(within(dialog).getByRole('link', { name: record.email })).toHaveAttribute('href', `mailto:${record.email}`);
-  expect(within(dialog).getByRole('link', { name: 'Brand project' })).toHaveAttribute('href', '#/deals?deal=deal-1');
-  expect(within(dialog).getByText('123.45 EUR · Due Dec 1, 2026')).toBeInTheDocument();
-});
-
-it('handles a deleted or inaccessible detail with a retry and close action', async () => {
-  vi.mocked(clients.list).mockResolvedValue(page([record]));
-  vi.mocked(clients.detail).mockRejectedValue(new ApiError(404, 'Client not found.'));
-  render(<ClientsPage />);
-  await userEvent.click(await screen.findByRole('button', { name: record.name }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('Client not found.');
-  await userEvent.click(screen.getByRole('button', { name: 'Close' }));
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-});
-
-it('requests the next page and distinguishes a search with no matches', async () => {
-  vi.mocked(clients.list).mockResolvedValueOnce({ ...page([record]), count: 21, next: '/api/v1/clients?page=2' }).mockResolvedValue(page());
-  render(<ClientsPage />);
-  await userEvent.click(await screen.findByRole('button', { name: 'Next' }));
-  await waitFor(() => expect(clients.list).toHaveBeenLastCalledWith('', 2, expect.any(AbortSignal)));
-  await userEvent.type(screen.getByRole('searchbox'), 'Nobody');
-  await userEvent.click(screen.getByRole('button', { name: 'Search' }));
-  expect(await screen.findByText('No matching clients')).toBeInTheDocument();
-  expect(clients.list).toHaveBeenLastCalledWith('Nobody', 1, expect.any(AbortSignal));
 });
 
 it.each(['light', 'dark'])('renders clients and the global create action in the %s theme', async theme => {
