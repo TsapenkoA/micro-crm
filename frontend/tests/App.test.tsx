@@ -63,9 +63,9 @@ it('shows page-specific actions and keeps appearance in account settings', async
   expect(screen.queryByText('YOUR WORK, IN FOCUS')).not.toBeInTheDocument();
   expect(within(screen.getByRole('group', { name: 'Page actions' })).getByRole('button', { name: '+ New client' })).toBeInTheDocument();
   await userEvent.click(within(screen.getByRole('navigation', { name: 'Main navigation' })).getByRole('button', { name: 'Deals' }));
-  expect(within(screen.getByRole('group', { name: 'Page actions' })).getAllByRole('button').map(button => button.textContent)).toEqual(['View clients →', '+ New deal']);
+  expect(within(screen.getByRole('group', { name: 'Page actions' })).getAllByRole('button').map(button => button.textContent)).toEqual(['View clients →', '+ Create invoice', '+ New deal']);
   await userEvent.click(within(screen.getByRole('navigation', { name: 'Main navigation' })).getByRole('button', { name: 'Settings' }));
-  expect(screen.queryByRole('group', { name: 'Page actions' })).not.toBeInTheDocument();
+  expect(within(screen.getByRole('group', { name: 'Page actions' })).getByRole('button', { name: '+ Create invoice' })).toBeInTheDocument();
   expect(screen.queryByRole('group', { name: 'Theme' })).not.toBeInTheDocument();
   await userEvent.click(within(screen.getByRole('navigation', { name: 'Account settings sections' })).getByRole('button', { name: 'Appearance' }));
   expect(screen.getByRole('group', { name: 'Theme' })).toBeInTheDocument();
