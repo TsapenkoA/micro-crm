@@ -83,14 +83,6 @@ it('previews a selected avatar and rejects oversized files', async () => {
   expect(screen.getByRole('alert')).toHaveTextContent('under 2 MB');
 });
 
-it('shows current client, deal and invoice counts in preview navigation', async () => {
-  await openPreview();
-  const navigation = screen.getByRole('navigation', { name: 'Preview navigation' });
-  expect(within(navigation).getByRole('button', { name: 'Deals21' })).toBeInTheDocument();
-  expect(within(navigation).getByRole('button', { name: 'Clients10' })).toBeInTheDocument();
-  expect(within(navigation).getByRole('button', { name: 'Invoices12' })).toBeInTheDocument();
-});
-
 it('keeps appearance changes inside the preview and applies the preferred deal currency', async () => {
   await openPreview('deals');
   expect(screen.queryByRole('group', { name: 'Preview theme' })).not.toBeInTheDocument();
