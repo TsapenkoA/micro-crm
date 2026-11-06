@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { ApiError, auth, workspace, type User, type WorkspaceCounts } from '../api/client';
 import AuthScreen, { authPaths } from '../features/auth/AuthScreen';
 import AccountSettings from '../features/auth/AccountSettings';
@@ -8,6 +8,9 @@ import QuickActions from '../components/QuickActions';
 import NavIcon from '../components/NavIcon';
 import VisualWorkspace from '../features/preview/VisualWorkspace';
 import DealsPage from '../features/deals/DealsPage';
+
+const DashboardPage = lazy(() => import('../features/dashboard/DashboardPage'));
+const InvoicesPage = lazy(() => import('../features/invoices/InvoicesPage'));
 
 const pages = ['Dashboard', 'Deals', 'Clients', 'Invoices', 'Settings'] as const;
 type Page = typeof pages[number];
@@ -30,6 +33,7 @@ function Application() {
   const [path, setPath] = useState(window.location.pathname);
   const [createRequested, setCreateRequested] = useState(false);
   const [createDealRequested, setCreateDealRequested] = useState(false);
+  const [createInvoiceRequested, setCreateInvoiceRequested] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [counts, setCounts] = useState<WorkspaceCounts | null>(null);
   const [countsRevision, setCountsRevision] = useState(0);
@@ -137,10 +141,10 @@ function Application() {
       <div className="workspace-exit-row"><button className="workspace-sign-out" onClick={logout}>Sign out <span aria-hidden="true">→</span></button></div>
       <header className="workspace-header">
         <div><h1>{page}</h1><p className="muted">{descriptions[page]}</p></div>
-        <QuickActions page={page} onNavigate={navigate} onNewClient={() => { navigate('Clients'); setCreateRequested(true); }} onNewDeal={() => { navigate('Deals'); setCreateDealRequested(true); }} />
+        <QuickActions page={page} onNavigate={navigate} onNewClient={() => { navigate('Clients'); setCreateRequested(true); }} onNewDeal={() => { navigate('Deals'); setCreateDealRequested(true); }} onNewInvoice={() => { navigate('Invoices'); setCreateInvoiceRequested(true); }} />
       </header>
       {error && <p role="alert" className="notice error">{error}</p>}
-      {page === 'Deals' ? <DealsPage key={user.id} createRequested={createDealRequested} onCreateHandled={() => setCreateDealRequested(false)} onCountChanged={refreshCounts} showCreate={false} /> : page === 'Clients' ? <ClientsPage key={user.id} createRequested={createRequested} onCreateHandled={() => setCreateRequested(false)} onCountChanged={refreshCounts} /> : page === 'Settings' ? <AccountSettings key={user.id} user={user} onUserUpdated={setUser} /> : <section className="panel grid min-h-80 place-content-center p-10 text-center">
+      {page === 'Dashboard' ? <Suspense fallback={<p role="status">Loading dashboard…</p>}><DashboardPage key={user.id} onNavigate={navigate} /></Suspense> : page === 'Deals' ? <DealsPage key={user.id} createRequested={createDealRequested} onCreateHandled={() => setCreateDealRequested(false)} onCountChanged={refreshCounts} showCreate={false} /> : page === 'Clients' ? <ClientsPage key={user.id} createRequested={createRequested} onCreateHandled={() => setCreateRequested(false)} onCountChanged={refreshCounts} /> : page === 'Invoices' ? <Suspense fallback={<p role="status">Loading invoices…</p>}><InvoicesPage key={user.id} createRequested={createInvoiceRequested} onCreateHandled={() => setCreateInvoiceRequested(false)} onCountChanged={refreshCounts} workspaceName={user.workspace?.name || 'Your workspace'} userEmail={user.email} /></Suspense> : page === 'Settings' ? <AccountSettings key={user.id} user={user} onUserUpdated={setUser} /> : <section className="panel grid min-h-80 place-content-center p-10 text-center">
         <div aria-hidden="true" className="empty-icon">◇</div>
         <h2 className="text-lg font-medium">Your work starts here</h2>
         <p className="mx-auto mt-3 max-w-sm text-sm leading-6 muted">The {page} section is not available yet. Your account is ready.</p>
