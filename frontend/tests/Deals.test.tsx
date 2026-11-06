@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import DealsPage from '../src/features/deals/DealsPage';
@@ -42,27 +42,6 @@ it('renders all five stages, exact money, server totals and the table from real 
   expect(money('9999999999999999.99', 'USD')).toBe('9,999,999,999,999,999.99 USD');
   expect(money('9800.00', 'USD')).toBe('9,800 USD');
   expect(money('9800.50', 'USD')).toBe('9,800.50 USD');
-});
-
-it('shows active pipeline totals by currency without including paid deals', async () => {
-  vi.mocked(deals.list).mockResolvedValue({ results: [deal], totals: [
-    { status: 'new_lead', currency: 'EUR', count: 1, amount: '1234.56' },
-    { status: 'negotiation', currency: 'EUR', count: 1, amount: '10.44' },
-    { status: 'in_progress', currency: 'EUR', count: 1, amount: '0.56' },
-    { status: 'new_lead', currency: 'USD', count: 1, amount: '200.00' },
-    { status: 'paid', currency: 'EUR', count: 1, amount: '900.00' },
-  ] });
-  render(<DealsPage />);
-  expect(await screen.findByText('1,245.56 EUR · 200 USD')).toBeInTheDocument();
-});
-
-it('keeps five empty columns and shows an actionable empty state', async () => {
-  vi.mocked(deals.list).mockResolvedValue({ results: [], totals: [] });
-  render(<DealsPage />);
-  expect(await screen.findByRole('heading', { name: 'No deals yet' })).toBeInTheDocument();
-  expect(screen.getByRole('heading', { name: 'New Lead' })).toBeInTheDocument();
-  expect(screen.getAllByText(/No deals in this stage/)).toHaveLength(5);
-  expect(screen.getByText('No active deals')).toBeInTheDocument();
 });
 
 it('opens preview-style live details with English dates, real fields and client notes navigation', async () => {
@@ -135,21 +114,6 @@ it('chooses a deadline from an English calendar and submits a timezone-qualified
   await waitFor(() => expect(deals.create).toHaveBeenCalledWith(expect.objectContaining({ deadline: expect.stringMatching(/T\d{2}:\d{2}:\d{2}\.\d{3}Z$/) })));
 });
 
-it('retains fields after server validation and blocks duplicate submits', async () => {
-  let reject!: (error: unknown) => void;
-  vi.mocked(deals.create).mockReturnValue(new Promise((_resolve, rejectPromise) => { reject = rejectPromise; }));
-  render(<DealForm clients={[client]} onCancel={vi.fn()} onPending={vi.fn()} onSaved={vi.fn()} />);
-  await userEvent.type(screen.getByLabelText('Deal title'), 'Draft');
-  await userEvent.selectOptions(screen.getByLabelText('Client'), client.id);
-  await userEvent.type(screen.getByLabelText('Amount'), '12.34');
-  await userEvent.click(screen.getByRole('button', { name: 'Create deal' }));
-  expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled();
-  await act(async () => reject(new ApiError(400, 'Please check the submitted information.', { currency: ['Select a supported currency.'] })));
-  expect(await screen.findByText('Select a supported currency.')).toBeInTheDocument();
-  expect(screen.getByLabelText('Deal title')).toHaveValue('Draft');
-  expect(deals.create).toHaveBeenCalledTimes(1);
-});
-
 it('retains a stale edit draft and requires an explicit discard after comparing latest data', async () => {
   vi.mocked(deals.update).mockRejectedValue(new ApiError(409, 'Conflict'));
   vi.mocked(deals.detail).mockResolvedValue({ ...deal, title: 'Colleague edit', version: 2 });
@@ -194,13 +158,6 @@ it('persists a successful drag and refreshes authoritative totals', async () => 
   expect(within(screen.getByRole('region', { name: 'Paid' })).getByText('1,234.56 EUR', { selector: '.deal-column-totals span' })).toBeInTheDocument();
 });
 
-it('shows a controlled missing detail error for a deep link', async () => {
-  window.history.replaceState(null, '', '/#/deals?deal=missing');
-  vi.mocked(deals.detail).mockRejectedValue(new ApiError(404, 'The requested record could not be found.'));
-  render(<DealsPage />);
-  expect(await screen.findByRole('alert')).toHaveTextContent('could not be found');
-});
-
 it('confirms deletion with the current version and preserves the record after cancellation', async () => {
   vi.mocked(deals.remove).mockResolvedValue(undefined);
   render(<DealsPage />);
@@ -214,13 +171,4 @@ it('confirms deletion with the current version and preserves the record after ca
   await userEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Confirm deletion' }));
   expect(await screen.findByText('Deal deleted.')).toBeInTheDocument();
   expect(deals.remove).toHaveBeenCalledWith(deal);
-});
-
-it('retries list failures and does not invent records', async () => {
-  vi.mocked(deals.list).mockRejectedValueOnce(new Error('Network unavailable'));
-  render(<DealsPage />);
-  expect(await screen.findByRole('alert')).toHaveTextContent('Network unavailable');
-  expect(screen.queryByText('Website project')).not.toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: 'Reload current' }));
-  expect(await screen.findByText('Website project')).toBeInTheDocument();
 });

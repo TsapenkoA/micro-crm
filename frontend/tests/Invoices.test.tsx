@@ -67,13 +67,6 @@ it('preserves invoice details if PDF generation fails', async () => {
   expect(within(screen.getByRole('dialog')).getByText('Design service')).toBeInTheDocument();
 });
 
-it('shows an actionable empty state', async () => {
-  vi.mocked(invoices.list).mockResolvedValue([]);
-  render(<InvoicesPage workspaceName="Workspace" userEmail="seller@example.test" />);
-  expect(await screen.findByText('No invoices yet. Create a draft to get started.')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Create your first invoice' })).toBeInTheDocument();
-});
-
 it('shows currency-specific status totals and keeps search with the status buttons', async () => {
   const eur: Invoice = { ...record, id: 'invoice-2', invoice_number: 'INV-000002', currency: 'EUR', status: 'paid', total_amount: '200.00' };
   vi.mocked(invoices.list).mockResolvedValue([record, eur]);

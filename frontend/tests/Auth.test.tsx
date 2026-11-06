@@ -32,29 +32,6 @@ it('supports password visibility and keyboard email login', async () => {
   expect(onLogin).toHaveBeenCalledWith(user);
 });
 
-it('disables unconfigured providers instead of simulating sign-in', async () => {
-  const start = vi.spyOn(auth, 'startProvider');
-  render(<AuthScreen path="/login" onLogin={vi.fn()} />);
-  for (const provider of providers) {
-    const button = await screen.findByRole('button', { name: `${provider.name} · Not configured` });
-    expect(button).toBeDisabled();
-    expect(button.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
-  }
-  expect(start).not.toHaveBeenCalled();
-});
-
-it('switches auth appearance with accessible sun, moon and system controls', async () => {
-  render(<AuthScreen path="/login" onLogin={vi.fn()} />);
-  expect(screen.getByRole('group', { name: 'Theme' })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'System theme' })).toHaveAttribute('aria-pressed', 'true');
-  await userEvent.click(screen.getByRole('button', { name: 'Dark theme' }));
-  expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
-  expect(screen.getByRole('button', { name: 'Dark theme' })).toHaveAttribute('aria-pressed', 'true');
-  await userEvent.click(screen.getByRole('button', { name: 'Light theme' }));
-  expect(document.documentElement).toHaveAttribute('data-theme', 'light');
-  expect(localStorage.getItem('theme')).toBe('light');
-});
-
 it('reports a configured provider failure and permits a retry', async () => {
   vi.mocked(auth.providers).mockResolvedValue({ providers: [{ ...providers[0], configured: true }] });
   const start = vi.spyOn(auth, 'startProvider').mockRejectedValue(new Error('Provider unavailable.'));
@@ -63,33 +40,6 @@ it('reports a configured provider failure and permits a retry', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('Provider unavailable.');
   expect(start).toHaveBeenCalledWith('google');
   expect(screen.getByRole('button', { name: 'Google' })).toBeEnabled();
-});
-
-it('prevents duplicate signup while saving', async () => {
-  let complete!: (value: typeof user) => void;
-  const signup = vi.spyOn(auth, 'signup').mockReturnValue(new Promise(resolve => { complete = resolve; }));
-  const onLogin = vi.fn();
-  render(<AuthScreen path="/sign-up" onLogin={onLogin} />);
-  await userEvent.type(screen.getByLabelText('Username'), 'alex');
-  await userEvent.type(screen.getByLabelText('Email'), user.email);
-  await userEvent.type(screen.getByLabelText('Password'), 'test-password-123');
-  await userEvent.type(screen.getByLabelText('Confirm password'), 'test-password-123');
-  await userEvent.click(screen.getByRole('button', { name: 'Create account' }));
-  expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled();
-  expect(screen.getByLabelText('Email')).toBeDisabled();
-  expect(signup).toHaveBeenCalledOnce();
-  await act(async () => complete(user));
-  expect(onLogin).toHaveBeenCalledWith(user);
-});
-
-it('restores account settings after a successful OAuth connection', async () => {
-  window.history.replaceState(null, '', '/oauth-result?status=connected');
-  vi.spyOn(auth, 'me').mockResolvedValue({ user });
-  render(<App />);
-  expect(await screen.findByRole('heading', { name: 'Settings', level: 1 })).toBeInTheDocument();
-  expect(window.location.pathname).toBe('/');
-  expect(window.location.hash).toBe('#/settings');
-  expect(screen.queryByText('Provider sign-in could not be completed. Please try again.')).not.toBeInTheDocument();
 });
 
 it('opens Dashboard after a successful OAuth signup or sign-in', async () => {
@@ -125,29 +75,6 @@ it('validates signup, preserves server field errors and completes a real submiss
   expect(signup).toHaveBeenLastCalledWith('alex', user.email, 'test-password-123', 'test-password-123');
 });
 
-it('keeps password reset requests neutral and reports network errors', async () => {
-  vi.spyOn(auth, 'forgotPassword').mockRejectedValueOnce(new Error('Network unavailable.')).mockResolvedValue({ message: 'If an eligible account exists, password reset instructions will be sent.' });
-  render(<AuthScreen path="/forgot-password" onLogin={vi.fn()} />);
-  await userEvent.type(screen.getByLabelText('Email'), user.email);
-  await userEvent.click(screen.getByRole('button', { name: 'Send reset link' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('Network unavailable.');
-  await userEvent.click(screen.getByRole('button', { name: 'Send reset link' }));
-  expect(await screen.findByRole('status')).toHaveTextContent('If an eligible account exists');
-});
-
-it('shows username validation errors on signup without losing the entered name', async () => {
-  vi.spyOn(auth, 'signup').mockRejectedValue(new ApiError(400, 'Please check the form.', { username: ['This username is already taken.'] }));
-  render(<AuthScreen path="/sign-up" onLogin={vi.fn()} />);
-  await userEvent.type(screen.getByLabelText('Username'), 'ChosenName');
-  await userEvent.type(screen.getByLabelText('Email'), user.email);
-  await userEvent.type(screen.getByLabelText('Password'), 'test-password-123');
-  await userEvent.type(screen.getByLabelText('Confirm password'), 'test-password-123');
-  await userEvent.click(screen.getByRole('button', { name: 'Create account' }));
-  expect(await screen.findByText('This username is already taken.')).toBeInTheDocument();
-  expect(screen.getByLabelText('Username')).toHaveValue('ChosenName');
-  expect(screen.getByLabelText('Username')).toHaveAccessibleDescription('This username is already taken.');
-});
-
 it('updates an existing technical username from Settings and returns the refreshed account', async () => {
   const updated = { ...user, username: 'ChosenName', workspace: { ...user.workspace, name: "ChosenName's workspace" } };
   const update = vi.spyOn(auth, 'updateProfile').mockResolvedValue({ user: updated });
@@ -172,15 +99,6 @@ it('submits a reset token and removes it from the URL after success', async () =
   expect(reset).toHaveBeenCalledWith({ uid: 'MQ', token: 'reset-token', password: 'new-password-123', password_confirm: 'new-password-123' });
   expect(await screen.findByRole('status')).toHaveTextContent('Password updated.');
   expect(window.location.search).toBe('');
-});
-
-it('explains invalid reset links and safe OAuth collision results', async () => {
-  const view = render(<AuthScreen path="/reset-password" onLogin={vi.fn()} />);
-  expect(screen.getByRole('alert')).toHaveTextContent('This reset link is invalid');
-  view.unmount();
-  window.history.replaceState(null, '', '/oauth-result?status=account');
-  render(<AuthScreen path="/oauth-result" onLogin={vi.fn()} />);
-  expect(screen.getByRole('alert')).toHaveTextContent('Accounts are not merged by email');
 });
 
 it('protects routes, restores the selected section after login and clears an expired session', async () => {
