@@ -15,7 +15,8 @@
 - [x] `.env`, environments, caches, and logs are excluded from Git.
 - [x] Nested notes/links resolve the workspace-scoped parent before reading or validating writes; foreign parents return 404.
 - [x] Note authors and timestamps are server-controlled; identity injection, unsafe URL schemes, and plain-text XSS rendering are tested.
-- [ ] Workspace-scoped Deals and Invoices APIs; Clients CRUD and notes/links are implemented.
+- [x] Workspace-scoped Deals CRUD/status, client validation and version conflict protection.
+- [ ] Workspace-scoped Invoices API; Clients CRUD and notes/links are implemented.
 - [ ] Atomic version/409 transitions, financial services, and snapshot immutability — respective modules.
 - [x] Public signup/reset/OAuth initiation require CSRF; password validation and transactional workspace provisioning are tested.
 - [x] PostgreSQL-backed auth limits return controlled 429 and Retry-After across workers.
