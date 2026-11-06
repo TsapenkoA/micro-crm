@@ -25,6 +25,8 @@ Before login, fetch `/auth/csrf` and send the token in `X-CSRFToken` along with 
 
 The user DTO reports only the signed-in user's workspace ID and name, for display in navigation and Settings. It does not accept company assignment. An account without membership receives `workspace: null`; protected business endpoints still deny access with 403.
 
+`GET /api/v1/workspace/counts` returns `{ "clients": 5, "deals": 11, "invoices": 6 }` for the signed-in user's workspace. It requires a session and workspace membership. The application uses these database counts for navigation badges; a failed request leaves the badges hidden.
+
 Login accepts either username (including email entered in that field) or email, plus password. Email lookup is case-insensitive and rejects ambiguous legacy addresses. Signup creates an independent workspace, ignores company assignment input, validates passwords with Django and rejects existing primary/social email identities. Concurrent public creation is serialized by email. Password reset clears the requesting session and invalidates previous sessions. A social-only user sets the first password after a recent provider sign-in; a password user submits current_password.
 
 OAuth provider IDs are google, github and microsoft. Missing credentials return configured=false; start returns 404. django-allauth generates the authorization URL and handles state, PKCE and callback processing on the server. Callback routes deliberately retain the slash registered with providers. Errors/collisions redirect to /oauth-result with a fixed status, without internal exceptions or credentials. No automatic email-based social merging is enabled. See [authentication.md](authentication.md) for setup and verification rules.
@@ -59,7 +61,7 @@ POST /api/v1/clients
 Content-Type: application/json
 X-CSRFToken: <current-token>
 
-{"name":"Alex Morgan","company":"Acme Studio","email":"alex@example.com","phone":"+49 123 456"}
+{"name":"Sample Client","company":"Sample Studio","email":"client@example.test","phone":"+49 123 456"}
 ```
 
 Response shape for create/update and individual list entries:
@@ -69,9 +71,9 @@ Response shape for create/update and individual list entries:
   "id": "e2e9551e-f277-4fce-80ee-1bc0b7e03bdf",
   "workspace": "b5c080f9-f80a-465a-813e-a929c7d75d25",
   "created_by": 1,
-  "name": "Alex Morgan",
-  "company": "Acme Studio",
-  "email": "alex@example.com",
+  "name": "Sample Client",
+  "company": "Sample Studio",
+  "email": "client@example.test",
   "phone": "+49 123 456",
   "created_at": "2026-11-03T10:00:00Z",
   "updated_at": "2026-11-03T10:00:00Z"
@@ -95,11 +97,11 @@ GET /clients/{uuid} returns the same client fields plus a read-only `deals` arra
 }
 ```
 
-This example shows the additional field only; the response also contains the client fields above. List/create/PUT/PATCH responses do not include deals. Writes to deals are rejected as non-writable input. There is no Deals CRUD endpoint.
+This example shows the additional field only; the response also contains the client fields above. List/create/PUT/PATCH responses do not include the `deals` array. Writes to `deals` are rejected as non-writable input. Deal CRUD uses the separate endpoints below.
 
 List query example: `GET /api/v1/clients?search=acme&page=1&page_size=20`. Search uses case-insensitive partial matching on name, company, and email; standard DRF SearchFilter terms apply (each term must match at least one searched field). Search runs only within the current workspace. Sorting is fixed by created_at descending, then UUID descending (`-created_at`, `-id`), with newest clients first. The UUID tie-breaker provides deterministic ordering when timestamps match. Page size defaults to 20 and is capped at 100. Invalid/out-of-range pages return 404. Page-number pagination does not guarantee a fixed snapshot during concurrent edits or insertions.
 
-List envelope: `{"count":1,"next":null,"previous":null,"results":[...]}`. Empty result: `{"count":0,"next":null,"previous":null,"results":[]}`. next/previous are absolute page URLs when present.
+List envelope: `{"count":1,"next":null,"previous":null,"results":[...]}`. Each list item includes a read-only `deal_count`, computed from deals in the authenticated workspace; create/update/detail responses omit this list-only field. An empty list is `{"count":0,"next":null,"previous":null,"results":[]}`. next/previous are absolute page URLs when present.
 
 ```http
 GET /api/v1/clients/e2e9551e-f277-4fce-80ee-1bc0b7e03bdf
@@ -108,7 +110,7 @@ PUT /api/v1/clients/e2e9551e-f277-4fce-80ee-1bc0b7e03bdf
 Content-Type: application/json
 X-CSRFToken: <current-token>
 
-{"name":"Alex Morgan","company":"Updated Studio","email":"new@example.com","phone":""}
+{"name":"Sample Client","company":"Updated Studio","email":"new@example.test","phone":""}
 
 PATCH /api/v1/clients/e2e9551e-f277-4fce-80ee-1bc0b7e03bdf
 Content-Type: application/json
@@ -122,7 +124,7 @@ X-CSRFToken: <current-token>
 
 Validation example: `{"error":{"code":400,"details":{"email":["Enter a valid email address."]}}}`. A missing membership returns 403. Deletion protected by an invoice, deal, note, or link returns `{"error":{"code":409,"details":{"detail":"This client has related records and cannot be deleted. Remove or resolve those records first."}}}` without internal object IDs. No child is cascaded away.
 
-Deals CRUD, Invoices, and Analytics APIs remain unimplemented. Client detail includes read-only related deals; notes and links are loaded through the nested endpoints below. Login throttling and production perimeter protection require separate configuration before public deployment.
+Deals CRUD is documented below. Invoices and Analytics APIs remain unimplemented. Client detail includes read-only related deals; notes and links are loaded through the nested endpoints below. Production perimeter protection requires separate configuration before public deployment.
 
 ## Client notes and links
 
@@ -189,12 +191,105 @@ The Clients page at `#/clients` consumes these endpoints through the shared sess
 
 Create and edit forms map 400 field errors to their corresponding inputs and preserve entered values after failure. The UI reports 403 access/session errors, 404 missing clients, 409 protected deletion, server failures, and network loss without displaying internal response text. After restoring a session, the shared client obtains CSRF before its first write. A 403 clears the cached token for the next attempt; writes are not automatically retried.
 
-Successful create/update/delete operations refetch the list without reloading the page. Refresh performs another list request so colleagues can see each other's changes. The UI does not filter by created_by. Client data is discarded when the authenticated user changes. The list does not display deal counts because list responses do not provide them; the detail drawer displays the actual related deals and count from GET detail.
+Successful create/update/delete operations refetch the list without reloading the page. Refresh performs another list request so colleagues can see each other's changes. The UI does not filter by created_by. Client data is discarded when the authenticated user changes. The list displays the server's workspace-scoped `deal_count`; the detail drawer displays the actual related deals from GET detail.
 
 The drawer loads notes and links independently, with loading, empty, error, refresh, and pagination states. It shows each note's username, backend timestamp formatted in local time, and plain text with preserved line breaks. A successful POST clears that form and refetches the last chronological page so the new entry is visible. Failed writes keep the draft and never insert a local timeline item. Server field errors are attached to the relevant input. Colleagues see changes after refreshing history or reopening the drawer.
 
 For notes with can_delete=true, Delete note opens an inline confirmation with Cancel and Confirm deletion. Pending deletion disables duplicate requests. The note is retained until the server confirms deletion; failures keep the note and show an error. Success refetches the last available chronological page, including when the last note on a page was removed. There is no undo or automatic deletion of related records.
 
-External links open with target="_blank" and rel="noopener noreferrer". The frontend additionally refuses to activate any legacy URL with an unsupported scheme. Existing read-only deals remain visible when returned by the API, alongside an explicit message that deal management is not implemented; no fake deals are introduced.
+External links open with target="_blank" and rel="noopener noreferrer". The frontend additionally refuses to activate any legacy URL with an unsupported scheme. Related deals returned by GET client detail link to their real side panel in the connected Deals section.
 
-Only client creation is connected in global quick actions. Deal and invoice actions are disabled and marked Coming soon. Detail opening leaves the list mounted; Escape closes the drawer and focus returns to the trigger when it remains available.
+Client and deal creation are connected in global quick actions. Invoice creation remains disabled and marked Coming soon. Detail opening leaves the list mounted; Escape closes the drawer and focus returns to the trigger when it remains available.
+
+## Deals
+
+All paths below use the `/api/v1` prefix and have no trailing slash. Session authentication and workspace membership are required; every write requires CSRF. Colleagues share all workspace deals regardless of creator. Foreign/missing deals and foreign/missing client UUIDs return 404. Invalid UUID input returns 400. Stored deals with an inconsistent client workspace are excluded from reads and mutations.
+
+| Method and path | Result |
+| --- | --- |
+| GET /deals | 200 paginated deals and totals |
+| POST /deals | 201 created deal, version 1 |
+| GET /deals/{uuid} | 200 deal |
+| PUT /deals/{uuid} | 200 updated deal; required title, client, amount, currency, version |
+| PATCH /deals/{uuid} | 200 updated deal; version required |
+| DELETE /deals/{uuid} | 204; JSON body with current version required |
+| PATCH /deals/{uuid}/status | 200 updated deal; status and version required, optional outcome |
+
+Create example (use the current session's CSRF token):
+
+```http
+POST /api/v1/deals
+Content-Type: application/json
+X-CSRFToken: <current-token>
+
+{"title":"Website redesign","client":"e2e9551e-f277-4fce-80ee-1bc0b7e03bdf","amount":"1500.25","currency":"EUR","deadline":"2026-12-01T15:00:00+03:00"}
+```
+
+Response:
+
+```json
+{
+  "id":"868b5064-7548-49cf-bba3-ea0ae5cd9ef2",
+  "title":"Website redesign",
+  "client":"e2e9551e-f277-4fce-80ee-1bc0b7e03bdf",
+  "status":"new_lead",
+  "amount":"1500.25",
+  "currency":"EUR",
+  "deadline":"2026-12-01T12:00:00Z",
+  "version":1,
+  "outcome":"none",
+  "paid_at":null,
+  "created_at":"2026-11-04T12:00:00Z",
+  "updated_at":"2026-11-04T12:00:00Z"
+}
+```
+
+Title is trimmed, required and limited to 250 characters. Amount is nonnegative Decimal with up to 16 integer and 2 fractional digits; JSON amounts and sums are strings. Currency must be an uppercase current ISO 4217 currency/fund code with defined minor units. The bundled allowlist comes from [SIX List One](https://www.six-group.com/dam/download/financial-information/data-center/iso-currrency/lists/list-one.xml), published 2026-09-17; unknown, withdrawn, test and no-currency codes are rejected. The existing deal schema always stores two decimal places, without currency conversion or invoice rounding logic. Deadline is optional/null or an ISO 8601 datetime with explicit `Z`/`±HH:MM`; output is UTC. Past deadlines are allowed for overdue deals.
+
+Writable fields are title, client, status, amount, currency, deadline and outcome. Version is a precondition for updates/deletion, not an assignable new value. Creation rejects supplied version; workspace, creator, IDs, paid_at, timestamps and unknown input fields are rejected with 400. Invalid business fields return the standard field-error envelope. Default status/outcome are new_lead/none.
+
+All five statuses (`new_lead`, `negotiation`, `in_progress`, `paid`, `archived`) can move to any other status, including reopening an archived or paid deal. Repeating the current status is allowed and increments version. Entering paid sets paid_at on the server; edits while paid retain it; leaving paid clears it; re-entering paid assigns a new timestamp. This records manual pipeline state and never changes an invoice or records revenue/payment processing.
+
+Archived accepts outcome `none`, `lost` or `cancelled`; entering it does not imply lost. An omitted archived outcome defaults to none, or retains the current archived outcome when already archived. Leaving archived resets outcome to none; explicitly supplying lost/cancelled outside archived returns 400. The status endpoint accepts only status, outcome and version.
+
+```http
+PATCH /api/v1/deals/868b5064-7548-49cf-bba3-ea0ae5cd9ef2/status
+Content-Type: application/json
+X-CSRFToken: <current-token>
+
+{"status":"archived","outcome":"cancelled","version":1}
+```
+
+Updates use a direct PostgreSQL compare-and-swap: `UPDATE ... SET version = version + 1 ... WHERE id = ... AND workspace_id = ... AND version = ...`. Exactly one competing write with the same current version succeeds; stale requests return 409 and change nothing. Successful PUT/PATCH/status responses include the incremented version and full DTO. Missing/invalid version returns 400; version exhaustion returns 409 instead of overflowing. Reload GET detail before retrying a conflict. A successful PATCH with no changed business values still increments version.
+
+```json
+{"error":{"code":409,"details":{"detail":"This record was updated elsewhere. Reload to see the latest version."}}}
+```
+
+Deletion requires `{"version":2}` in the JSON body, locks the current row and checks the version before removal. It deletes only the deal, preserving its client/history; protected related records cause a controlled 409. A repeated deletion returns 404. No invoice data is cascaded or modified.
+
+List example: `GET /api/v1/deals?status=new_lead&currency=EUR&search=website&page=1&page_size=20`. Exact optional status/currency filters reject invalid values with 400. Search uses title, client name and client company. Ordering is newest first (`-created_at`, `-id`); default page size is 20, capped at 100. Invalid/out-of-range pages follow the existing pagination convention. Totals cover all matching records before pagination, grouped by status and currency; they never add different currencies or duplicate a deal for multiple employees.
+
+```json
+{
+  "count":1,
+  "next":null,
+  "previous":null,
+  "results":["<deal DTO>"],
+  "totals":[{"status":"new_lead","currency":"EUR","count":1,"amount":"1500.25"}]
+}
+```
+
+An empty result has count 0, results [] and totals []. Totals omit empty groups and sort by status code then currency. Each list request recomputes them; under concurrent writes the count, page and totals may reflect successive committed states, so refresh retrieves the latest state. Pagination is deterministic for unchanged data, not a snapshot across requests.
+
+## Deals frontend integration
+
+The authenticated `#/deals` route uses the same session/CSRF client as Clients. It loads every page of the workspace-scoped deal list for the board, keeps the API's status/currency totals separate, and loads every page of workspace clients for the form selector. The server remains responsible for access checks, validation, Decimal arithmetic, and versions. The UI formats amount strings without converting them to JavaScript numbers: `9800.00` displays as `9,800 USD` and opens as `9800` in the edit form, while `9800.50` displays as `9,800.50 USD`. The API and stored values retain two decimal places. There is no workspace or creator input.
+
+New deal creates a backend record. The five-stage board supports handle-based dragging, while the inline detail panel offers a keyboard-accessible status selector and archive outcome. Table shows the same loaded records with client-side sorting and 20-row pages. Search runs on submit; status/currency filters and Refresh request current server data. The client detail's related-deal links open the matching deal panel, and a deal's client link opens the matching client drawer. Displayed deadline and timestamp text uses English month names in the viewer's local time. The create/edit form uses an English month/weekday calendar with 24-hour time controls; it submits an ISO 8601 UTC datetime or null. The Notes tab links to shared client notes; deal-specific notes, creator names, service categories and next-step text are not present in the deal API and are not invented in the live UI.
+
+Edit and status writes send the observed version. A 409 keeps the form draft and offers a separate load of current server values for comparison before the user explicitly discards the draft. A failed drag restores the previous board state and reports the error; the board then refetches authoritative records/totals. Delete requires confirmation and sends the observed version; 409 or other failures leave the deal visible. Successful writes refetch the list. Paid status is a pipeline state, not an invoice payment or revenue event.
+
+## Visual preview boundary
+
+`GET /api/v1/workspace/preview` requires a signed-in workspace member. It returns that workspace's separate `PreviewDataset.payload` JSON or 404 when no dataset exists. The frontend `/preview` route loads this snapshot after sign-in. Its Kanban/table/details, client list, dashboard, invoice form/document and settings use the snapshot in React state; search, filters and local forms never write business or preview records. Reload discards sample mutations. PDF/print and preview drag-and-drop remain disabled. Production invoice calculations and revenue aggregation are not implemented by this preview; use the authenticated `#/deals` route for saved deals.

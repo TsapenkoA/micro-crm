@@ -16,12 +16,21 @@ Targeted client ordering and detail checks:
 uv run pytest tests/test_clients.py -k "list_empty_and_stable_pagination or detail"
 ```
 
+Targeted Deals API and actual PostgreSQL concurrency checks:
+
+```powershell
+uv run pytest tests/test_deals.py -q
+uv run pytest tests/test_deals.py -k two_concurrent_patches -q
+```
+
 From frontend:
 
 ```powershell
 npm.cmd test
 npm.cmd run build
 ```
+
+Targeted live Deals checks: `npm.cmd test -- tests/Deals.test.tsx tests/deals-api.test.ts` from frontend.
 
 Backend tests run on PostgreSQL, not SQLite. The local application role has no CREATEDB privilege; an administrator precreates test_micro_crm, owned by the application role. pytest uses --reuse-db and applies new migrations. Never point the test runner at the working database or use a shared database for test data.
 
@@ -31,7 +40,7 @@ Migration tests create a unique temporary schema inside the test database, migra
 
 - Existing session login/logout/me, CSRF rotation, missing/invalid CSRF, untrusted Origin, inactive users, and invalidated sessions.
 - Clients create/list/detail/PUT/PATCH/delete; empty results, validation, newest-first sorting with a descending UUID tie-breaker, search by name/company/email, pagination, protected fields, and missing IDs.
-- Detail-only read-only deals with Decimal strings and deadlines, empty deals arrays, colleague-created deals, exclusion of other clients' deals, and rejection of foreign-workspace deals even when a stored client link is inconsistent. List and write response shapes remain unchanged.
+- Detail-only read-only deals with Decimal strings and deadlines, empty deals arrays, colleague-created deals, exclusion of other clients' deals, and rejection of foreign-workspace deals even when a stored client link is inconsistent. The list now includes a workspace-scoped deal_count; create/update response shapes remain unchanged.
 - Two colleagues sharing records; another company's list/search/detail/mutations remaining isolated; missing membership failing closed.
 - Real session-authenticated API writes requiring CSRF, rejected untrusted Origins, JSON responses for browser requests, and protected invoices/notes/links preventing client deletion.
 - New-user provisioning, database membership uniqueness, idempotent employee assignment, invalid targets, refusal to move populated workspaces, and shared model authorship.
@@ -45,12 +54,26 @@ Migration tests create a unique temporary schema inside the test database, migra
 - Notes/links API: required fields and limits, server-controlled author/client/timestamp, chronological pagination, shared colleague access, other-company 404, missing membership, CSRF/Origin, input identity injection, http/https validation, and model rejection of non-http links.
 - History UI: empty/loading/error/retry states, personal authors and local timestamps, plain-text XSS-safe note rendering, safe external links, disabled unsafe legacy URLs, preserved rejected drafts, server field errors, confirmed writes and refetch, last-page navigation, remount persistence, and shared timelines across employee accounts.
 - Note deletion: author-only permissions and per-viewer can_delete, colleague/superuser denial, workspace and parent isolation, missing IDs, session/CSRF/membership checks, preserved related records, UI confirmation/cancel, pending-state protection, retained notes after failures, and recovery after deleting the only note on the last page.
+- Deals API: complete CRUD and persistence, shared colleague writes/deletion, foreign deal/client 404, inconsistent stored client/workspace exclusion, membership/session/CSRF/Origin checks, protected-field rejection, invalid money/currency/deadline/title, required fields and versions, stable newest-first pagination and the 100-record cap, search/filters, empty results and exact status/currency totals over all matching pages.
+- All 25 status-to-status combinations, each archived outcome, reopening, paid_at creation/preservation/clearing/re-entry, restricted status DTO, stale writes/deletion and version exhaustion without partial changes.
+- Two real concurrent PostgreSQL requests for both generic PATCH and PATCH status, using separate connections and two workspace colleagues. A barrier places both requests immediately before their UPDATE. Exactly one returns 200, the other 409; the stored record matches the winner and version advances once. Only scheduling is synchronized; database updates and conflict handling are not mocked.
+- Live Deals UI: five board columns and table, server totals and exact large Decimal-string display, preview-style inline detail panel with English dates and client-notes navigation, English deadline calendar and timezone-qualified submission, empty/loading/error/retry states, submitted search, filters, refetch after writes, creation/validation/duplicate-submit prevention, detail 404, confirmed deletion, stale-edit draft preservation and comparison, successful status moves, and rollback/error persistence for 403/409/500. Drag callbacks and API results are mocked at their boundaries; pointer coordinates and browser gestures are not exercised.
+- Client list deal_count integration: the PostgreSQL test includes a colleague's deal and an inconsistent foreign-workspace link, verifies only the company deal is counted, and confirms the count is absent from update responses. UI tests cover the list count, real deal links, identity/contact details, and English deadlines.
+- Live Deals API client: all-page deal/client loading, ID deduplication, separate currency totals, encoded search, shared-request version/CSRF payloads, and exact Decimal formatting.
 
 ## Verified results
 
-The latest backend regression passed all 193 tests on PostgreSQL 18.6, including 32 auth-flow checks and all existing client/history/workspace/migration tests. Local and production settings passed manage.py check; production used temporary SMTP/HTTPS configuration values without sending mail. makemigrations --check --dry-run reported no additional changes after accounts/0003_authattempt was generated. Financial models and rules were not changed.
+The latest backend regression passed all 287 tests on PostgreSQL 18.6 in 32.59 seconds, including the new client deal-count isolation check and all 286 previously passing tests. Command: `.\.venv\Scripts\python.exe -m pytest -q --tb=short -x` from backend. Both actual concurrent edit/status tests passed with exactly one success and one 409. No business model, migration or invoice rule was changed.
 
-Frontend verification passed all 59 tests across 5 files. TypeScript and production build succeeded. Existing workspace/menu/theme/search checks remain passing. Auth.test.tsx contains 16 cases; client.test.ts verifies rate-limit messages and distinguishes session expiry from CSRF errors. Component tests do not establish responsive-browser acceptance. Targeted commands: `npm.cmd test -- tests/Auth.test.tsx tests/client.test.ts` from frontend and `uv run pytest tests/test_auth_flows.py` from backend.
+The first test attempt could not reach the stopped PostgreSQL server; the existing cluster was started and recovered normally before successful execution. Regression then found the missing accounts/password_reset.txt template referenced by existing auth code. Restoring that plain-text template resolved the failure without changing auth behavior. Tests ran only against the separate test database. No working records were reset, reassigned or created by this feature verification.
+
+Earlier local and production settings checks passed; production used temporary SMTP/HTTPS configuration values without sending mail. These are previous auth verification results, not a production deployment check for the Deals feature.
+
+The latest frontend verification passed all 80 tests across 8 files in 11.68 seconds. Six overlapping prototype-interaction checks were removed from Preview.test.tsx; live Deals/Clients tests retain the saved-data behavior. The Deals checks cover whole amounts without `.00`, preserved cents and selection of a deadline from an English calendar with an ISO UTC submission. `npm.cmd run build` passed TypeScript and Vite production bundling (58 modules). Commands were run from frontend. The targeted Deals/Clients/App run passed 39/39. Auth.test.tsx contains 16 cases; client.test.ts verifies rate-limit messages and distinguishes session expiry from CSRF errors. Component tests do not establish responsive-browser acceptance.
+
+Preview.test.tsx now verifies public rendering without account/business fetch calls and confirms that its invoice document is labeled unsaved with export disabled. The detailed board/client/deal interaction checks were removed because the authenticated screens have their own focused tests. The preview remains fictional and does not write to PostgreSQL.
+
+The running Vite server returned HTTP 200 for /preview and served VisualWorkspace.tsx. Actual-browser visual inspection, responsive screenshots, real Deals dragging, create/reload/edit/delete, and browser interaction acceptance remain NOT VERIFIED: the browser access host and native pipe were unavailable. The CSS implements desktop/tablet/phone breakpoints, but component tests do not prove their rendered appearance.
 
 Auth appearance checks also cover accessible System/Light/Dark icon buttons, their pressed state and persisted preference, plus decorative provider SVGs retaining clear text labels and disabled-provider behavior.
 
@@ -110,3 +133,7 @@ A real HTTP smoke check through the running Vite proxy passed signup for three i
 | Actual-browser keyboard/mobile/theme flow | NOT VERIFIED | Browser access host unavailable |
 
 For manual acceptance, open /sign-up, create a disposable account, sign out and sign in by email with keyboard/password toggle, request a reset and use the backend console link, verify the old password/session fails, then change the password in Settings. Check widths 390/768/1280–1440 and both themes. With real provider credentials, separately test signup, repeat login, cancellation, existing-email collision, Settings connect/unlink and social-only first-password setup for each provider. Never mark a provider PASS solely from mocks.
+
+## Workspace preview data
+
+The local admin workspace preview snapshot was moved from frontend source into its own PostgreSQL `PreviewDataset` row. It is fetched only after sign-in. `python -m pytest tests/test_workspace_counts.py -q` passed 2 tests, including anonymous denial and workspace isolation. `npm test -- --run tests/Preview.test.tsx` passed 8 component tests with generic mock records. `npm run build` passed TypeScript checking and Vite production compilation. Browser visual verification was not performed because browser control was unavailable. Live business records were not changed by the preview snapshot migration.
