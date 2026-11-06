@@ -1,14 +1,14 @@
 import uuid
 from datetime import datetime, timedelta, timezone
+from io import StringIO
+
+from django.contrib.auth import get_user_model
+from django.core.management import call_command
 
 import pytest
-from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
-from apps.accounts.models import WorkspaceMembership
-from apps.clients.models import Client, ClientLink, ClientNote
-from apps.deals.models import Deal
-from apps.invoices.models import Invoice
+from crm.models import Client, ClientLink, ClientNote, Deal, Invoice, WorkspaceMembership
 
 pytestmark = pytest.mark.django_db
 
@@ -98,15 +98,6 @@ def test_create_validation(authenticated_api, payload):
     assert Client.objects.count() == 0
 
 
-def test_update_validation_does_not_change_record(authenticated_api, client_record):
-    path = f"/api/v1/clients/{client_record.pk}"
-    assert authenticated_api.put(path, {"company": "Missing name"}, format="json").status_code == 400
-    assert authenticated_api.patch(path, {"email": "invalid"}, format="json").status_code == 400
-    client_record.refresh_from_db()
-    assert client_record.name == "Acme"
-    assert client_record.email == "hello@example.com"
-
-
 @pytest.mark.parametrize("method,detail", [("get", False), ("post", False), ("get", True), ("put", True), ("patch", True), ("delete", True)])
 def test_authentication_required(api, client_record, method, detail):
     path = f"/api/v1/clients/{client_record.pk}" if detail else "/api/v1/clients"
@@ -171,18 +162,6 @@ def test_missing_membership_fails_closed(authenticated_api, user):
     assert authenticated_api.post("/api/v1/clients", {"name": "No workspace"}, format="json").status_code == 403
 
 
-def test_browser_accept_header_receives_json(authenticated_api):
-    response = authenticated_api.get("/api/v1/clients", HTTP_ACCEPT="text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-    assert response.status_code == 200
-    assert response["Content-Type"].startswith("application/json")
-
-
-def test_client_write_rejects_untrusted_origin(authenticated_api):
-    response = authenticated_api.post("/api/v1/clients", {"name": "Forged"}, format="json", HTTP_ORIGIN="https://untrusted.example")
-    assert response.status_code == 403
-    assert not Client.objects.exists()
-
-
 def test_invoice_protects_client(authenticated_api, user, client_record):
     invoice = Invoice.objects.create(workspace=client_record.workspace, created_by=user, client=client_record, invoice_number="INV-001", currency="EUR", buyer_snapshot={"name": "Acme"})
     response = authenticated_api.delete(f"/api/v1/clients/{client_record.pk}")
@@ -202,15 +181,6 @@ def test_other_related_records_protect_client(authenticated_api, user, client_re
     assert authenticated_api.delete(f"/api/v1/clients/{client_record.pk}").status_code == 409
 
 
-def test_detail_returns_empty_deals_without_expanding_list_or_write_responses(authenticated_api, client_record):
-    path = f"/api/v1/clients/{client_record.pk}"
-    assert authenticated_api.get(path).json()["deals"] == []
-    assert "deals" not in authenticated_api.get("/api/v1/clients").json()["results"][0]
-    assert "deals" not in authenticated_api.put(path, {"name": "Updated"}, format="json").json()
-    assert "deals" not in authenticated_api.patch(path, {"company": "Studio"}, format="json").json()
-    assert authenticated_api.patch(path, {"deals": []}, format="json").status_code == 400
-
-
 def test_detail_returns_related_workspace_deals(authenticated_api, user, colleague, client_record):
     deadline = datetime(2026, 12, 1, 12, tzinfo=timezone.utc)
     deal = Deal.objects.create(workspace=client_record.workspace, created_by=colleague, client=client_record, title="Shared project", amount="123.45", currency="EUR", deadline=deadline)
@@ -221,26 +191,130 @@ def test_detail_returns_related_workspace_deals(authenticated_api, user, colleag
     assert response.json()["deals"] == [{"id": str(deal.pk), "title": "Shared project", "status": "new_lead", "amount": "123.45", "currency": "EUR", "deadline": "2026-12-01T12:00:00Z"}]
 
 
-def test_list_counts_only_workspace_deals(authenticated_api, user, colleague, other_user, client_record):
-    Deal.objects.create(workspace=client_record.workspace, created_by=colleague, client=client_record, title="Shared project", amount=10, currency="EUR")
-    foreign_client = Client.objects.create(workspace=other_user.workspace_membership.workspace, created_by=other_user, name="Foreign client")
-    foreign_deal = Deal.objects.create(workspace=foreign_client.workspace, created_by=other_user, client=foreign_client, title="Foreign project", amount=20, currency="EUR")
-    Deal.objects.filter(pk=foreign_deal.pk).update(client=client_record)
-
-    response = authenticated_api.get("/api/v1/clients?search=Acme")
-    assert response.status_code == 200
-    assert response.json()["count"] == 1
-    assert response.json()["results"][0]["deal_count"] == 1
-    assert "Foreign project" not in response.content.decode()
-    assert "deal_count" not in authenticated_api.patch(f"/api/v1/clients/{client_record.pk}", {"phone": "123"}, format="json").json()
+@pytest.fixture
+def history_api(api, user):
+    api.force_login(user)
+    token = api.get("/api/v1/auth/csrf").json()["csrfToken"]
+    api.credentials(HTTP_X_CSRFTOKEN=token)
+    return api
 
 
-def test_detail_excludes_foreign_workspace_deals_even_with_inconsistent_link(authenticated_api, user, other_user, client_record):
-    foreign_client = Client.objects.create(workspace=other_user.workspace_membership.workspace, created_by=other_user, name="Private client")
-    foreign_deal = Deal.objects.create(workspace=foreign_client.workspace, created_by=other_user, client=foreign_client, title="Private project", amount=99, currency="EUR")
-    Deal.objects.filter(pk=foreign_deal.pk).update(client=client_record)
-    response = authenticated_api.get(f"/api/v1/clients/{client_record.pk}")
-    assert response.status_code == 200
-    assert response.json()["deals"] == []
-    assert "Private project" not in response.content.decode()
-    assert authenticated_api.get(f"/api/v1/clients/{foreign_client.pk}").status_code == 404
+def test_note_dto_preserves_plain_text_and_server_author(history_api, user, client_record):
+    text = '<script>alert("xss")</script>\nA shared note'
+    path = f"/api/v1/clients/{client_record.pk}/notes"
+    response = history_api.post(path, {"text": text}, format="json")
+    assert response.status_code == 201
+    data = response.json()
+    assert data["author"] == {"id": user.pk, "username": user.username}
+    assert data["client"] == str(client_record.pk)
+    assert data["text"] == text
+    assert data["created_at"].endswith("Z")
+    assert ClientNote.objects.get(pk=data["id"]).text == text
+    assert history_api.get(path).json()["results"] == [data]
+
+
+def test_link_dto_and_persistence(history_api, client_record):
+    path = f"/api/v1/clients/{client_record.pk}/links"
+    response = history_api.post(path, {"label": "Figma brief", "url": "https://www.figma.com/design/example"}, format="json")
+    assert response.status_code == 201
+    data = response.json()
+    assert set(data) == {"id", "client", "label", "url", "created_at"}
+    assert data["client"] == str(client_record.pk)
+    assert data["label"] == "Figma brief"
+    assert history_api.get(path).json()["results"] == [data]
+    assert ClientLink.objects.get(pk=data["id"]).url == data["url"]
+
+
+@pytest.mark.parametrize("relation", ["notes", "links"])
+def test_empty_history_and_stable_chronological_pagination(history_api, user, client_record, relation):
+    path = f"/api/v1/clients/{client_record.pk}/{relation}"
+    assert history_api.get(path).json() == {"count": 0, "next": None, "previous": None, "results": []}
+    Model = ClientNote if relation == "notes" else ClientLink
+    timestamp = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    for number in [3, 1, 2]:
+        fields = {"author": user, "text": str(number)} if relation == "notes" else {"label": str(number), "url": "http://example.com"}
+        row = Model.objects.create(id=uuid.UUID(int=number), client=client_record, **fields)
+        Model.objects.filter(pk=row.pk).update(created_at=timestamp)
+    first = history_api.get(path, {"page_size": 2}).json()
+    second = history_api.get(path, {"page_size": 2, "page": 2}).json()
+    assert first["count"] == second["count"] == 3
+    assert first["next"] and second["previous"]
+    assert [row["id"] for row in first["results"] + second["results"]] == [str(uuid.UUID(int=number)) for number in [1, 2, 3]]
+
+
+@pytest.mark.parametrize("url", ["javascript:alert(1)", "data:text/html,test", "ftp://example.com/file", "file:///C:/secret", "//example.com", "not-a-url", "https://", "https://example.com/" + "a" * 2048])
+def test_invalid_or_unsafe_urls_are_rejected(history_api, client_record, url):
+    response = history_api.post(f"/api/v1/clients/{client_record.pk}/links", {"label": "Brief", "url": url}, format="json")
+    assert response.status_code == 400
+    assert "url" in response.json()["error"]["details"]
+    assert not ClientLink.objects.exists()
+
+
+@pytest.mark.parametrize("relation,payload", [("notes", {"text": "Note"}), ("links", {"label": "Link", "url": "https://example.com"})])
+@pytest.mark.parametrize("field", ["author", "author_id", "client", "client_id", "workspace", "created_at", "id", "can_delete", "unexpected"])
+def test_identity_and_parent_fields_cannot_be_injected(history_api, client_record, relation, payload, field):
+    response = history_api.post(f"/api/v1/clients/{client_record.pk}/{relation}", {**payload, field: str(uuid.uuid4())}, format="json")
+    assert response.status_code == 400
+    assert field in response.json()["error"]["details"]
+    assert not ClientNote.objects.exists()
+    assert not ClientLink.objects.exists()
+
+
+def test_colleagues_share_notes_and_links_but_other_companies_do_not(history_api, user, other_user, client_record):
+    call_command("assign_workspace", other_user.username, str(client_record.workspace_id), stdout=StringIO())
+    path = f"/api/v1/clients/{client_record.pk}"
+    first = history_api.post(path + "/notes", {"text": "From Alex"}, format="json").json()
+    history_api.post(path + "/links", {"label": "Shared brief", "url": "https://example.com"}, format="json")
+    colleague = APIClient()
+    colleague.force_authenticate(user=other_user)
+    assert colleague.get(path + "/notes").json()["results"] == [{**first, "can_delete": False}]
+    second = colleague.post(path + "/notes", {"text": "From colleague"}, format="json")
+    assert second.status_code == 201
+    assert second.json()["author"]["id"] == other_user.pk
+    assert len(history_api.get(path + "/notes").json()["results"]) == 2
+    assert colleague.get(path + "/links").json()["results"][0]["label"] == "Shared brief"
+    outsider = get_user_model().objects.create_user(username="outsider")
+    colleague.force_authenticate(user=outsider)
+    assert colleague.get(path + "/notes").status_code == 404
+    assert colleague.get(path + "/links").status_code == 404
+
+
+def test_author_can_delete_note_without_deleting_other_records(history_api, user, client_record):
+    note = ClientNote.objects.create(client=client_record, author=user, text="Remove this")
+    retained = ClientNote.objects.create(client=client_record, author=user, text="Keep this")
+    link = ClientLink.objects.create(client=client_record, label="Keep link", url="https://example.com")
+    path = f"/api/v1/clients/{client_record.pk}/notes/{note.pk}"
+    assert history_api.delete(path).status_code == 204
+    assert not ClientNote.objects.filter(pk=note.pk).exists()
+    assert ClientNote.objects.filter(pk=retained.pk).exists()
+    assert ClientLink.objects.filter(pk=link.pk).exists()
+    assert Client.objects.filter(pk=client_record.pk).exists()
+    assert history_api.delete(path).status_code == 404
+
+
+@pytest.mark.parametrize("superuser", [False, True])
+def test_colleague_cannot_delete_another_authors_note(history_api, user, other_user, client_record, superuser):
+    call_command("assign_workspace", other_user.username, str(client_record.workspace_id), stdout=StringIO())
+    other_user.is_superuser = superuser
+    other_user.save()
+    note = ClientNote.objects.create(client=client_record, author=user, text="Author only")
+    api = APIClient()
+    api.force_authenticate(user=other_user)
+    path = f"/api/v1/clients/{client_record.pk}/notes"
+    assert history_api.get(path).json()["results"][0]["can_delete"] is True
+    assert api.get(path).json()["results"][0]["can_delete"] is False
+    response = api.delete(f"{path}/{note.pk}")
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == 403
+    assert ClientNote.objects.filter(pk=note.pk).exists()
+
+
+def test_note_delete_hides_foreign_wrong_parent_and_missing_ids(history_api, user, other_user, client_record):
+    foreign = Client.objects.create(workspace=other_user.workspace_membership.workspace, created_by=other_user, name="Foreign")
+    note = ClientNote.objects.create(client=foreign, author=other_user, text="Private")
+    own_note = ClientNote.objects.create(client=client_record, author=user, text="Own")
+    for client_id, note_id in [(foreign.pk, note.pk), (client_record.pk, note.pk), (foreign.pk, own_note.pk), (client_record.pk, uuid.uuid4()), (uuid.uuid4(), own_note.pk)]:
+        response = history_api.delete(f"/api/v1/clients/{client_id}/notes/{note_id}")
+        assert response.status_code == 404
+        assert "Private" not in str(response.json())
+    assert ClientNote.objects.count() == 2

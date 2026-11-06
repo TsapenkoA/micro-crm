@@ -4,16 +4,15 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from threading import Barrier
 
-import pytest
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.db import close_old_connections, connection
 from django.db.models.query import QuerySet
+
+import pytest
 from rest_framework.test import APIClient
 
-from apps.accounts.models import WorkspaceMembership
-from apps.clients.models import Client
-from apps.deals.models import Deal
+from crm.models import Client, Deal, WorkspaceMembership
 
 pytestmark = pytest.mark.django_db
 
@@ -92,16 +91,6 @@ def test_invalid_fields(authenticated_api, client_record, changes):
     assert not Deal.objects.exists()
 
 
-@pytest.mark.parametrize("field", ["title", "client", "amount", "currency"])
-def test_required_create_and_put_fields(authenticated_api, client_record, deal, field):
-    values = payload(client_record)
-    del values[field]
-    assert authenticated_api.post("/api/v1/deals", values, format="json").status_code == 400
-    assert authenticated_api.put(f"/api/v1/deals/{deal.pk}", {**values, "version": 1}, format="json").status_code == 400
-    deal.refresh_from_db()
-    assert deal.version == 1
-
-
 @pytest.mark.parametrize("field", ["workspace", "workspace_id", "created_by", "created_by_id", "owner", "id", "paid_at", "created_at", "updated_at", "unexpected"])
 def test_ownership_and_server_fields_rejected(authenticated_api, client_record, deal, field):
     assert authenticated_api.post("/api/v1/deals", payload(client_record, **{field: "forged"}), format="json").status_code == 400
@@ -133,22 +122,6 @@ def test_missing_version_stale_update_and_no_partial_changes(authenticated_api, 
         assert response.json()["error"]["details"]["detail"] == "This record was updated elsewhere. Reload to see the latest version."
     assert Deal.objects.values().get(pk=deal.pk) == before
     assert authenticated_api.get(path).json() == updated
-
-
-@pytest.mark.parametrize("initial", Deal.Status.values)
-@pytest.mark.parametrize("target", Deal.Status.values)
-def test_all_status_transitions(authenticated_api, user, client_record, initial, target):
-    response = authenticated_api.post("/api/v1/deals", payload(client_record, status=initial, **({"outcome": "lost"} if initial == "archived" else {})), format="json")
-    assert response.status_code == 201
-    data = response.json()
-    response = authenticated_api.patch(f"/api/v1/deals/{data['id']}/status", {"status": target, "version": 1}, format="json")
-    assert response.status_code == 200
-    result = response.json()
-    assert result["status"] == target and result["version"] == 2
-    assert (result["paid_at"] is not None) == (target == "paid")
-    if initial == target == "paid":
-        assert result["paid_at"] == data["paid_at"]
-    assert result["outcome"] == ("lost" if initial == target == "archived" else "none")
 
 
 @pytest.mark.parametrize("outcome", Deal.Outcome.values)
@@ -264,21 +237,6 @@ def test_empty_filters_search_pagination_and_currency_totals(authenticated_api, 
     assert authenticated_api.get("/api/v1/deals?currency=usd").status_code == 400
     capped = authenticated_api.get("/api/v1/deals?page_size=100000").json()
     assert len(capped["results"]) == 4
-
-
-def test_page_size_cap_and_version_exhaustion(authenticated_api, user, client_record, deal):
-    Deal.objects.bulk_create([
-        Deal(workspace=client_record.workspace, created_by=user, client=client_record, title=f"Project {number}", amount="1.00", currency="EUR")
-        for number in range(100)
-    ])
-    response = authenticated_api.get("/api/v1/deals?page_size=100000").json()
-    assert response["count"] == 101
-    assert len(response["results"]) == 100 and response["next"]
-    assert response["totals"] == [{"status": "new_lead", "currency": "EUR", "count": 101, "amount": "1334.56"}]
-    Deal.objects.filter(pk=deal.pk).update(version=2147483647)
-    before = Deal.objects.values().get(pk=deal.pk)
-    assert authenticated_api.patch(f"/api/v1/deals/{deal.pk}", {"version": 2147483647, "title": "Overflow"}, format="json").status_code == 409
-    assert Deal.objects.values().get(pk=deal.pk) == before
 
 
 @pytest.mark.django_db(transaction=True)

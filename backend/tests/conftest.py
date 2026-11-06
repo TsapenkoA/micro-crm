@@ -2,7 +2,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
-from apps.clients.models import Client
+from crm.models import Client
 
 
 @pytest.fixture
