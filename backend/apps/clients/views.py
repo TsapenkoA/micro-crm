@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Count, Q
 from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404
 from rest_framework import filters, generics
@@ -10,7 +11,7 @@ from rest_framework.response import Response
 from common.permissions import IsWorkspaceMember, WorkspaceQuerysetMixin
 from apps.accounts.models import WorkspaceMembership
 from .models import Client
-from .serializers import ClientDetailSerializer, ClientLinkSerializer, ClientNoteSerializer, ClientSerializer
+from .serializers import ClientDetailSerializer, ClientLinkSerializer, ClientListSerializer, ClientNoteSerializer, ClientSerializer
 
 
 class ClientPagination(PageNumberPagination):
@@ -34,6 +35,13 @@ class ClientList(ClientQuerysetMixin, generics.ListCreateAPIView):
     pagination_class = ClientPagination
     filter_backends = [filters.SearchFilter]
     search_fields = ["name", "company", "email"]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        return queryset.annotate(deal_count=Count("deals", filter=Q(deals__workspace_id=self.request.workspace_id))) if self.request.method == "GET" else queryset
+
+    def get_serializer_class(self):
+        return ClientListSerializer if self.request.method == "GET" else super().get_serializer_class()
 
     @transaction.atomic
     def perform_create(self, serializer):

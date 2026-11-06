@@ -221,6 +221,20 @@ def test_detail_returns_related_workspace_deals(authenticated_api, user, colleag
     assert response.json()["deals"] == [{"id": str(deal.pk), "title": "Shared project", "status": "new_lead", "amount": "123.45", "currency": "EUR", "deadline": "2026-12-01T12:00:00Z"}]
 
 
+def test_list_counts_only_workspace_deals(authenticated_api, user, colleague, other_user, client_record):
+    Deal.objects.create(workspace=client_record.workspace, created_by=colleague, client=client_record, title="Shared project", amount=10, currency="EUR")
+    foreign_client = Client.objects.create(workspace=other_user.workspace_membership.workspace, created_by=other_user, name="Foreign client")
+    foreign_deal = Deal.objects.create(workspace=foreign_client.workspace, created_by=other_user, client=foreign_client, title="Foreign project", amount=20, currency="EUR")
+    Deal.objects.filter(pk=foreign_deal.pk).update(client=client_record)
+
+    response = authenticated_api.get("/api/v1/clients?search=Acme")
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+    assert response.json()["results"][0]["deal_count"] == 1
+    assert "Foreign project" not in response.content.decode()
+    assert "deal_count" not in authenticated_api.patch(f"/api/v1/clients/{client_record.pk}", {"phone": "123"}, format="json").json()
+
+
 def test_detail_excludes_foreign_workspace_deals_even_with_inconsistent_link(authenticated_api, user, other_user, client_record):
     foreign_client = Client.objects.create(workspace=other_user.workspace_membership.workspace, created_by=other_user, name="Private client")
     foreign_deal = Deal.objects.create(workspace=foreign_client.workspace, created_by=other_user, client=foreign_client, title="Private project", amount=99, currency="EUR")

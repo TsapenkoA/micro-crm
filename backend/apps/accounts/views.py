@@ -22,9 +22,15 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.permissions import IsAuthenticated
 from allauth.socialaccount.models import SocialAccount
 
-from .models import Workspace, WorkspaceMembership
+from apps.clients.models import Client
+from apps.deals.models import Deal
+from apps.invoices.models import Invoice
+from common.permissions import IsWorkspaceMember
+
+from .models import PreviewDataset, Workspace, WorkspaceMembership
 from .security import AuthThrottle, email_in_use, email_lock, email_user, recent_auth
 
 logger = logging.getLogger(__name__)
@@ -89,6 +95,26 @@ def logout(request):
 @api_view(["GET"])
 def me(request):
     return Response({"user": user_data(request.user)})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsWorkspaceMember])
+def workspace_counts(request):
+    workspace_id = request.workspace_id
+    return Response({
+        "clients": Client.objects.filter(workspace_id=workspace_id).count(),
+        "deals": Deal.objects.filter(workspace_id=workspace_id).count(),
+        "invoices": Invoice.objects.filter(workspace_id=workspace_id).count(),
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsWorkspaceMember])
+def preview_dataset(request):
+    payload = PreviewDataset.objects.filter(workspace_id=request.workspace_id).values_list("payload", flat=True).first()
+    if payload is None:
+        raise NotFound("No preview is available for this workspace.")
+    return Response(payload)
 
 
 def check_password(value, user):
