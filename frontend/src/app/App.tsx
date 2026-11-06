@@ -1,35 +1,51 @@
 import { useEffect, useRef, useState } from 'react';
-import { ApiError, auth, type User } from '../api/client';
+import { ApiError, auth, workspace, type User, type WorkspaceCounts } from '../api/client';
 import AuthScreen, { authPaths } from '../features/auth/AuthScreen';
 import AccountSettings from '../features/auth/AccountSettings';
 import { navigateAuth } from '../features/auth/fields';
 import ClientsPage from '../features/clients/ClientsPage';
 import QuickActions from '../components/QuickActions';
-import ThemeSelect from '../components/ThemeSelect';
 import NavIcon from '../components/NavIcon';
+import VisualWorkspace from '../features/preview/VisualWorkspace';
+import DealsPage from '../features/deals/DealsPage';
 
 const pages = ['Dashboard', 'Deals', 'Clients', 'Invoices', 'Settings'] as const;
 type Page = typeof pages[number];
 function currentPage(): Page {
-  return pages.find(page => window.location.hash === `#/${page.toLowerCase()}`) ?? 'Dashboard';
+  return pages.find(page => window.location.hash.split('?')[0] === `#/${page.toLowerCase()}`) ?? 'Dashboard';
 }
 const descriptions: Record<Page, string> = {
-  Dashboard: 'An overview of your business.',
-  Deals: 'Your deals and work in progress.',
-  Clients: 'Contacts and interaction history.',
-  Invoices: 'Invoices for your clients.',
-  Settings: 'Your account and workspace.',
+  Dashboard: 'A clear view of the work ahead.',
+  Deals: 'From the first hello to the final handoff.',
+  Clients: 'Good relationships are the heart of good business.',
+  Invoices: 'Keep the details of your work in order.',
+  Settings: 'A shared home for your business.',
 };
 
-export default function App() {
+function Application() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [page, setPage] = useState<Page>(currentPage);
   const [path, setPath] = useState(window.location.pathname);
   const [createRequested, setCreateRequested] = useState(false);
+  const [createDealRequested, setCreateDealRequested] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [counts, setCounts] = useState<WorkspaceCounts | null>(null);
+  const [countsRevision, setCountsRevision] = useState(0);
   const menuButton = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => {
+      let preference = 'system';
+      try { preference = localStorage.getItem('theme') || 'system'; } catch {}
+      document.documentElement.dataset.theme = preference === 'light' || preference === 'dark' ? preference : media.matches ? 'dark' : 'light';
+    };
+    apply();
+    media.addEventListener('change', apply);
+    return () => media.removeEventListener('change', apply);
+  }, []);
 
   useEffect(() => {
     const changed = () => setPage(currentPage());
@@ -75,6 +91,15 @@ export default function App() {
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+    if (!user) { setCounts(null); return; }
+    const controller = new AbortController();
+    workspace.counts(controller.signal).then(setCounts).catch(() => { if (!controller.signal.aborted) setCounts(null); });
+    return () => controller.abort();
+  }, [user?.id, page, countsRevision]);
+
+  const refreshCounts = () => setCountsRevision(value => value + 1);
+
   async function logout() {
     try { await auth.logout(); setUser(null); setError(''); setCreateRequested(false); setMenuOpen(false); navigateAuth('/login' + window.location.hash, true); }
     catch { setError('Unable to sign out. Please try again.'); }
@@ -87,42 +112,43 @@ export default function App() {
     setUser(account); setError(''); navigateAuth('/' + window.location.hash, true);
   }} />;
 
-  return <div className="min-h-screen md:grid md:grid-cols-[240px_1fr]">
+  return <div className="application-workspace">
     <a className="skip-link" href="#workspace-content" onClick={event => { event.preventDefault(); document.getElementById('workspace-content')?.focus(); }}>Skip to content</a>
-    <aside className="sidebar flex flex-col p-6" onKeyDown={event => {
+    <aside className="sidebar flex flex-col" onKeyDown={event => {
       if (event.key === 'Escape' && menuOpen) { setMenuOpen(false); menuButton.current?.focus(); }
     }}>
-      <div className="sidebar-brand"><div className="text-lg font-bold tracking-tight">micro<span className="accent">crm</span></div>
+      <div className="sidebar-brand"><div className="workspace-brand"><span className="workspace-brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M5 23 15 6l4 8 8-5-7 17-5-7-10 4Z" fill="currentColor" /></svg></span><span>Micro<span className="accent">Flow</span></span></div>
         <button ref={menuButton} className="secondary menu-toggle" aria-expanded={menuOpen} aria-controls="workspace-navigation" onClick={() => setMenuOpen(value => !value)}>{menuOpen ? 'Close menu' : 'Open menu'}</button></div>
       <div id="workspace-navigation" className={`sidebar-content ${menuOpen ? 'is-open' : ''}`}>
-        <p className="workspace-name muted" title={user.workspace?.name}>{user.workspace?.name || 'Workspace unavailable'}</p>
-        <nav aria-label="Main navigation" className="flex flex-col gap-2">
+        <div className="workspace-identity" title={user.workspace?.name}><span className="workspace-initial" aria-hidden="true">{user.workspace?.name?.charAt(0).toUpperCase() || 'W'}</span><span><strong>{user.workspace?.name || 'Workspace unavailable'}</strong><small>Company workspace</small></span></div>
+        <p className="workspace-nav-caption">WORKSPACE</p>
+        <nav aria-label="Main navigation">
           {pages.map(name => <button key={name} onClick={() => navigate(name)}
             aria-current={page === name ? 'page' : undefined}
-            className={`nav-item flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm ${page === name ? 'active' : ''}`}>
-            <NavIcon page={name} />{name}
+            className={`nav-item ${page === name ? 'active' : ''}`}>
+            <NavIcon page={name} />{name}{name === 'Clients' || name === 'Deals' || name === 'Invoices' ? counts && <small className="nav-count" aria-hidden="true">{counts[name.toLowerCase() as keyof WorkspaceCounts]}</small> : null}
           </button>)}
         </nav>
-        <div className="account-menu mt-10 pt-5 md:mt-auto">
-          <p className="truncate text-sm font-medium">{user.username}</p>
-          <button onClick={logout} className="text-action mt-2 text-xs">Sign out</button>
-          {page !== 'Settings' && <div className="mt-4"><ThemeSelect /></div>}
-        </div>
+        <div className="sidebar-bottom"><div className="workspace-sidebar-note"><span aria-hidden="true">✧</span><strong>Your workspace, simplified.</strong><p>Less admin. More room for good work.</p></div>
+          <div className="account-menu"><button className="workspace-user" onClick={() => navigate('Settings')}><span className="workspace-user-avatar" aria-hidden="true">{user.username.slice(0, 2).toUpperCase()}</span><span><strong>{user.username}</strong><small>{user.email || 'Your account'}</small></span><span className="workspace-user-arrow" aria-hidden="true">→</span></button></div></div>
       </div>
     </aside>
-    <main id="workspace-content" tabIndex={-1} className="workspace-main p-6 md:p-12">
-      <header className="workspace-header mb-8 pb-8">
-        <p className="mb-3 text-xs muted">Workspace / {page}</p>
-        <h1 className="text-3xl font-semibold tracking-tight">{page}</h1>
-        <p className="mt-3 mb-6 text-sm muted">{descriptions[page]}</p>
-        <QuickActions onNewClient={() => { navigate('Clients'); setCreateRequested(true); }} />
+    <main id="workspace-content" tabIndex={-1} className={`workspace-main ${page === 'Deals' ? 'deals-workspace' : ''}`}>
+      <div className="workspace-exit-row"><button className="workspace-sign-out" onClick={logout}>Sign out <span aria-hidden="true">→</span></button></div>
+      <header className="workspace-header">
+        <div><h1>{page}</h1><p className="muted">{descriptions[page]}</p></div>
+        <QuickActions page={page} onNavigate={navigate} onNewClient={() => { navigate('Clients'); setCreateRequested(true); }} onNewDeal={() => { navigate('Deals'); setCreateDealRequested(true); }} />
       </header>
       {error && <p role="alert" className="notice error">{error}</p>}
-      {page === 'Clients' ? <ClientsPage key={user.id} createRequested={createRequested} onCreateHandled={() => setCreateRequested(false)} /> : page === 'Settings' ? <AccountSettings key={user.id} user={user} onUserUpdated={setUser} /> : <section className="panel grid min-h-80 place-content-center p-10 text-center">
+      {page === 'Deals' ? <DealsPage key={user.id} createRequested={createDealRequested} onCreateHandled={() => setCreateDealRequested(false)} onCountChanged={refreshCounts} showCreate={false} /> : page === 'Clients' ? <ClientsPage key={user.id} createRequested={createRequested} onCreateHandled={() => setCreateRequested(false)} onCountChanged={refreshCounts} /> : page === 'Settings' ? <AccountSettings key={user.id} user={user} onUserUpdated={setUser} /> : <section className="panel grid min-h-80 place-content-center p-10 text-center">
         <div aria-hidden="true" className="empty-icon">◇</div>
         <h2 className="text-lg font-medium">Your work starts here</h2>
         <p className="mx-auto mt-3 max-w-sm text-sm leading-6 muted">The {page} section is not available yet. Your account is ready.</p>
       </section>}
     </main>
   </div>;
+}
+
+export default function App() {
+  return window.location.pathname === '/preview' ? <VisualWorkspace /> : <Application />;
 }

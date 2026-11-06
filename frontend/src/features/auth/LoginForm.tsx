@@ -29,6 +29,6 @@ export default function LoginForm({ onLogin }: { onLogin: (user: User) => void }
         {error && <p role="alert" className="field-error">{error}</p>}
         <button className="primary" disabled={pending}>{pending ? 'Signing in…' : 'Sign in'}</button>
         <AuthLink to="/forgot-password">Forgot password?</AuthLink>
-        <p className="muted">New to Micro-CRM? <AuthLink to="/sign-up">Create an account</AuthLink></p>
+        <p className="muted">New to MicroFlow? <AuthLink to="/sign-up">Create an account</AuthLink></p>
       </form>;
 }
