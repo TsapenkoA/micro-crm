@@ -19,12 +19,14 @@ class Invoice(ValidatedModel):
     tax_rate = models.DecimalField(max_digits=7, decimal_places=4, default=0)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.DRAFT)
     paid_at = models.DateTimeField(null=True, blank=True)
+    issued_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     seller_snapshot = models.JSONField(default=dict, blank=True)
     buyer_snapshot = models.JSONField(default=dict, blank=True)
-    subtotal = models.DecimalField(max_digits=18, decimal_places=2, default=0)
-    tax_total = models.DecimalField(max_digits=18, decimal_places=2, default=0)
-    total_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    subtotal = models.DecimalField(max_digits=20, decimal_places=4, default=0)
+    tax_total = models.DecimalField(max_digits=20, decimal_places=4, default=0)
+    total_amount = models.DecimalField(max_digits=20, decimal_places=4, default=0)
 
     class Meta:
         constraints = [
@@ -41,12 +43,16 @@ class Invoice(ValidatedModel):
 
 class InvoiceItem(ValidatedModel):
     invoice = models.ForeignKey(Invoice, on_delete=models.PROTECT, related_name="items")
+    position = models.PositiveIntegerField(default=0)
     description = models.CharField(max_length=500)
     quantity = models.DecimalField(max_digits=12, decimal_places=3)
-    unit_price = models.DecimalField(max_digits=18, decimal_places=2)
-    line_total = models.DecimalField(max_digits=18, decimal_places=2)
+    unit_price = models.DecimalField(max_digits=20, decimal_places=4)
+    tax_rate = models.DecimalField(max_digits=7, decimal_places=4, default=0)
+    line_total = models.DecimalField(max_digits=20, decimal_places=4)
+    tax_amount = models.DecimalField(max_digits=20, decimal_places=4, default=0)
 
     class Meta:
+        ordering = ["position", "id"]
         constraints = [
-            models.CheckConstraint(condition=Q(quantity__gte=0) & Q(unit_price__gte=0) & Q(line_total__gte=0), name="invoice_item_values_nonnegative"),
+            models.CheckConstraint(condition=Q(quantity__gt=0) & Q(unit_price__gte=0) & Q(line_total__gte=0) & Q(tax_rate__gte=0) & Q(tax_rate__lte=100) & Q(tax_amount__gte=0), name="invoice_item_values_valid"),
         ]

@@ -4,6 +4,8 @@ from apps.accounts import views
 from apps.accounts.oauth import OAuthStartView, PROVIDERS, callback
 from apps.clients.views import ClientDetail, ClientLinks, ClientList, ClientNoteDetail, ClientNotes
 from apps.deals.views import DealDetail, DealList, DealStatus
+from apps.invoices.views import InvoiceDetail, InvoiceList, InvoicePDF, InvoiceStatus
+from apps.analytics.views import Dashboard
 from common.health import health
 
 handler500 = "common.errors.server_error"
@@ -34,6 +36,11 @@ urlpatterns = [
     path("api/v1/deals", DealList.as_view()),
     path("api/v1/deals/<uuid:pk>", DealDetail.as_view()),
     path("api/v1/deals/<uuid:pk>/status", DealStatus.as_view()),
+    path("api/v1/invoices", InvoiceList.as_view()),
+    path("api/v1/invoices/<uuid:pk>", InvoiceDetail.as_view()),
+    path("api/v1/invoices/<uuid:pk>/status", InvoiceStatus.as_view()),
+    path("api/v1/invoices/<uuid:pk>/pdf", InvoicePDF.as_view()),
+    path("api/v1/analytics/dashboard", Dashboard.as_view()),
 ]
 
 for provider in PROVIDERS:
