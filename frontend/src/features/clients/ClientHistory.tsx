@@ -31,7 +31,7 @@ function HistorySection({ clientId, kind }: { clientId: string; kind: Kind }) {
   const [deleteError, setDeleteError] = useState('');
   const id = useId();
   const isNote = kind === 'notes';
-  const title = isNote ? 'Notes' : 'Links';
+  const title = isNote ? 'Notes & timeline' : 'Links';
 
   useEffect(() => {
     const controller = new AbortController();
@@ -107,14 +107,15 @@ function HistorySection({ clientId, kind }: { clientId: string; kind: Kind }) {
     } finally { setDeleting(false); }
   }
 
-  return <section aria-label={title} className="history-section">
+  return <section aria-label={isNote ? 'Notes' : title} className="history-section">
     <div className="history-heading"><h3>{title}</h3><button className="text-action" disabled={loading} onClick={() => setRevision(value => value + 1)}>Refresh {kind}</button></div>
+    {isNote && <p className="history-description muted">Your team’s conversations and context, in one place.</p>}
     {loading ? <p role="status" className="muted">Loading {kind}…</p> : error ? <div><p role="alert" className="notice error">{error}</p>
       <button className="secondary" onClick={() => setRevision(value => value + 1)}>Retry {kind}</button></div>
       : data?.results.length ? <>
         <ol className={isNote ? 'note-timeline' : 'client-links'}>
           {data.results.map(item => <li key={item.id}>{'text' in item ? <>
-            <p className="note-meta"><strong>{item.author.username}</strong><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString()}</time></p>
+            <p className="note-meta"><strong>{item.author.username}</strong><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</time></p>
             <p className="note-text">{item.text}</p>
             {item.can_delete && (deleteTarget === item.id ? <div className="note-delete-confirm" role="group" aria-label="Confirm note deletion">
               <p>Delete this note? This cannot be undone.</p>

@@ -7,9 +7,10 @@ type Props = {
   busy?: boolean;
   drawer?: boolean;
   role?: 'dialog' | 'alertdialog';
+  className?: string;
 };
 
-export default function Dialog({ title, children, onClose, busy = false, drawer = false, role = 'dialog' }: Props) {
+export default function Dialog({ title, children, onClose, busy = false, drawer = false, role = 'dialog', className = '' }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -28,13 +29,13 @@ export default function Dialog({ title, children, onClose, busy = false, drawer 
     };
   }, []);
 
-  return <dialog ref={ref} className={drawer ? 'dialog drawer' : 'dialog'} role={role} aria-modal="true" aria-labelledby={titleId}
+  return <dialog ref={ref} className={`${drawer ? 'dialog drawer' : 'dialog'} ${className}`} role={role} aria-modal="true" aria-labelledby={titleId}
     onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}
     onKeyDown={event => {
       if (event.key === 'Escape') { event.preventDefault(); if (!busy) onClose(); }
       if (event.key === 'Tab') {
         const controls = Array.from(ref.current!.querySelectorAll<HTMLElement>('*')).filter(element =>
-          element.matches('button, input, textarea, a[href], [tabindex]') && element.tabIndex >= 0 && !element.matches(':disabled, [hidden], input[type="hidden"]'));
+          element.matches('button, input, select, textarea, a[href], [tabindex]') && element.tabIndex >= 0 && !element.matches(':disabled, [hidden], input[type="hidden"]'));
         const first = controls[0];
         const last = controls[controls.length - 1];
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
