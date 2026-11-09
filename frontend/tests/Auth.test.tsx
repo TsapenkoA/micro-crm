@@ -89,6 +89,16 @@ it('updates an existing technical username from Settings and returns the refresh
   expect(await screen.findByText('Username updated.')).toBeInTheDocument();
 });
 
+it('saves a non-USD reporting currency in Settings', async () => {
+  const update = vi.spyOn(auth, 'updateReportingCurrency').mockResolvedValue({ reporting_currency: 'JPY' });
+  const onUserUpdated = vi.fn();
+  render(<AccountSettings user={{ ...user, reporting_currency: 'USD' }} onUserUpdated={onUserUpdated} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Appearance' }));
+  await userEvent.selectOptions(screen.getByLabelText('Reporting currency'), 'JPY');
+  await waitFor(() => expect(update).toHaveBeenCalledWith('JPY'));
+  expect(onUserUpdated).toHaveBeenCalledWith(expect.objectContaining({ reporting_currency: 'JPY' }));
+});
+
 it('submits a reset token and removes it from the URL after success', async () => {
   window.history.replaceState(null, '', '/reset-password?uid=MQ&token=reset-token');
   const reset = vi.spyOn(auth, 'resetPassword').mockResolvedValue({ message: 'Password updated. Sign in with your new password.' });
