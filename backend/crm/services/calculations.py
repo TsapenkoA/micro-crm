@@ -2,8 +2,8 @@ from decimal import Decimal, ROUND_HALF_UP
 
 
 CURRENCY_PLACES = {
-    "AUD": 2, "CAD": 2, "CHF": 2, "EUR": 2, "GBP": 2, "PLN": 2, "UAH": 2, "USD": 2,
-    "JPY": 0, "KWD": 3, "CLF": 4,
+    "AUD": 2, "CAD": 2, "CHF": 2, "EUR": 2, "GBP": 2, "PLN": 2, "USD": 2,
+    "JPY": 0,
 }
 MAX_AMOUNT = Decimal("9999999999999999.9999")
 
