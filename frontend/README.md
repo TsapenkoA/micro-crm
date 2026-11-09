@@ -25,6 +25,10 @@ Account routes are /login, /sign-up, /forgot-password, /reset-password and /oaut
 
 Business pages use real workspace data. Forms preserve rejected drafts, wait for server confirmation and refresh saved records. Deal changes send the observed version and surface stale-edit conflicts. Invoice amounts and analytics come from the backend; PDF download and browser print are available for live invoices.
 
+The invoice editor supports the currencies accepted by the Invoice API, including GBP and PLN. The currency selector filters both the invoice table and original-currency summary cards; it does not convert document totals. Deals shows per-stage and pipeline totals for the selected currency and keeps individual cards in their original currency.
+
+Dashboard combines supported original currencies using stored ECB reference rates and displays USD, EUR, GBP, PLN, AUD, CAD, CHF or JPY. The reporting currency is saved per user and can also be changed in Settings → Appearance. An affected total is hidden when a required rate is missing; original deal and invoice amounts remain visible in their own currencies.
+
 The authenticated /preview#/deals route is a design playground. It reads a separate workspace PreviewDataset; workspaces without one show an unavailable state. Preview edits remain in memory and reset on reload. Preview drag-and-drop and document export are not connected. Preview records do not write to live business tables.
 
 Keep credentials server-side in the ignored root .env. Browser requests use same-origin cookies and CSRF; the client does not store authentication tokens in localStorage or automatically retry writes. Verify responsive navigation, keyboard focus, provider consent and printing in a browser when changing those flows.
