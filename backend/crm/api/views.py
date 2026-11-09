@@ -12,7 +12,6 @@ from django.core.mail import send_mail
 from django.db import transaction, DatabaseError, connection
 from django.db.models import Count, Q, F, Sum
 from django.db.models.deletion import ProtectedError
-from django.db.models.functions import TruncMonth, TruncQuarter
 from django.http import HttpResponse, JsonResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404
@@ -32,8 +31,9 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from crm.services.calculations import CURRENCY_PLACES, calculate_items, money_string
-from crm.models import Client, Deal, Invoice, PreviewDataset, Workspace, WorkspaceMembership, InvoiceItem
+from crm.services.calculations import CURRENCY_PLACES, calculate_items, money_string, round_money
+from crm.services.fx import ECB_CURRENCIES, common_rate_date, convert, rate_date_for
+from crm.models import Client, Deal, FxRate, Invoice, PreviewDataset, Workspace, WorkspaceMembership, InvoiceItem
 from crm.services.pdf import render_invoice
 from crm.api.permissions import IsWorkspaceMember, WorkspaceQuerysetMixin
 from crm.auth.security import AuthThrottle, email_in_use, email_lock, email_user, recent_auth
@@ -67,7 +67,7 @@ logger = logging.getLogger(__name__)
 def user_data(user):
     membership = WorkspaceMembership.objects.select_related("workspace").filter(user=user).first()
     workspace = {"id": str(membership.workspace_id), "name": membership.workspace.name} if membership else None
-    return {"id": user.pk, "username": user.username, "email": user.email, "workspace": workspace}
+    return {"id": user.pk, "username": user.username, "email": user.email, "workspace": workspace, "reporting_currency": membership.reporting_currency if membership else "USD"}
 
 
 @api_view(["GET"])
@@ -233,6 +233,21 @@ class ProfileView(SecurityView):
                         workspace.name = f"{username}'s workspace"
                         workspace.save(update_fields=["name", "updated_at"])
         return Response({"user": user_data(user)})
+
+
+class ReportingCurrencyView(APIView):
+    permission_classes = [IsAuthenticated, IsWorkspaceMember]
+
+    def patch(self, request):
+        if not isinstance(request.data, dict) or set(request.data) != {"reporting_currency"}:
+            raise ValidationError({"reporting_currency": "Only reporting_currency can be changed here."})
+        currency = request.data["reporting_currency"]
+        if currency not in (*ECB_CURRENCIES, "EUR"):
+            raise ValidationError({"reporting_currency": "Choose a supported reporting currency."})
+        membership = WorkspaceMembership.objects.get(user=request.user)
+        membership.reporting_currency = currency
+        membership.save(update_fields=["reporting_currency"])
+        return Response({"reporting_currency": currency})
 
 
 class ReauthenticateView(SecurityView):
@@ -459,7 +474,9 @@ class DealList(DealQuerysetMixin, generics.ListCreateAPIView):
         self.lock_membership()
         client = self.lock_client(serializer.validated_data["client"])
         status = serializer.validated_data.get("status", Deal.Status.NEW_LEAD)
-        serializer.save(workspace_id=self.request.workspace_id, created_by=self.request.user, client=client, paid_at=timezone.now() if status == Deal.Status.PAID else None)
+        paid_at = timezone.now() if status == Deal.Status.PAID else None
+        rate_date = rate_date_for(serializer.validated_data["currency"], timezone.localtime(paid_at).date()) if paid_at else None
+        serializer.save(workspace_id=self.request.workspace_id, created_by=self.request.user, client=client, paid_at=paid_at, fx_rate_date=rate_date)
 
 
 class DealDetail(DealQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
@@ -478,6 +495,13 @@ class DealDetail(DealQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
         status = values.get("status", instance.status)
         now = timezone.now()
         values["paid_at"] = (instance.paid_at if instance.status == Deal.Status.PAID else now) if status == Deal.Status.PAID else None
+        if values["paid_at"]:
+            same_currency = values.get("currency", instance.currency) == instance.currency
+            values["fx_rate_date"] = instance.fx_rate_date if same_currency else None
+            if values["fx_rate_date"] is None:
+                values["fx_rate_date"] = rate_date_for(values.get("currency", instance.currency), timezone.localtime(values["paid_at"]).date())
+        else:
+            values["fx_rate_date"] = None
         values["updated_at"] = now
         values["version"] = F("version") + 1
         changed = Deal.objects.filter(pk=instance.pk, workspace_id=request.workspace_id, version=version, version__lt=2147483647).update(**values)
@@ -639,6 +663,7 @@ class InvoiceStatus(InvoiceDetail):
         elif invoice.status == Invoice.Status.SENT and target == Invoice.Status.PAID:
             invoice.status = Invoice.Status.PAID
             invoice.paid_at = timezone.now()
+            invoice.fx_rate_date = rate_date_for(invoice.currency, timezone.localtime(invoice.paid_at).date())
         else:
             raise ValidationError({"status": "This invoice status transition is not allowed."})
         invoice.save()
@@ -678,33 +703,74 @@ class Dashboard(APIView):
             start_year, start_month = month_offset(now.year, now.month, -11)
             end_year, end_month = month_offset(now.year, now.month, 1)
             labels = [month_offset(start_year, start_month, index) for index in range(12)]
-            truncation = TruncMonth("paid_at", tzinfo=zone)
         else:
             current_quarter = (now.month - 1) // 3
             start_year, start_month = month_offset(now.year, current_quarter * 3 + 1, -21)
             end_year, end_month = month_offset(now.year, current_quarter * 3 + 1, 3)
             labels = [month_offset(start_year, start_month, index * 3) for index in range(8)]
-            truncation = TruncQuarter("paid_at", tzinfo=zone)
         start = timezone.make_aware(datetime(start_year, start_month, 1), zone)
         end = timezone.make_aware(datetime(end_year, end_month, 1), zone)
 
-        deals = Deal.objects.filter(workspace_id=request.workspace_id, client__workspace_id=request.workspace_id, currency=currency)
+        deals = Deal.objects.filter(workspace_id=request.workspace_id, client__workspace_id=request.workspace_id)
         active = deals.filter(status__in=[Deal.Status.NEW_LEAD, Deal.Status.NEGOTIATION, Deal.Status.IN_PROGRESS])
-        pipeline = active.aggregate(amount=Sum("amount"))["amount"] or Decimal("0")
-        paid_deals = deals.filter(status=Deal.Status.PAID)
-        paid = paid_deals.aggregate(count=Count("id"), amount=Sum("amount"))
-        lost_count = deals.filter(status=Deal.Status.ARCHIVED, outcome=Deal.Outcome.LOST).count()
-        denominator = paid["count"] + lost_count
-        win_rate = (Decimal(paid["count"]) * 100 / denominator).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if denominator else None
-        average = ((paid["amount"] or Decimal("0")) / paid["count"]).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if paid["count"] else None
+        active_records = list(active.values("amount", "currency"))
+        paid_records = list(deals.filter(status=Deal.Status.PAID).values("amount", "currency", "fx_rate_date"))
+        invoices = list(Invoice.objects.filter(
+            workspace_id=request.workspace_id, client__workspace_id=request.workspace_id,
+            status=Invoice.Status.PAID, paid_at__gte=start, paid_at__lt=end,
+        ).values("total_amount", "currency", "paid_at", "fx_rate_date"))
 
-        invoices = Invoice.objects.filter(workspace_id=request.workspace_id, currency=currency, status=Invoice.Status.PAID, paid_at__gte=start, paid_at__lt=end)
-        grouped = invoices.annotate(bucket=truncation).values("bucket").annotate(amount=Sum("total_amount")).order_by("bucket")
-        amounts = {(row["bucket"].year, row["bucket"].month): row["amount"] for row in grouped}
-        rows = [{"period": f"{year:04d}-{month:02d}", "revenue": money_string(amounts.get((year, month), Decimal("0")), currency)} for year, month in labels]
-        revenue = sum(amounts.values(), Decimal("0"))
+        needs_pipeline_rate = any(row["currency"] != currency for row in active_records)
+        pipeline_date = common_rate_date((row["currency"] for row in active_records), currency, now.date()) if needs_pipeline_rate else None
+        dates = {row["fx_rate_date"] for row in paid_records + invoices if row["currency"] != currency and row["fx_rate_date"]}
+        if pipeline_date:
+            dates.add(pipeline_date)
+        rates = {(row.date, row.currency): row.per_eur for row in FxRate.objects.filter(date__in=dates)}
+
+        pipeline = Decimal("0")
+        pipeline_missing = set()
+        for row in active_records:
+            value = convert(row["amount"], row["currency"], currency, pipeline_date, rates)
+            if value is None:
+                pipeline_missing.add(row["currency"])
+            else:
+                pipeline += value
+
+        paid_total = Decimal("0")
+        average_missing = set()
+        average_dates = set()
+        for row in paid_records:
+            value = convert(row["amount"], row["currency"], currency, row["fx_rate_date"], rates)
+            if value is None:
+                average_missing.add(row["currency"])
+            else:
+                paid_total += value
+                if row["currency"] != currency:
+                    average_dates.add(row["fx_rate_date"])
+        lost_count = deals.filter(status=Deal.Status.ARCHIVED, outcome=Deal.Outcome.LOST).count()
+        denominator = len(paid_records) + lost_count
+        win_rate = (Decimal(len(paid_records)) * 100 / denominator).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if denominator else None
+        average = round_money(paid_total / len(paid_records), currency) if paid_records and not average_missing else None
+
+        amounts = {}
+        missing_periods = set()
+        revenue_missing = set()
+        revenue_dates = set()
+        for invoice in invoices:
+            paid_at = timezone.localtime(invoice["paid_at"], zone)
+            bucket = (paid_at.year, paid_at.month if period == "month" else (paid_at.month - 1) // 3 * 3 + 1)
+            value = convert(invoice["total_amount"], invoice["currency"], currency, invoice["fx_rate_date"], rates)
+            if value is None:
+                revenue_missing.add(invoice["currency"])
+                missing_periods.add(bucket)
+            else:
+                amounts[bucket] = amounts.get(bucket, Decimal("0")) + value
+                if invoice["currency"] != currency:
+                    revenue_dates.add(invoice["fx_rate_date"])
+        rows = [{"period": f"{year:04d}-{month:02d}", "revenue": None if (year, month) in missing_periods else money_string(amounts.get((year, month), Decimal("0")), currency)} for year, month in labels]
+        revenue = None if revenue_missing else sum(amounts.values(), Decimal("0"))
         stages = list(deals.values("status").annotate(count=Count("id")).order_by("status"))
-        recent = list(active.select_related("client").order_by("deadline", "id")[:4].values("id", "title", "client__name", "client__company", "status", "deadline", "amount"))
+        recent = list(active.select_related("client").order_by("deadline", "id")[:4].values("id", "title", "client__name", "client__company", "status", "deadline", "amount", "currency"))
         for deal in recent:
             deal["amount"] = f"{deal['amount']:.2f}"
         return Response({
@@ -712,13 +778,24 @@ class Dashboard(APIView):
             "period": period,
             "start": start.isoformat(),
             "end": end.isoformat(),
-            "pipeline_value": f"{pipeline:.2f}",
+            "pipeline_value": money_string(pipeline, currency) if not pipeline_missing else None,
             "win_rate": f"{win_rate:.2f}" if win_rate is not None else None,
-            "average_deal_size": f"{average:.2f}" if average is not None else None,
-            "revenue": money_string(revenue, currency),
+            "average_deal_size": money_string(average, currency) if average is not None else None,
+            "revenue": money_string(revenue, currency) if revenue is not None else None,
             "revenue_rows": rows,
             "deal_counts": stages,
             "recent_deals": recent,
+            "fx": {
+                "source": "ECB",
+                "pipeline_rate_date": pipeline_date.isoformat() if pipeline_date else None,
+                "average_rate_dates": sorted(day.isoformat() for day in average_dates),
+                "revenue_rate_dates": sorted(day.isoformat() for day in revenue_dates),
+                "missing": {
+                    "pipeline": sorted(pipeline_missing),
+                    "average_deal_size": sorted(average_missing),
+                    "revenue": sorted(revenue_missing),
+                },
+            },
         })
 
 

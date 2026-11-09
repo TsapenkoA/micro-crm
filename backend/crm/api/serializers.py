@@ -86,12 +86,12 @@ class ClientLinkSerializer(StrictModelSerializer):
 
 CURRENCIES = frozenset("""
 AED AFN ALL AMD AOA ARS AUD AWG AZN BAM BBD BDT BHD BIF BMD BND BOB BOV BRL BSD BTN
-BWP BYN BZD CAD CDF CHE CHF CHW CLF CLP CNY COP COU CRC CUP CVE CZK DJF DKK DOP DZD
+BWP BYN BZD CAD CDF CHE CHF CHW CLP CNY COP COU CRC CUP CVE CZK DJF DKK DOP DZD
 EGP ERN ETB EUR FJD FKP GBP GEL GHS GIP GMD GNF GTQ GYD HKD HNL HTG HUF IDR ILS INR
-IQD IRR ISK JMD JOD JPY KES KGS KHR KMF KPW KRW KWD KYD KZT LAK LBP LKR LRD LSL
+IQD IRR ISK JMD JOD JPY KES KGS KHR KMF KPW KRW KYD KZT LAK LBP LKR LRD LSL
 LYD MAD MDL MGA MKD MMK MNT MOP MRU MUR MVR MWK MXN MXV MYR MZN NAD NGN NIO NOK NPR
 NZD OMR PAB PEN PGK PHP PKR PLN PYG QAR RON RSD RUB RWF SAR SBD SCR SDG SEK SGD SHP
-SLE SOS SRD SSP STN SVC SYP SZL THB TJS TMT TND TOP TRY TTD TWD TZS UAH UGX USD USN
+SLE SOS SRD SSP STN SVC SYP SZL THB TJS TMT TND TOP TRY TTD TWD TZS UGX USD USN
 UYI UYU UYW UZS VED VES VND VUV WST XAD XAF XCD XCG XOF XPF YER ZAR ZMW ZWG
 """.split())
 
@@ -127,8 +127,8 @@ class DealSerializer(StrictModelSerializer):
 
     class Meta:
         model = Deal
-        fields = ["id", "title", "client", "status", "amount", "currency", "deadline", "version", "outcome", "paid_at", "created_at", "updated_at"]
-        read_only_fields = ["id", "paid_at", "created_at", "updated_at"]
+        fields = ["id", "title", "client", "status", "amount", "currency", "deadline", "version", "outcome", "paid_at", "fx_rate_date", "created_at", "updated_at"]
+        read_only_fields = ["id", "paid_at", "fx_rate_date", "created_at", "updated_at"]
         validators = []
 
     def __init__(self, *args, **kwargs):
@@ -249,7 +249,7 @@ class InvoiceOutputSerializer(StrictModelSerializer):
 
     class Meta:
         model = Invoice
-        fields = ["id", "invoice_number", "client", "created_by", "currency", "status", "issued_at", "paid_at", "seller_snapshot", "buyer_snapshot", "items", "subtotal", "tax_total", "total_amount", "created_at", "updated_at"]
+        fields = ["id", "invoice_number", "client", "created_by", "currency", "status", "issued_at", "paid_at", "fx_rate_date", "seller_snapshot", "buyer_snapshot", "items", "subtotal", "tax_total", "total_amount", "created_at", "updated_at"]
         read_only_fields = fields
 
     def get_items(self, invoice):

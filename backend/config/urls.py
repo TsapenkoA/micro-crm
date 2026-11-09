@@ -14,6 +14,7 @@ urlpatterns = [
     path("api/v1/workspace/counts", views.workspace_counts),
     path("api/v1/workspace/preview", views.preview_dataset),
     path("api/v1/auth/profile", views.ProfileView.as_view()),
+    path("api/v1/auth/reporting-currency", views.ReportingCurrencyView.as_view()),
     path("api/v1/auth/sign-up", views.SignupView.as_view()),
     path("api/v1/auth/forgot-password", views.ForgotPasswordView.as_view()),
     path("api/v1/auth/reset-password", views.ResetPasswordView.as_view()),
