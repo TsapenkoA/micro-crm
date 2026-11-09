@@ -35,6 +35,9 @@ it('renders all five stages, exact money, server totals and the table from real 
   render(<DealsPage />);
   expect(await screen.findByRole('button', { name: 'Open Website project' })).toBeInTheDocument();
   for (const name of ['New Lead', 'Negotiation', 'In Progress', 'Paid', 'Archived']) expect(screen.getByRole('heading', { name })).toBeInTheDocument();
+  expect(screen.getAllByText('1,234.56 EUR')).toHaveLength(1);
+  expect(screen.getByText('Choose a currency to see pipeline totals')).toBeInTheDocument();
+  await userEvent.selectOptions(screen.getByLabelText('Filter by currency'), 'EUR');
   expect(screen.getAllByText('1,234.56 EUR')).toHaveLength(3);
   await userEvent.click(screen.getByRole('button', { name: /Table/ }));
   expect(screen.getByRole('table')).toBeInTheDocument();
@@ -151,6 +154,7 @@ it('persists a successful drag and refreshes authoritative totals', async () => 
   vi.mocked(deals.status).mockResolvedValue(paid);
   render(<DealsPage />);
   await screen.findByText('Website project');
+  await userEvent.selectOptions(screen.getByLabelText('Filter by currency'), 'EUR');
   vi.mocked(deals.list).mockResolvedValue({ results: [paid], totals: [{ status: 'paid', currency: 'EUR', count: 1, amount: '1234.56' }] });
   await act(async () => drag.end!({ active: { id: deal.id }, over: { id: 'paid' } }));
   await screen.findByText('Deal status updated.');

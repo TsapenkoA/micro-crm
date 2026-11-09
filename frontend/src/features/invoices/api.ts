@@ -1,7 +1,9 @@
 import { ApiError, request } from '../../api/client';
 
 export type InvoiceItemInput = { description: string; quantity: string; unit_price: string; tax_rate: string };
-export type InvoiceInput = { client: string; currency: 'USD' | 'EUR'; seller: { name: string; email: string; address: string; tax_id: string }; items: InvoiceItemInput[] };
+export const currencyPlaces = { USD: 2, EUR: 2, GBP: 2, PLN: 2, AUD: 2, CAD: 2, CHF: 2, JPY: 0 } as const;
+export const invoiceCurrencies = ['USD', 'EUR', 'GBP', 'PLN', ...Object.keys(currencyPlaces).filter(currency => !['USD', 'EUR', 'GBP', 'PLN'].includes(currency)).sort()];
+export type InvoiceInput = { client: string; currency: string; seller: { name: string; email: string; address: string; tax_id: string }; items: InvoiceItemInput[] };
 export type InvoiceItem = InvoiceItemInput & { id: number; position: number; line_total: string; tax_amount: string };
 export type Invoice = {
   id: string; invoice_number: string; client: string; currency: string; status: 'draft' | 'sent' | 'paid';
