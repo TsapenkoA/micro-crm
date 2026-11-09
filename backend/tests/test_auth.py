@@ -34,6 +34,7 @@ def test_login_me_logout_and_csrf_rotation(api, user):
     assert response.status_code == 200
     assert response.json()["user"] == {
         "id": user.pk, "username": user.username, "email": user.email,
+        "reporting_currency": "USD",
         "workspace": {"id": str(user.workspace_membership.workspace_id), "name": user.workspace_membership.workspace.name},
     }
     assert api.cookies["csrftoken"].value != old_cookie

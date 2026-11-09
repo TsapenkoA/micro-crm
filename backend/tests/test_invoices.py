@@ -75,11 +75,16 @@ def test_pdf_contains_unicode_totals_and_multiple_pages(authenticated_api, clien
     assert visitor.get(f"/api/v1/invoices/{invoice_id}/pdf").status_code == 404
 
 
-@pytest.mark.parametrize("currency,unit_price,expected", [("JPY", "10.6", "11"), ("KWD", "10.1234", "10.123"), ("CLF", "10.1234", "10.1234"), ("USD", "10.005", "10.01")])
+@pytest.mark.parametrize("currency,unit_price,expected", [("JPY", "10.6", "11"), ("GBP", "10.005", "10.01"), ("PLN", "10.125", "10.13"), ("USD", "10.005", "10.01")])
 def test_currency_precision(authenticated_api, client_record, currency, unit_price, expected):
     response = create(authenticated_api, client_record, currency=currency, items=[item(unit_price=unit_price)])
     assert response.status_code == 201, response.json()
     assert response.json()["total_amount"] == expected
+
+
+@pytest.mark.parametrize("currency", ["CLF", "UAH", "KWD"])
+def test_removed_currencies_cannot_be_used_for_new_invoices(authenticated_api, client_record, currency):
+    assert create(authenticated_api, client_record, currency=currency).status_code == 400
 
 
 def test_draft_edit_recalculates_and_snapshots_remain_frozen_after_sending(authenticated_api, user, client_record):

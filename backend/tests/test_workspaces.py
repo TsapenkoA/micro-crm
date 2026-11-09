@@ -179,6 +179,8 @@ def test_migration_preserves_all_business_records_and_admin(legacy_database):
     for (app, model, pk), expected in before.items():
         actual = migrated.get_model(app, model).objects.filter(pk=pk).values().get()
         actual.pop("workspace_id", None)
+        if model in ("deal", "invoice"):
+            assert actual.pop("fx_rate_date") is None
         if model == "invoice":
             assert actual.pop("updated_at") == expected["created_at"]
             assert actual.pop("issued_at") is None

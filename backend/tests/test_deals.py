@@ -40,11 +40,17 @@ def payload(record, **changes):
     return {"title": "Website", "client": str(record.pk), "amount": "1234.56", "currency": "EUR", **changes}
 
 
+@pytest.mark.parametrize("currency", ["CLF", "UAH", "KWD"])
+def test_removed_currencies_cannot_be_used_for_new_deals(authenticated_api, client_record, currency):
+    response = authenticated_api.post("/api/v1/deals", payload(client_record, currency=currency), format="json")
+    assert response.status_code == 400
+
+
 def test_create_detail_and_persistence(authenticated_api, user, client_record):
     response = authenticated_api.post("/api/v1/deals", payload(client_record, deadline="2026-12-01T15:00:00+03:00"), format="json")
     assert response.status_code == 201
     data = response.json()
-    assert set(data) == {"id", "title", "client", "status", "amount", "currency", "deadline", "version", "outcome", "paid_at", "created_at", "updated_at"}
+    assert set(data) == {"id", "title", "client", "status", "amount", "currency", "deadline", "version", "outcome", "paid_at", "fx_rate_date", "created_at", "updated_at"}
     assert data["amount"] == "1234.56"
     assert data["deadline"] == "2026-12-01T12:00:00Z"
     assert data["status"] == "new_lead" and data["outcome"] == "none"
