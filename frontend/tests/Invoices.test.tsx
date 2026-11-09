@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { ApiError } from '../src/api/client';
 import InvoicesPage from '../src/features/invoices/InvoicesPage';
+import InvoiceForm from '../src/features/invoices/InvoiceForm';
 import { invoices, type Invoice } from '../src/features/invoices/api';
 import { deals } from '../src/features/deals/api';
 
@@ -45,17 +46,30 @@ it('creates a draft, refetches the list, and shows server validation', async () 
   await userEvent.click(within(dialog).getByRole('button', { name: 'Save draft' }));
   expect(within(dialog).getByText('Enter a description.')).toBeInTheDocument();
   await userEvent.type(within(dialog).getByLabelText('Description'), 'Design');
+  await userEvent.selectOptions(within(dialog).getByLabelText('Currency'), 'GBP');
   await userEvent.type(within(dialog).getByLabelText('Unit price'), '100');
   await userEvent.clear(within(dialog).getByLabelText('Tax %'));
   await userEvent.type(within(dialog).getByLabelText('Tax %'), '20');
-  expect(within(within(dialog).getByLabelText('Invoice preview')).getByText('120 USD')).toBeInTheDocument();
+  expect(within(within(dialog).getByLabelText('Invoice preview')).getByText('120 GBP')).toBeInTheDocument();
   vi.mocked(invoices.create).mockRejectedValueOnce(new ApiError(400, 'Invalid input', { items: [{ tax_rate: ['Invalid tax rate.'] }] }));
   await userEvent.click(within(dialog).getByRole('button', { name: 'Save draft' }));
   expect(await within(dialog).findByText('Invalid tax rate.')).toBeInTheDocument();
   await userEvent.click(within(dialog).getByRole('button', { name: 'Save draft' }));
   await waitFor(() => expect(invoices.create).toHaveBeenCalledTimes(2));
+  expect(invoices.create).toHaveBeenLastCalledWith(expect.objectContaining({ currency: 'GBP' }));
   expect(await screen.findByText('Invoice created.')).toBeInTheDocument();
   expect(invoices.list).toHaveBeenCalledTimes(2);
+});
+
+it('previews invoice amounts with the selected currency precision', async () => {
+  render(<InvoiceForm clients={[client]} workspaceName="Workspace" userEmail="seller@example.test" onSave={vi.fn()} onCancel={vi.fn()} onPending={vi.fn()} />);
+  await userEvent.type(screen.getByLabelText('Description'), 'Service');
+  await userEvent.type(screen.getByLabelText('Unit price'), '100.4999');
+  const preview = screen.getByLabelText('Invoice preview');
+  await userEvent.selectOptions(screen.getByLabelText('Currency'), 'JPY');
+  expect(within(preview).getAllByText('100 JPY')).toHaveLength(2);
+  await userEvent.selectOptions(screen.getByLabelText('Currency'), 'PLN');
+  expect(within(preview).getAllByText('100.50 PLN')).toHaveLength(2);
 });
 
 it('preserves invoice details if PDF generation fails', async () => {
@@ -69,11 +83,19 @@ it('preserves invoice details if PDF generation fails', async () => {
 
 it('shows currency-specific status totals and keeps search with the status buttons', async () => {
   const eur: Invoice = { ...record, id: 'invoice-2', invoice_number: 'INV-000002', currency: 'EUR', status: 'paid', total_amount: '200.00' };
-  vi.mocked(invoices.list).mockResolvedValue([record, eur]);
+  const pln: Invoice = { ...record, id: 'invoice-3', invoice_number: 'INV-000003', currency: 'PLN', status: 'paid', total_amount: '125.50' };
+  vi.mocked(invoices.list).mockResolvedValue([record, eur, pln]);
   render(<InvoicesPage workspaceName="Workspace" userEmail="seller@example.test" />);
   expect(await screen.findByText('$120')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'INV-000001' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'INV-000002' })).not.toBeInTheDocument();
   await userEvent.selectOptions(screen.getByLabelText('Summary currency'), 'EUR');
   expect(screen.getByText('€200')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'INV-000002' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'INV-000001' })).not.toBeInTheDocument();
+  await userEvent.selectOptions(screen.getByLabelText('Summary currency'), 'PLN');
+  expect(screen.getAllByText('125.50 PLN')).toHaveLength(2);
+  await userEvent.selectOptions(screen.getByLabelText('Summary currency'), 'EUR');
   await userEvent.click(screen.getByRole('button', { name: 'Paid', pressed: false }));
   await waitFor(() => expect(invoices.list).toHaveBeenCalledWith('', 'paid', expect.any(AbortSignal)));
   await userEvent.type(screen.getByLabelText('Search invoices'), 'Studio');
