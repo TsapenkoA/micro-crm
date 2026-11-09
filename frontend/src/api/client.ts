@@ -1,6 +1,8 @@
 import type { PreviewData } from '../features/preview/data';
 
-export type User = { id: number; username: string; email: string; workspace?: { id: string; name: string } | null };
+export const reportingCurrencies = ['USD', 'EUR', 'GBP', 'PLN', 'AUD', 'CAD', 'CHF', 'JPY'] as const;
+export type ReportingCurrency = typeof reportingCurrencies[number];
+export type User = { id: number; username: string; email: string; reporting_currency?: ReportingCurrency; workspace?: { id: string; name: string } | null };
 export type WorkspaceCounts = { clients: number; deals: number; invoices: number };
 type Session = { user: User; csrfToken?: string };
 
@@ -75,6 +77,7 @@ export const auth = {
   providers: () => request<{ providers: Provider[] }>('/auth/providers'),
   methods: () => request<SignInMethods>('/auth/methods'),
   updateProfile: (username: string) => request<{ user: User }>('/auth/profile', { method: 'PATCH', body: JSON.stringify({ username }) }),
+  updateReportingCurrency: (reporting_currency: ReportingCurrency) => request<{ reporting_currency: ReportingCurrency }>('/auth/reporting-currency', { method: 'PATCH', body: JSON.stringify({ reporting_currency }) }),
   startProvider: (provider: string, process: 'login' | 'connect' = 'login') => request<{ url: string }>(`/auth/oauth/${provider}/start`, { method: 'POST', body: JSON.stringify({ process }) }),
   reauthenticate: (password: string) => request('/auth/reauthenticate', { method: 'POST', body: JSON.stringify({ password }) }),
   changePassword: (data: { current_password?: string; password: string; password_confirm: string }) => request('/auth/password', { method: 'POST', body: JSON.stringify(data) }),
