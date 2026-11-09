@@ -51,6 +51,7 @@ class WorkspaceMembership(ValidatedModel):
     workspace = models.ForeignKey(Workspace, on_delete=models.PROTECT, related_name="memberships")
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="workspace_membership")
     created_at = models.DateTimeField(auto_now_add=True)
+    reporting_currency = models.CharField(max_length=3, choices=[(code, code) for code in ("USD", "EUR", "GBP", "PLN", "AUD", "CAD", "CHF", "JPY")], default="USD")
 
     class Meta:
         app_label = "accounts"
@@ -85,6 +86,27 @@ class AuthAttempt(models.Model):
 
     class Meta:
         app_label = "accounts"
+
+
+class FxRate(ValidatedModel):
+    date = models.DateField()
+    currency = models.CharField(max_length=3, validators=[currency_validator])
+    per_eur = models.DecimalField(max_digits=24, decimal_places=12)
+    source = models.CharField(max_length=20, default="ECB")
+    fetched_at = models.DateTimeField(auto_now_add=True)
+
+    def clean(self):
+        if not self._state.adding:
+            previous = type(self).objects.get(pk=self.pk)
+            if (self.date, self.currency, self.per_eur, self.source) != (previous.date, previous.currency, previous.per_eur, previous.source):
+                raise ValidationError("Stored exchange rates cannot be changed.")
+
+    class Meta:
+        app_label = "accounts"
+        constraints = [
+            models.UniqueConstraint(fields=["date", "currency"], name="fx_rate_date_currency_unique"),
+            models.CheckConstraint(condition=Q(per_eur__gt=0), name="fx_rate_positive"),
+        ]
 
 
 class Client(ValidatedModel):
@@ -161,6 +183,7 @@ class Deal(ValidatedModel):
     version = models.PositiveIntegerField(default=1)
     outcome = models.CharField(max_length=10, choices=Outcome.choices, default=Outcome.NONE)
     paid_at = models.DateTimeField(null=True, blank=True)
+    fx_rate_date = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -193,6 +216,7 @@ class Invoice(ValidatedModel):
     tax_rate = models.DecimalField(max_digits=7, decimal_places=4, default=0)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.DRAFT)
     paid_at = models.DateTimeField(null=True, blank=True)
+    fx_rate_date = models.DateField(null=True, blank=True)
     issued_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
