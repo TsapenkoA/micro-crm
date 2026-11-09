@@ -23,6 +23,7 @@ crm/
         signals.py
     services/
         calculations.py
+        fx.py
         pdf.py
     management/commands/
     migrations/
@@ -50,6 +51,7 @@ All routes start with /api/v1. Business endpoints require a session and workspac
 | /auth/sign-up | POST: username, email, password, password_confirm |
 | /auth/forgot-password, /auth/reset-password | POST: request a reset or submit uid, token and matching passwords |
 | /auth/profile | PATCH: username only |
+| /auth/reporting-currency | PATCH: personal reporting currency (EUR, USD, GBP, PLN, AUD, CAD, CHF or JPY) |
 | /auth/password, /auth/reauthenticate | POST: change password or confirm identity |
 | /auth/providers, /auth/methods | GET: provider configuration and connected methods |
 | /auth/providers/<provider> | DELETE: disconnect a provider after recent authentication |
@@ -74,7 +76,20 @@ Client input accepts name, company, email and phone. The server supplies workspa
 
 Deals use title, client, amount, currency and an optional timezone-qualified deadline. Statuses are new_lead, negotiation, in_progress, paid and archived; archived outcomes are none, lost or cancelled. Updates, status changes and deletion require the observed integer version. A stale version returns 409. Send decimal amounts as strings.
 
-Invoices accept client, currency, optional seller details and items (description, quantity, unit_price, tax_rate). The backend assigns numbers, calculates currency-specific totals and stores buyer/seller snapshots. Only drafts can be edited. Sent/paid transitions preserve snapshots; payment status is manual, with no payment-provider integration. Dashboard revenue comes from paid invoices; deal metrics come from deals. Currencies are never combined.
+Invoices accept client, currency, optional seller details and items (description, quantity, unit_price, tax_rate). The backend assigns numbers, calculates currency-specific totals and stores buyer/seller snapshots. Only drafts can be edited. Sent/paid transitions preserve snapshots; payment status is manual, with no payment-provider integration. Dashboard revenue comes from paid invoices; deal metrics come from deals. Invoice lists and PDF retain original currencies. Dashboard converts supported currencies into the selected reporting currency.
+
+## Exchange rates and analytics
+
+`sync_fx_rates` imports daily EUR-based reference rates from the ECB Data Portal over HTTPS. Stored rates have a date, source and retrieval time. Supported invoice and reporting currencies are EUR, USD, GBP, PLN, AUD, CAD, CHF and JPY. CLF, UAH and KWD are unavailable for new deals and invoices. A Deal may accept other ISO codes without an ECB rate; an affected Dashboard total is unavailable rather than incomplete. These reference rates are for reporting, not bank settlement.
+
+```powershell
+uv run python manage.py sync_fx_rates --since 2025-12-01 --until 2026-11-09
+uv run python manage.py snapshot_fx_rates
+```
+
+Omit `--until` for current imports and schedule both commands daily after ECB publication in the deployment environment. Repeated imports leave identical stored rates alone and refuse changed historical values. Back up the database before migrations or historical backfill. `snapshot_fx_rates` only fills missing rate dates for existing paid records, without changing their amounts.
+
+Active pipeline uses the latest common rate date, at most four days old. Paid deals and invoices use a fixed available rate date at or before their payment date. A later import does not replace a fixed date or an existing rate. The Dashboard response includes the rate source, dates and missing currencies in `fx`; an affected KPI or revenue period is `null` if a required rate is missing. Reporting preference is saved per workspace member and exposed in `/auth/me`. Original invoice amounts and currency never change during reporting conversion. The Invoices currency selector filters both the original-currency summary and the table. Deals displays currency totals when a currency filter is selected; the all-currencies view shows deal counts and original amounts without combining currencies.
 
 ## Workspaces and maintenance
 

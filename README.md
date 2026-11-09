@@ -50,7 +50,17 @@ Open http://127.0.0.1:5173. Register at /sign-up or use the optional local admin
 2. Open Clients and create a contact. Its details contain shared notes and links.
 3. Open Deals and create a deal for that client. Move it through the board or edit its status in the details panel.
 4. Open Invoices, create a draft with line items, then mark it sent or paid. Download its PDF or print it from the document view.
-5. Open Dashboard to inspect deal metrics and paid-invoice revenue. Select a currency; amounts in different currencies are not combined.
+5. Open Dashboard to inspect deal metrics and paid-invoice revenue. Choose USD, EUR, GBP, PLN, AUD, CAD, CHF or JPY as your personal reporting currency; supported original currencies are converted using stored ECB reference rates. The original amounts remain unchanged.
+
+Import ECB rates before using converted analytics, then refresh them daily after publication:
+
+```powershell
+cd backend
+uv run python manage.py sync_fx_rates --since 2025-12-01
+uv run python manage.py snapshot_fx_rates
+```
+
+The snapshot command assigns historical rate dates to older paid records after import. If a required rate is unavailable, the affected total is hidden instead of showing a partial amount. See the backend README for supported currencies and date rules.
 
 Account settings contain profile, password/provider methods and appearance. Password reset messages appear in the backend terminal unless email delivery is configured. The optional design preview is separate from live company records; see the frontend README for its limits.
 
