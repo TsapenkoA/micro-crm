@@ -12,15 +12,34 @@ crm/
     apps.py
     models.py
     api/
-        views.py
-        serializers.py
+        health.py
+        pagination.py
         permissions.py
         errors.py
     auth/
+        views.py
+        serializers.py
         security.py
         oauth.py
         adapters.py
         signals.py
+    workspaces/
+        views.py
+        serializers.py
+    clients/
+        views.py
+        serializers.py
+    deals/
+        views.py
+        serializers.py
+    invoices/
+        views.py
+        serializers.py
+        services.py
+    analytics/
+        views.py
+        serializers.py
+        services.py
     services/
         calculations.py
         fx.py
@@ -29,9 +48,9 @@ crm/
     migrations/
 ```
 
-models.py and apps.py stay at the application root for Django's model discovery and application configuration. The other modules have three clear homes: api/ for HTTP handling and validation, auth/ for sessions/providers and account provisioning, and services/ for invoice calculations and PDF rendering. Each package also has an __init__.py.
+models.py and apps.py stay at the application root for Django's model discovery and application configuration. Feature packages keep their views and serializers together. api/ contains shared HTTP helpers; services/ contains shared calculations, exchange rates and PDF rendering.
 
-A request enters through config/urls.py, reaches api/views.py, validates input through api/serializers.py and reads or writes models.py. Workspace access is checked in api/permissions.py. Invoice handlers call services/ for calculations and PDF output. For a new endpoint, update these existing modules and its corresponding test suite; a new application or package is not needed for each entity.
+A request enters through config/urls.py and reaches the relevant feature's views.py. Its serializers.py validates input. Workspace access is checked in api/permissions.py. Invoice views call invoices/services.py and the shared services/ package; analytics views call analytics/services.py. Routes and response contracts remain in config/urls.py and the feature views.
 
 management/commands/ contains trusted local maintenance commands. migrations/ preserves the existing histories grouped by their original application labels.
 
@@ -58,6 +77,7 @@ All routes start with /api/v1. Business endpoints require a session and workspac
 | /auth/oauth/<provider>/start | POST: start provider login or connection |
 | /auth/oauth/<provider>/callback/ | GET: provider callback; trailing slash required |
 | /workspace/counts, /workspace/preview | GET: workspace counts or isolated design-preview data |
+| /workspace/bank-details | GET/PUT: shared seller bank details for future invoices |
 | /clients | GET/POST: search/paginate or create a client |
 | /clients/<id> | GET/PUT/PATCH/DELETE: client details and changes |
 | /clients/<id>/notes | GET/POST: shared plain-text notes |
@@ -72,11 +92,17 @@ All routes start with /api/v1. Business endpoints require a session and workspac
 | /invoices/<id>/pdf | GET: invoice PDF |
 | /analytics/dashboard | GET: currency and month/quarter analytics |
 
-Client input accepts name, company, email and phone. The server supplies workspace, creator, IDs and timestamps. Related history or financial records protect clients from deletion (409).
+Client input accepts name, company, email, phone and optional `bank_details`. The server supplies workspace, creator, IDs and timestamps. Bank details are returned on client detail, not in the list. Related history or financial records protect clients from deletion (409).
 
 Deals use title, client, amount, currency and an optional timezone-qualified deadline. Statuses are new_lead, negotiation, in_progress, paid and archived; archived outcomes are none, lost or cancelled. Updates, status changes and deletion require the observed integer version. A stale version returns 409. Send decimal amounts as strings.
 
-Invoices accept client, currency, optional seller details and items (description, quantity, unit_price, tax_rate). The backend assigns numbers, calculates currency-specific totals and stores buyer/seller snapshots. Only drafts can be edited. Sent/paid transitions preserve snapshots; payment status is manual, with no payment-provider integration. Dashboard revenue comes from paid invoices; deal metrics come from deals. Invoice lists and PDF retain original currencies. Dashboard converts supported currencies into the selected reporting currency.
+Invoices accept client, currency, optional seller details and items (description, quantity, unit_price, tax_rate). The backend assigns numbers, calculates currency-specific totals and stores buyer/seller snapshots. Workspace bank details are copied into the seller snapshot; client bank details are copied into the buyer snapshot. Both appear in the invoice view and PDF. Later changes to saved bank details do not alter existing snapshots. Only drafts can be edited. Sent/paid transitions preserve snapshots; payment status is manual, with no payment-provider integration. Dashboard revenue comes from paid invoices; deal metrics come from deals. Invoice lists and PDF retain original currencies. Dashboard converts supported currencies into the selected reporting currency.
+
+Bank details are optional. `PUT /workspace/bank-details` replaces the current workspace details; `bank_details` in a client create/update payload replaces that client's details. Accepted fields are `account_holder`, `bank_name`, `iban`, `bic`, `account_number`, `routing_number` and `payment_instructions`. IBAN and BIC receive format checks, not bank-account ownership verification. Any workspace member can edit shared details. Existing invoices retain their original snapshots. Example:
+
+```json
+{"account_holder":"Example Studio","bank_name":"Example Bank","iban":"DE89370400440532013000","bic":"COBADEFF"}
+```
 
 ## Exchange rates and analytics
 
