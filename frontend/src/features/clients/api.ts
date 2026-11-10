@@ -1,6 +1,6 @@
-import { request } from '../../api/client';
+import { request, type BankDetails } from '../../api/client';
 
-export type ClientInput = { name: string; company: string; email: string; phone: string };
+export type ClientInput = { name: string; company: string; email: string; phone: string; bank_details?: BankDetails };
 export type Client = ClientInput & {
   id: string;
   workspace: string;
@@ -17,7 +17,7 @@ export type ClientDeal = {
   currency: string;
   deadline: string | null;
 };
-export type ClientDetail = Client & { deals: ClientDeal[] };
+export type ClientDetail = Client & { deals: ClientDeal[]; bank_details?: BankDetails };
 export type ClientPage = { count: number; next: string | null; previous: string | null; results: Client[] };
 export type ClientNote = { id: string; client: string; author: { id: number; username: string }; text: string; created_at: string; can_delete: boolean };
 export type ClientLink = { id: string; client: string; label: string; url: string; created_at: string };

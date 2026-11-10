@@ -47,6 +47,15 @@ it('requires a nonblank name and rejects malformed email without sending a reque
   expect(save).not.toHaveBeenCalled();
 });
 
+it('includes payer bank details when saving a client', async () => {
+  const save = vi.fn().mockResolvedValue(undefined);
+  render(<ClientForm onSave={save} onCancel={vi.fn()} onPending={vi.fn()} />);
+  await userEvent.type(screen.getByLabelText('Name'), 'Client');
+  await userEvent.type(screen.getByLabelText('Account number'), '12345678');
+  await userEvent.click(screen.getByRole('button', { name: 'Save client' }));
+  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ bank_details: { account_number: '12345678' } })));
+});
+
 it('places server 400 messages under fields and preserves entered values', async () => {
   const save = vi.fn().mockRejectedValue(new ApiError(400, 'Validation failed.', { email: ['Enter a valid email address.'] }));
   render(<ClientForm onSave={save} onCancel={vi.fn()} onPending={vi.fn()} />);

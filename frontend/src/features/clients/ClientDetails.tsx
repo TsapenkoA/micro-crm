@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { clients, type ClientDetail } from './api';
 import ClientHistory from './ClientHistory';
 import { date, money, stages } from '../deals/api';
+import { bankFields } from '../../components/BankDetailsFields';
 
 const initials = (value: string) => value.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase() || '?';
 const timestamp = (value: string) => new Date(value).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
@@ -41,6 +42,9 @@ export default function ClientDetails({ id, onEdit, onDelete }: {
       <dt>Created</dt><dd>{timestamp(client.created_at)}</dd>
       <dt>Updated</dt><dd>{timestamp(client.updated_at)}</dd>
     </dl></section>
+    <section><h3>Payer bank details</h3>{bankFields.some(([field]) => client.bank_details?.[field]) ? <dl className="contact-list">
+      {bankFields.filter(([field]) => client.bank_details?.[field]).map(([field, label]) => <Fragment key={field}><dt>{label}</dt><dd>{client.bank_details?.[field]}</dd></Fragment>)}
+    </dl> : <p className="muted">No bank details saved for this client.</p>}</section>
     <section><h3>Related deals <span className="client-deal-count">{client.deals.length}</span></h3>{client.deals.length ? <ul className="deal-list">
       {client.deals.map(deal => { const stage = stages.find(item => item.id === deal.status); return <li key={deal.id} className="client-related-deal"><a href={`#/deals?deal=${encodeURIComponent(deal.id)}`}>{deal.title}</a><span className={`deal-badge deal-${stage?.color ?? 'gray'}`}><i />{stage?.label ?? deal.status.replaceAll('_', ' ')}</span><p className="muted">{money(deal.amount, deal.currency)} · {deal.deadline ? `Due ${date(deal.deadline)}` : 'No deadline'}</p></li>; })}
     </ul> : <p className="muted">No related deals.</p>}</section>
