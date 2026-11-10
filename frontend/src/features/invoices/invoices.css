@@ -57,6 +57,7 @@
 .invoice-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin: 30px 0; }
 .invoice-parties > div { display: grid; align-content: start; gap: 4px; overflow-wrap: anywhere; }
 .invoice-parties small { color: var(--text-muted); letter-spacing: 1px; }
+.invoice-bank-parties { margin-top: -12px; font-size: 11px; }
 .invoice-document-meta { display: flex; justify-content: space-between; gap: 10px; padding: 12px 0; border-top: 1px solid var(--border); text-transform: capitalize; }
 .invoice-document .invoice-table-wrap th, .invoice-document .invoice-table-wrap td { padding: 10px 5px; white-space: normal; }
 .invoice-totals { margin: 20px 0 0 auto; max-width: 260px; }

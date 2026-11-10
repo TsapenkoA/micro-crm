@@ -40,6 +40,15 @@ it('lists saved invoices and shows authoritative details', async () => {
   expect(within(dialog).getByRole('button', { name: 'Mark as sent' })).toBeInTheDocument();
 });
 
+it('shows the saved bank snapshots in invoice details', async () => {
+  vi.mocked(invoices.list).mockResolvedValue([{ ...record, seller_snapshot: { ...record.seller_snapshot, bank_details: { iban: 'DE89370400440532013000' } }, buyer_snapshot: { ...record.buyer_snapshot, bank_details: { account_number: '12345678' } } }]);
+  render(<InvoicesPage workspaceName="Workspace" userEmail="seller@example.test" />);
+  await userEvent.click(await screen.findByRole('button', { name: 'INV-000001' }));
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getByText('IBAN: DE89370400440532013000')).toBeInTheDocument();
+  expect(within(dialog).getByText('Account number: 12345678')).toBeInTheDocument();
+});
+
 it('creates a draft, refetches the list, and shows server validation', async () => {
   render(<InvoicesPage workspaceName="Workspace" userEmail="seller@example.test" createRequested />);
   const dialog = await screen.findByRole('dialog');

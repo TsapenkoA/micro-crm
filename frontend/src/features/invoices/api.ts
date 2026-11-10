@@ -1,4 +1,4 @@
-import { ApiError, request } from '../../api/client';
+import { ApiError, request, type BankDetails } from '../../api/client';
 
 export type InvoiceItemInput = { description: string; quantity: string; unit_price: string; tax_rate: string };
 export const currencyPlaces = { USD: 2, EUR: 2, GBP: 2, PLN: 2, AUD: 2, CAD: 2, CHF: 2, JPY: 0 } as const;
@@ -7,8 +7,8 @@ export type InvoiceInput = { client: string; currency: string; seller: { name: s
 export type InvoiceItem = InvoiceItemInput & { id: number; position: number; line_total: string; tax_amount: string };
 export type Invoice = {
   id: string; invoice_number: string; client: string; currency: string; status: 'draft' | 'sent' | 'paid';
-  seller_snapshot: { name?: string; email?: string; address?: string; tax_id?: string };
-  buyer_snapshot: { name?: string; company?: string; email?: string; phone?: string };
+  seller_snapshot: { name?: string; email?: string; address?: string; tax_id?: string; bank_details?: BankDetails };
+  buyer_snapshot: { name?: string; company?: string; email?: string; phone?: string; bank_details?: BankDetails };
   items: InvoiceItem[]; subtotal: string; tax_total: string; total_amount: string;
   issued_at: string | null; paid_at: string | null; created_at: string;
 };
