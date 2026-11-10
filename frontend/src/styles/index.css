@@ -182,6 +182,7 @@
   .account-profile-identity strong { font-weight: 600; }
   .account-profile-identity small { color: var(--text-muted); font-size: var(--font-xs); }
   .account-settings .auth-form { max-width: 480px; }
+  .bank-details-fields { display: grid; gap: var(--space-4); }
   .account-settings .auth-form > button { justify-self: start; }
   .account-readonly-field { display: grid; gap: 8px; max-width: 480px; font-size: var(--font-sm); }
   .account-readonly-field > span { padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-control); color: var(--text-muted); }

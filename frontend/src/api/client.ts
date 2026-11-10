@@ -4,6 +4,7 @@ export const reportingCurrencies = ['USD', 'EUR', 'GBP', 'PLN', 'AUD', 'CAD', 'C
 export type ReportingCurrency = typeof reportingCurrencies[number];
 export type User = { id: number; username: string; email: string; reporting_currency?: ReportingCurrency; workspace?: { id: string; name: string } | null };
 export type WorkspaceCounts = { clients: number; deals: number; invoices: number };
+export type BankDetails = { account_holder?: string; bank_name?: string; iban?: string; bic?: string; account_number?: string; routing_number?: string; payment_instructions?: string };
 type Session = { user: User; csrfToken?: string };
 
 export class ApiError extends Error {
@@ -92,6 +93,8 @@ export const auth = {
 
 export const workspace = {
   counts: (signal?: AbortSignal) => request<WorkspaceCounts>('/workspace/counts', { signal }),
+  bankDetails: () => request<BankDetails>('/workspace/bank-details'),
+  saveBankDetails: (details: BankDetails) => request<BankDetails>('/workspace/bank-details', { method: 'PUT', body: JSON.stringify(details) }),
   preview: (signal?: AbortSignal) => request<PreviewData>('/workspace/preview', { signal }),
 };
 
