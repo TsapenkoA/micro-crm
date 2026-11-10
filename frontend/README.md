@@ -6,7 +6,7 @@ React, TypeScript and Vite. Installation and local startup are in the [root READ
 
 - src/app/: application shell, session restoration and navigation.
 - src/api/client.ts: shared session/CSRF client and account API.
-- src/features/: auth, clients, deals, invoices, dashboard and design preview. Each feature keeps its pages, API calls and styles together.
+- src/features/: auth, clients, deals, invoices, dashboard and design preview. Each feature keeps its pages, API calls and styles together. The preview shell in VisualWorkspace.tsx delegates page content to PreviewDashboard, PreviewDeals, PreviewClients, PreviewInvoices and PreviewSettings; PreviewEditor owns its local forms and document preview.
 - src/components/: shared dialogs, navigation icons, quick actions and theme controls.
 - src/styles/: global styles.
 - tests/: UI workflows and shared API-client checks.
@@ -24,6 +24,8 @@ Vite runs at http://127.0.0.1:5173 and proxies /api to Django at http://127.0.0.
 Account routes are /login, /sign-up, /forgot-password, /reset-password and /oauth-result. Workspace sections use /#/clients, /#/deals, /#/invoices, /#/dashboard and /#/settings. System, light and dark themes are available in account settings. The selected section survives reload.
 
 Business pages use real workspace data. Forms preserve rejected drafts, wait for server confirmation and refresh saved records. Deal changes send the observed version and surface stale-edit conflicts. Invoice amounts and analytics come from the backend; PDF download and browser print are available for live invoices.
+
+Settings → Workspace saves shared seller bank details. The client form can save optional payer bank details for that client. New invoices copy both into their saved snapshots and show them in the document view and PDF. Updating bank details later does not rewrite existing invoices.
 
 The invoice editor supports the currencies accepted by the Invoice API, including GBP and PLN. The currency selector filters both the invoice table and original-currency summary cards; it does not convert document totals. Deals shows per-stage and pipeline totals for the selected currency and keeps individual cards in their original currency.
 
