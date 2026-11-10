@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { ApiError, auth } from '../src/api/client';
+import { ApiError, auth, workspace } from '../src/api/client';
 import App from '../src/app/App';
 import AuthScreen from '../src/features/auth/AuthScreen';
 import AccountSettings from '../src/features/auth/AccountSettings';
@@ -87,6 +87,18 @@ it('updates an existing technical username from Settings and returns the refresh
   await waitFor(() => expect(onUserUpdated).toHaveBeenCalledWith(updated));
   expect(update).toHaveBeenCalledWith('ChosenName');
   expect(await screen.findByText('Username updated.')).toBeInTheDocument();
+});
+
+it('saves workspace payment details for new invoices', async () => {
+  const load = vi.spyOn(workspace, 'bankDetails').mockResolvedValue({ bank_name: 'Example Bank' });
+  const save = vi.spyOn(workspace, 'saveBankDetails').mockImplementation(async value => value);
+  render(<AccountSettings user={user} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+  expect(await screen.findByDisplayValue('Example Bank')).toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText('IBAN'), 'DE89370400440532013000');
+  await userEvent.click(screen.getByRole('button', { name: 'Save payment details' }));
+  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ bank_name: 'Example Bank', iban: 'DE89370400440532013000' })));
+  expect(load).toHaveBeenCalledTimes(1);
 });
 
 it('saves a non-USD reporting currency in Settings', async () => {
