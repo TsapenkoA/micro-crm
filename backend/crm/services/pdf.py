@@ -61,9 +61,21 @@ def render_invoice(invoice):
         [paragraph("BILL TO", small)] + [paragraph(value) for value in to_lines if value],
     ]], colWidths=[87 * mm, 87 * mm])
     parties.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
+    bank_labels = {"account_holder": "Account holder", "bank_name": "Bank", "iban": "IBAN", "bic": "BIC / SWIFT", "account_number": "Account number", "routing_number": "Routing number / sort code", "payment_instructions": "Payment instructions"}
+    seller_bank = seller.get("bank_details") or {}
+    buyer_bank = buyer.get("bank_details") or {}
+    if seller_bank or buyer_bank:
+        bank_table = Table([[
+            [paragraph("PAYMENT TO", small)] + [paragraph(f"{label}: {seller_bank[key]}") for key, label in bank_labels.items() if seller_bank.get(key)] if seller_bank else [],
+            [paragraph("PAYER BANK", small)] + [paragraph(f"{label}: {buyer_bank[key]}") for key, label in bank_labels.items() if buyer_bank.get(key)] if buyer_bank else [],
+        ]], colWidths=[87 * mm, 87 * mm])
+        bank_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
     metadata = Table([[paragraph(f"Status: {invoice.status.title()}", small), paragraph(f"Issued: {pdf_date(invoice.issued_at)}", small)]], colWidths=[87 * mm, 87 * mm])
     metadata.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0)]))
-    content.extend([parties, Spacer(1, 8 * mm), metadata, Spacer(1, 7 * mm)])
+    content.extend([parties, Spacer(1, 8 * mm)])
+    if seller_bank or buyer_bank:
+        content.extend([bank_table, Spacer(1, 8 * mm)])
+    content.extend([metadata, Spacer(1, 7 * mm)])
     rows = [[paragraph(title, small) for title in ("DESCRIPTION", "QTY", "UNIT PRICE", "TAX", "AMOUNT")]]
     for item in invoice.items.all():
         rows.append([

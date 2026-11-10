@@ -40,6 +40,7 @@ def validate_workspace(instance):
 
 class Workspace(ValidatedModel):
     name = models.CharField(max_length=200)
+    bank_details = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -116,6 +117,7 @@ class Client(ValidatedModel):
     company = models.CharField(max_length=200, blank=True)
     email = models.EmailField(blank=True)
     phone = models.CharField(max_length=50, blank=True)
+    bank_details = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -129,7 +129,7 @@ def test_health_checks_database(api):
 
 
 def test_health_handles_database_failure(api):
-    with patch("crm.api.views.connection.cursor", side_effect=OperationalError("private database details")):
+    with patch("crm.api.health.connection.cursor", side_effect=OperationalError("private database details")):
         response = api.get("/api/v1/health")
     assert response.status_code == 503
     assert response.json() == {"status": "unavailable", "database": "unavailable"}
@@ -179,6 +179,8 @@ def test_migration_preserves_all_business_records_and_admin(legacy_database):
     for (app, model, pk), expected in before.items():
         actual = migrated.get_model(app, model).objects.filter(pk=pk).values().get()
         actual.pop("workspace_id", None)
+        if model == "client":
+            assert actual.pop("bank_details") == {}
         if model in ("deal", "invoice"):
             assert actual.pop("fx_rate_date") is None
         if model == "invoice":
