@@ -53,6 +53,61 @@ def test_create_calculates_lines_snapshots_and_persists(authenticated_api, user,
     assert authenticated_api.get(f"/api/v1/invoices/{saved.pk}").json() == data
 
 
+def test_bank_details_are_workspace_scoped_and_frozen_in_invoices(authenticated_api, other_user, client_record):
+    seller_bank = {"account_holder": "Acme Studio", "bank_name": "Example Bank", "iban": "DE89370400440532013000", "bic": "COBADEFF"}
+    buyer_bank = {"account_holder": "Client Ltd", "account_number": "12345678", "routing_number": "021000021"}
+    saved = authenticated_api.put("/api/v1/workspace/bank-details", seller_bank, format="json")
+    assert saved.status_code == 200, saved.json()
+    assert saved.json() == seller_bank
+    updated = authenticated_api.patch(f"/api/v1/clients/{client_record.pk}", {"bank_details": buyer_bank}, format="json")
+    assert updated.status_code == 200, updated.json()
+    assert authenticated_api.get(f"/api/v1/clients/{client_record.pk}").json()["bank_details"] == buyer_bank
+    assert "bank_details" not in authenticated_api.get("/api/v1/clients").json()["results"][0]
+
+    created = create(authenticated_api, client_record)
+    assert created.status_code == 201, created.json()
+    assert created.json()["seller_snapshot"]["bank_details"] == seller_bank
+    assert created.json()["buyer_snapshot"]["bank_details"] == buyer_bank
+    invoice_id = created.json()["id"]
+    pdf = authenticated_api.get(f"/api/v1/invoices/{invoice_id}/pdf")
+    assert pdf.status_code == 200
+    pdf_text = "\n".join(page.extract_text() for page in PdfReader(BytesIO(pdf.content)).pages)
+    assert "DE89370400440532013000" in pdf_text and "021000021" in pdf_text
+
+    assert authenticated_api.put("/api/v1/workspace/bank-details", {"bank_name": "New Bank"}, format="json").status_code == 200
+    assert authenticated_api.patch(f"/api/v1/clients/{client_record.pk}", {"bank_details": {}}, format="json").status_code == 200
+    old = authenticated_api.get(f"/api/v1/invoices/{invoice_id}").json()
+    assert old["seller_snapshot"]["bank_details"] == seller_bank
+    assert old["buyer_snapshot"]["bank_details"] == buyer_bank
+
+    outsider = APIClient(enforce_csrf_checks=True)
+    outsider.force_login(other_user)
+    outsider.credentials(HTTP_X_CSRFTOKEN=outsider.get("/api/v1/auth/csrf").json()["csrfToken"])
+    assert outsider.get("/api/v1/workspace/bank-details").json() == {}
+    assert outsider.get(f"/api/v1/clients/{client_record.pk}").status_code == 404
+    assert outsider.patch(f"/api/v1/clients/{client_record.pk}", {"bank_details": buyer_bank}, format="json").status_code == 404
+    assert outsider.get(f"/api/v1/invoices/{invoice_id}").status_code == 404
+
+    colleague = get_user_model().objects.create_user(username="colleague", password="colleague-password-123")
+    membership = colleague.workspace_membership
+    membership.workspace = client_record.workspace
+    membership.save()
+    teammate = APIClient(enforce_csrf_checks=True)
+    teammate.force_login(colleague)
+    assert teammate.get("/api/v1/workspace/bank-details").json() == {"bank_name": "New Bank"}
+    assert teammate.get(f"/api/v1/invoices/{invoice_id}").json()["seller_snapshot"]["bank_details"] == seller_bank
+    assert teammate.put("/api/v1/workspace/bank-details", {"bank_name": "Blocked without CSRF"}, format="json").status_code == 403
+
+
+def test_bank_details_reject_unknown_fields_and_invalid_identifiers(authenticated_api, client_record):
+    assert authenticated_api.put("/api/v1/workspace/bank-details", {"other": "secret"}, format="json").status_code == 400
+    assert authenticated_api.put("/api/v1/workspace/bank-details", {"bic": "bad"}, format="json").status_code == 400
+    assert authenticated_api.patch(f"/api/v1/clients/{client_record.pk}", {"bank_details": {"iban": "invalid"}}, format="json").status_code == 400
+    assert authenticated_api.get("/api/v1/workspace/bank-details").json() == {}
+    client_record.refresh_from_db()
+    assert client_record.bank_details == {}
+
+
 def test_pdf_contains_unicode_totals_and_multiple_pages(authenticated_api, client_record, other_user):
     descriptions = [f"Дизайн послуги {index} — звіт клієнта" for index in range(55)]
     created = create(authenticated_api, client_record, items=[item(description, "1", "10", "20") for description in descriptions])

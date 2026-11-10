@@ -258,7 +258,7 @@ def test_password_change_invalidates_other_sessions_and_checks_strength(api, use
 def test_reset_mail_failure_does_not_disclose_account_or_transport_details(api, user, monkeypatch):
     def fail(*args, **kwargs):
         raise RuntimeError("private SMTP configuration")
-    monkeypatch.setattr("crm.api.views.send_mail", fail)
+    monkeypatch.setattr("crm.auth.views.send_mail", fail)
     response = post(api, "forgot-password", {"email": user.email})
     assert response.status_code == 202
     assert "private" not in response.content.decode()

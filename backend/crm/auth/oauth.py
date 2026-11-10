@@ -11,7 +11,7 @@ from allauth.socialaccount.providers.github import views as github
 from allauth.socialaccount.providers.microsoft import views as microsoft
 
 from .security import recent_auth
-from crm.api.views import PublicAuthView, configured_provider
+from crm.auth.views import PublicAuthView, configured_provider
 
 PROVIDERS = {"google": google, "github": github, "microsoft": microsoft}
 
