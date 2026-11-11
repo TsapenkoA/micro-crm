@@ -18,6 +18,7 @@ crm/
         errors.py
     auth/
         views.py
+        avatar.py
         serializers.py
         security.py
         oauth.py
@@ -70,6 +71,7 @@ All routes start with /api/v1. Business endpoints require a session and workspac
 | /auth/sign-up | POST: username, email, password, password_confirm |
 | /auth/forgot-password, /auth/reset-password | POST: request a reset or submit uid, token and matching passwords |
 | /auth/profile | PATCH: username only |
+| /auth/avatar | GET/POST/DELETE: current user's profile photo |
 | /auth/reporting-currency | PATCH: personal reporting currency (EUR, USD, GBP, PLN, AUD, CAD, CHF or JPY) |
 | /auth/password, /auth/reauthenticate | POST: change password or confirm identity |
 | /auth/providers, /auth/methods | GET: provider configuration and connected methods |
@@ -77,7 +79,9 @@ All routes start with /api/v1. Business endpoints require a session and workspac
 | /auth/oauth/<provider>/start | POST: start provider login or connection |
 | /auth/oauth/<provider>/callback/ | GET: provider callback; trailing slash required |
 | /workspace/counts, /workspace/preview | GET: workspace counts or isolated design-preview data |
-| /workspace/bank-details | GET/PUT: shared seller bank details for future invoices |
+| /workspace/settings | GET: name and members; PATCH: shared workspace name |
+| /workspace/members | POST: workspace owner adds an existing account |
+| /workspace/bank-details | GET/PUT: owner-only seller bank details after recent authentication |
 | /clients | GET/POST: search/paginate or create a client |
 | /clients/<id> | GET/PUT/PATCH/DELETE: client details and changes |
 | /clients/<id>/notes | GET/POST: shared plain-text notes |
@@ -98,7 +102,7 @@ Deals use title, client, amount, currency and an optional timezone-qualified dea
 
 Invoices accept client, currency, optional seller details and items (description, quantity, unit_price, tax_rate). The backend assigns numbers, calculates currency-specific totals and stores buyer/seller snapshots. Workspace bank details are copied into the seller snapshot; client bank details are copied into the buyer snapshot. Both appear in the invoice view and PDF. Later changes to saved bank details do not alter existing snapshots. Only drafts can be edited. Sent/paid transitions preserve snapshots; payment status is manual, with no payment-provider integration. Dashboard revenue comes from paid invoices; deal metrics come from deals. Invoice lists and PDF retain original currencies. Dashboard converts supported currencies into the selected reporting currency.
 
-Bank details are optional. `PUT /workspace/bank-details` replaces the current workspace details; `bank_details` in a client create/update payload replaces that client's details. Accepted fields are `account_holder`, `bank_name`, `iban`, `bic`, `account_number`, `routing_number` and `payment_instructions`. IBAN and BIC receive format checks, not bank-account ownership verification. Any workspace member can edit shared details. Existing invoices retain their original snapshots. Example:
+Bank details are optional. Only the workspace owner can read or replace saved seller details through `/workspace/bank-details`, and both requests require recent authentication. Responses containing saved seller details use `Cache-Control: no-store`. `bank_details` in a client create/update payload replaces that client's payer details. Accepted fields are `account_holder`, `bank_name`, `iban`, `bic`, `account_number`, `routing_number` and `payment_instructions`. IBAN and BIC receive format checks, not bank-account ownership verification. Invoice snapshots and PDFs remain visible to workspace members and include the payment details copied when the invoice was created. Existing invoices retain their original snapshots. Example:
 
 ```json
 {"account_holder":"Example Studio","bank_name":"Example Bank","iban":"DE89370400440532013000","bic":"COBADEFF"}
@@ -119,7 +123,11 @@ Active pipeline uses the latest common rate date, at most four days old. Paid de
 
 ## Workspaces and maintenance
 
-Normal user creation provisions a personal workspace. Each user has one membership; members share their company's records. Public signup and matching email domains never join an existing company. There is no public membership-management API.
+Normal user creation provisions a personal workspace. Each user has one membership; members share their company's records. Public signup and matching email domains never join an existing company. Member changes require an authenticated workspace owner.
+
+The earliest member of an existing workspace becomes its owner when the owner migration runs; new personal workspaces belong to their creator. In Settings, the owner can add an existing account by username after a recent sign-in. The account must be the only member and owner of an empty personal workspace. An account with clients, deals or invoices cannot be moved. This action does not merge business records or create an account, and there is no email invitation or member-removal flow. Any current member can rename the shared workspace. Only its owner can view or edit saved seller bank details. The member directory includes usernames, full names and email addresses of members in the current workspace.
+
+Profile photos are private account data. The avatar endpoint accepts JPEG, PNG or WebP uploads up to 2 MB and 4096 pixels per side, verifies the image, strips its metadata and stores a 256-pixel JPEG in PostgreSQL. Only the signed-in user can fetch or delete their photo. A new avatar URL is returned with account data after upload.
 
 Create an employee using the Django shell, then assign an existing workspace:
 

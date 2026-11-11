@@ -49,7 +49,7 @@ Open http://127.0.0.1:5173. Register at /sign-up or use the optional local admin
 1. Sign in or register a personal workspace. Assign a colleague through the backend management command when company data should be shared.
 2. Open Clients and create a contact. Its details contain shared notes and links.
 3. Open Deals and create a deal for that client. Move it through the board or edit its status in the details panel.
-4. Optionally save your payment details in Settings → Workspace and a client's payer bank details in the client form. Open Invoices, create a draft with line items, then mark it sent or paid. The new invoice keeps a copy of both sets of details for its document view and PDF.
+4. In Settings, update your profile photo or workspace name and review members. The workspace owner can add an existing account with an empty personal workspace and reveal saved payment details after a recent identity check. Add a client's payer bank details in the client form. Open Invoices, create a draft with line items, then mark it sent or paid. The new invoice keeps a copy of both sets of details for its document view and PDF.
 5. Open Dashboard to inspect deal metrics and paid-invoice revenue. Choose USD, EUR, GBP, PLN, AUD, CAD, CHF or JPY as your personal reporting currency; supported original currencies are converted using stored ECB reference rates. The original amounts remain unchanged.
 
 Import ECB rates before using converted analytics, then refresh them daily after publication:
