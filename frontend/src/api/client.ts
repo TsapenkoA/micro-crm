@@ -2,7 +2,7 @@ import type { PreviewData } from '../features/preview/data';
 
 export const reportingCurrencies = ['USD', 'EUR', 'GBP', 'PLN', 'AUD', 'CAD', 'CHF', 'JPY'] as const;
 export type ReportingCurrency = typeof reportingCurrencies[number];
-export type User = { id: number; username: string; email: string; avatar_url?: string | null; reporting_currency?: ReportingCurrency; workspace?: { id: string; name: string } | null };
+export type User = { id: number; username: string; email: string; avatar_url?: string | null; reporting_currency?: ReportingCurrency; workspace?: { id: string; name: string } | null; is_workspace_owner?: boolean };
 export type WorkspaceCounts = { clients: number; deals: number; invoices: number };
 export type WorkspaceSettings = { id: string; name: string; can_manage_members: boolean; members: { id: number; username: string; name: string; email: string }[] };
 export type BankDetails = { account_holder?: string; bank_name?: string; iban?: string; bic?: string; account_number?: string; routing_number?: string; payment_instructions?: string };
@@ -64,8 +64,11 @@ export const auth = {
     csrfToken = session.csrfToken ?? '';
     return session.user;
   },
-  async signup(username: string, email: string, password: string, password_confirm: string) {
-    const session = await request<Session>('/auth/sign-up', { method: 'POST', body: JSON.stringify({ username, email, password, password_confirm }) });
+  signup: (username: string, email: string, password: string, password_confirm: string) =>
+    request<{ message: string }>('/auth/sign-up', { method: 'POST', body: JSON.stringify({ username, email, password, password_confirm }) }),
+  resendVerification: (email: string) => request<{ message: string }>('/auth/resend-verification', { method: 'POST', body: JSON.stringify({ email }) }),
+  async verifyEmail(token: string) {
+    const session = await request<Session>('/auth/verify-email', { method: 'POST', body: JSON.stringify({ token }) });
     csrfToken = session.csrfToken ?? '';
     return session.user;
   },

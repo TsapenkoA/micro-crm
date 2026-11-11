@@ -53,8 +53,8 @@ it('opens Dashboard after a successful OAuth signup or sign-in', async () => {
   expect(screen.queryByText('Accounts are not merged by email.')).not.toBeInTheDocument();
 });
 
-it('validates signup, preserves server field errors and completes a real submission', async () => {
-  const signup = vi.spyOn(auth, 'signup').mockRejectedValueOnce(new ApiError(400, 'Check the form.', { email: ['Unable to create account.'] })).mockResolvedValue(user);
+it('validates signup, preserves server field errors and requests verification', async () => {
+  const signup = vi.spyOn(auth, 'signup').mockRejectedValueOnce(new ApiError(400, 'Check the form.', { email: ['Unable to create account.'] })).mockResolvedValue({ message: 'Check your email for a verification link.' });
   const onLogin = vi.fn();
   render(<AuthScreen path="/sign-up" onLogin={onLogin} />);
   await userEvent.click(screen.getByRole('button', { name: 'Create account' }));
@@ -72,8 +72,29 @@ it('validates signup, preserves server field errors and completes a real submiss
   expect(await screen.findByText('Unable to create account.')).toBeInTheDocument();
   expect(screen.getByLabelText('Email')).toHaveValue(user.email);
   await userEvent.click(screen.getByRole('button', { name: 'Create account' }));
-  expect(onLogin).toHaveBeenCalledWith(user);
+  expect(await screen.findByText('Check your email for a verification link.')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Resend verification email' })).toBeInTheDocument();
+  expect(onLogin).not.toHaveBeenCalled();
   expect(signup).toHaveBeenLastCalledWith('alex', user.email, 'test-password-123', 'test-password-123');
+});
+
+it('verifies a signup link before opening the workspace', async () => {
+  window.history.replaceState(null, '', '/verify-email?token=one-time-token');
+  const verify = vi.spyOn(auth, 'verifyEmail').mockResolvedValue(user);
+  const onLogin = vi.fn();
+  render(<AuthScreen path="/verify-email" onLogin={onLogin} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Verify email' }));
+  expect(verify).toHaveBeenCalledWith('one-time-token');
+  expect(onLogin).toHaveBeenCalledWith(user);
+});
+
+it('resends a verification link without exposing account existence', async () => {
+  const resend = vi.spyOn(auth, 'resendVerification').mockResolvedValue({ message: 'Check your email for a verification link.' });
+  render(<AuthScreen path="/resend-verification" onLogin={vi.fn()} />);
+  await userEvent.type(screen.getByLabelText('Email'), user.email);
+  await userEvent.click(screen.getByRole('button', { name: 'Resend email' }));
+  expect(resend).toHaveBeenCalledWith(user.email);
+  expect(await screen.findByText('Check your email for a verification link.')).toBeInTheDocument();
 });
 
 it('updates an existing technical username from Settings and returns the refreshed account', async () => {
@@ -140,6 +161,15 @@ it('renames the shared workspace and shows its members', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Save workspace name' }));
   await waitFor(() => expect(rename).toHaveBeenCalledWith('Northstar Studio'));
   expect(onUserUpdated).toHaveBeenCalledWith(expect.objectContaining({ workspace: { id: 'workspace', name: 'Northstar Studio' } }));
+});
+
+it('keeps platform checks out of account settings', async () => {
+  render(<AccountSettings user={{ ...user, is_workspace_owner: true }} />);
+  expect(screen.queryByRole('button', { name: 'Operations' })).not.toBeInTheDocument();
+  for (const section of ['Profile', 'Appearance', 'Workspace', 'Security']) {
+    await userEvent.click(screen.getByRole('button', { name: section }));
+    expect(screen.getByRole('button', { name: section })).toHaveAttribute('aria-current', 'page');
+  }
 });
 
 it('lets the workspace owner add an existing account', async () => {

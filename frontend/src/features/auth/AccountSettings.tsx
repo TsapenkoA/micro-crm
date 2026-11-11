@@ -10,6 +10,7 @@ import ProfileAvatarSettings from './ProfileAvatarSettings';
 
 export default function AccountSettings({ user, onUserUpdated }: { user: User; onUserUpdated?: (user: User) => void }) {
   const [tab, setTab] = useState<'Profile' | 'Appearance' | 'Workspace' | 'Security'>('Profile');
+  const sections = ['Profile', 'Appearance', 'Workspace', 'Security'] as const;
   const [username, setUsername] = useState(user.username);
   const [methods, setMethods] = useState<SignInMethods | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -53,7 +54,7 @@ export default function AccountSettings({ user, onUserUpdated }: { user: User; o
   }
 
   return <div className="account-settings-layout">
-    <nav className="account-settings-nav" aria-label="Account settings sections">{(['Profile', 'Appearance', 'Workspace', 'Security'] as const).map(item => <button key={item} className={tab === item ? 'active' : ''} aria-current={tab === item ? 'page' : undefined} onClick={() => setTab(item)}>{item}</button>)}</nav>
+    <nav className="account-settings-nav" aria-label="Account settings sections">{sections.map(item => <button key={item} className={tab === item ? 'active' : ''} aria-current={tab === item ? 'page' : undefined} onClick={() => setTab(item)}>{item}</button>)}</nav>
     <section className="panel account-settings">
       {tab === 'Profile' && <><div className="account-settings-heading"><h2>Profile</h2><p>Choose how you appear to your team.</p></div><div className="account-settings-body"><div className="account-profile-identity"><span className="workspace-user-avatar" aria-hidden="true">{user.avatar_url ? <img src={user.avatar_url} alt="" /> : user.username.slice(0, 2).toUpperCase()}</span><span><strong>{user.username}</strong><small>{user.email || 'No email address'}</small></span></div><form className="auth-form" onSubmit={event => {
         event.preventDefault();
