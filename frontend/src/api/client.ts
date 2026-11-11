@@ -2,8 +2,9 @@ import type { PreviewData } from '../features/preview/data';
 
 export const reportingCurrencies = ['USD', 'EUR', 'GBP', 'PLN', 'AUD', 'CAD', 'CHF', 'JPY'] as const;
 export type ReportingCurrency = typeof reportingCurrencies[number];
-export type User = { id: number; username: string; email: string; reporting_currency?: ReportingCurrency; workspace?: { id: string; name: string } | null };
+export type User = { id: number; username: string; email: string; avatar_url?: string | null; reporting_currency?: ReportingCurrency; workspace?: { id: string; name: string } | null };
 export type WorkspaceCounts = { clients: number; deals: number; invoices: number };
+export type WorkspaceSettings = { id: string; name: string; can_manage_members: boolean; members: { id: number; username: string; name: string; email: string }[] };
 export type BankDetails = { account_holder?: string; bank_name?: string; iban?: string; bic?: string; account_number?: string; routing_number?: string; payment_instructions?: string };
 type Session = { user: User; csrfToken?: string };
 
@@ -25,7 +26,7 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
       ...options,
       credentials: 'same-origin',
       headers: {
-        'Content-Type': 'application/json',
+        ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
         ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
         ...options.headers,
       },
@@ -78,6 +79,11 @@ export const auth = {
   providers: () => request<{ providers: Provider[] }>('/auth/providers'),
   methods: () => request<SignInMethods>('/auth/methods'),
   updateProfile: (username: string) => request<{ user: User }>('/auth/profile', { method: 'PATCH', body: JSON.stringify({ username }) }),
+  uploadAvatar: (file: File) => {
+    const form = new FormData(); form.append('avatar', file);
+    return request<{ user: User }>('/auth/avatar', { method: 'POST', body: form });
+  },
+  removeAvatar: () => request<{ user: User }>('/auth/avatar', { method: 'DELETE' }),
   updateReportingCurrency: (reporting_currency: ReportingCurrency) => request<{ reporting_currency: ReportingCurrency }>('/auth/reporting-currency', { method: 'PATCH', body: JSON.stringify({ reporting_currency }) }),
   startProvider: (provider: string, process: 'login' | 'connect' = 'login') => request<{ url: string }>(`/auth/oauth/${provider}/start`, { method: 'POST', body: JSON.stringify({ process }) }),
   reauthenticate: (password: string) => request('/auth/reauthenticate', { method: 'POST', body: JSON.stringify({ password }) }),
@@ -93,6 +99,9 @@ export const auth = {
 
 export const workspace = {
   counts: (signal?: AbortSignal) => request<WorkspaceCounts>('/workspace/counts', { signal }),
+  settings: () => request<WorkspaceSettings>('/workspace/settings'),
+  rename: (name: string) => request<Pick<WorkspaceSettings, 'id' | 'name'>>('/workspace/settings', { method: 'PATCH', body: JSON.stringify({ name }) }),
+  addMember: (username: string) => request<{ member: WorkspaceSettings['members'][number] }>('/workspace/members', { method: 'POST', body: JSON.stringify({ username }) }),
   bankDetails: () => request<BankDetails>('/workspace/bank-details'),
   saveBankDetails: (details: BankDetails) => request<BankDetails>('/workspace/bank-details', { method: 'PUT', body: JSON.stringify(details) }),
   preview: (signal?: AbortSignal) => request<PreviewData>('/workspace/preview', { signal }),
