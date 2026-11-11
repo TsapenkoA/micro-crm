@@ -8,11 +8,12 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import IntegrityError, OperationalError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
+from django.utils import timezone
 
 import pytest
 from rest_framework.test import APIClient
 
-from crm.models import Client, ClientNote, Deal, Invoice, PreviewDataset, Workspace, WorkspaceMembership
+from crm.models import BackupCheck, Client, ClientNote, Deal, FxRate, FxSyncRun, Invoice, PreviewDataset, Workspace, WorkspaceMembership
 
 pytestmark = pytest.mark.django_db
 
@@ -21,6 +22,39 @@ def test_database_enforces_one_workspace_per_user(user):
     workspace = Workspace.objects.create(name="Another company")
     with pytest.raises(IntegrityError), transaction.atomic():
         WorkspaceMembership.objects.bulk_create([WorkspaceMembership(user=user, workspace=workspace)])
+
+
+def test_operations_status_is_visible_only_to_workspace_owner(api, user, other_user, settings, tmp_path):
+    url = "/api/v1/workspace/operations"
+    settings.BACKUP_DIRECTORY = ""
+    assert api.get(url).status_code == 403
+    api.force_login(user)
+    initial = api.get(url)
+    assert initial.status_code == 200
+    assert initial.json()["exchange_rates"]["healthy"] is False
+    assert initial.json()["backup"]["last_restore_verified_at"] is None
+    assert initial.json()["backup"]["last_stored_archive_at"] is None
+    assert initial["Cache-Control"] == "no-store"
+
+    today = timezone.localdate()
+    from crm.services.fx import ECB_CURRENCIES
+    for currency in ECB_CURRENCIES:
+        FxRate.objects.create(date=today, currency=currency, per_eur=Decimal("1.20"))
+    FxSyncRun.objects.create(status="success", finished_at=timezone.now(), latest_rate_date=today)
+    BackupCheck.objects.create(archive_bytes=100)
+    archive = tmp_path / "microflow-test.dump"
+    archive.write_bytes(b"test archive")
+    settings.BACKUP_DIRECTORY = str(tmp_path)
+    data = api.get(url).json()
+    assert data["exchange_rates"]["healthy"] is True
+    assert data["exchange_rates"]["latest_complete_date"] == today.isoformat()
+    assert data["backup"]["last_restore_verified_at"] is not None
+    assert data["backup"]["last_stored_archive_at"] is not None
+    assert str(tmp_path) not in str(data)
+
+    WorkspaceMembership.objects.filter(user=other_user).update(workspace=user.workspace_membership.workspace)
+    api.force_login(other_user)
+    assert api.get(url).status_code == 403
 
 
 def test_command_assigns_employee_without_changing_other_members(user, other_user):
