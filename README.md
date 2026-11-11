@@ -42,11 +42,11 @@ npm.cmd ci
 npm.cmd run dev
 ```
 
-Open http://127.0.0.1:5173. Register at /sign-up or use the optional local administrator account. Public registration creates an independent workspace. See the backend README to assign colleagues to a shared workspace.
+Open http://127.0.0.1:5173. Register at /sign-up or use the optional local administrator account. Public registration emails a verification link; the account and independent workspace are created only after the link is confirmed. Local email appears in the backend terminal unless SMTP is configured. See the backend README to assign colleagues to a shared workspace.
 
 ## First use
 
-1. Sign in or register a personal workspace. Assign a colleague through the backend management command when company data should be shared.
+1. Sign in or register and verify your email to create a personal workspace. Assign a colleague through the backend management command when company data should be shared.
 2. Open Clients and create a contact. Its details contain shared notes and links.
 3. Open Deals and create a deal for that client. Move it through the board or edit its status in the details panel.
 4. In Settings, update your profile photo or workspace name and review members. The workspace owner can add an existing account with an empty personal workspace and reveal saved payment details after a recent identity check. Add a client's payer bank details in the client form. Open Invoices, create a draft with line items, then mark it sent or paid. The new invoice keeps a copy of both sets of details for its document view and PDF.

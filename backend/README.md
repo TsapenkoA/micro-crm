@@ -18,6 +18,7 @@ crm/
         errors.py
     auth/
         views.py
+        verification.py
         avatar.py
         serializers.py
         security.py
@@ -67,8 +68,11 @@ All routes start with /api/v1. Business endpoints require a session and workspac
 | --- | --- |
 | /health | GET: database availability; 503 when unavailable |
 | /auth/csrf, /auth/me | GET: CSRF token or current account/workspace |
+| /workspace/operations | GET: owner-only exchange-rate, restore-test and email configuration status; no credentials or archive paths |
 | /auth/login, /auth/logout | POST: establish or end a session |
-| /auth/sign-up | POST: username, email, password, password_confirm |
+| /auth/sign-up | POST: username, email, password, password_confirm; returns 202 and emails a verification link |
+| /auth/resend-verification | POST: email; rotates the link for a pending registration, with a neutral 202 response |
+| /auth/verify-email | POST: token; creates the account and workspace, then opens a session |
 | /auth/forgot-password, /auth/reset-password | POST: request a reset or submit uid, token and matching passwords |
 | /auth/profile | PATCH: username only |
 | /auth/avatar | GET/POST/DELETE: current user's profile photo |
@@ -115,15 +119,20 @@ Bank details are optional. Only the workspace owner can read or replace saved se
 ```powershell
 uv run python manage.py sync_fx_rates --since 2025-12-01 --until 2026-11-09
 uv run python manage.py snapshot_fx_rates
+uv run python manage.py check_fx_rates
 ```
 
-Omit `--until` for current imports and schedule both commands daily after ECB publication in the deployment environment. Repeated imports leave identical stored rates alone and refuse changed historical values. Back up the database before migrations or historical backfill. `snapshot_fx_rates` only fills missing rate dates for existing paid records, without changing their amounts.
+For routine updates, schedule `uv run python manage.py refresh_fx_rates` daily after ECB publication in the deployment environment. It runs import, paid-record backfill and health check in sequence. A failed step exits nonzero. Set `FX_ALERT_EMAIL` and configure SMTP to send a generic failure notice to the operator; the job log keeps the diagnostic details. The local console email backend does not deliver alerts. `sync_fx_rates` records each attempt, its result and the latest imported date in `FxSyncRun`. `check_fx_rates` also exits nonzero when the latest attempt failed, the last successful run is over two days old, a complete seven-currency rate date is over four days old, or a paid record has no fixed rate date. Holidays may require operator review of the freshness threshold. The command does not invent missing rates or change document amounts. The application does not register a Windows task or configure an external scheduler.
+
+Omit `--until` for current imports. Repeated imports leave identical stored rates alone and refuse changed historical values. For an old paid record with missing rates, import the relevant historical date range and run `snapshot_fx_rates`, then `check_fx_rates`. A rate that the ECB does not publish for a required date must be investigated; do not edit an existing stored rate. Back up the database before migrations or historical backfill. `snapshot_fx_rates` only fills missing rate dates for existing paid records, without changing their amounts.
+
+For PostgreSQL backups, create a restricted directory outside the repository and run `uv run python manage.py backup_database --output <absolute-new-archive-path> --pg-bin <PostgreSQL-bin-directory>`. The command refuses existing archive paths and locations inside the project, uses the configured database credentials without passing the password as an argument, and reads the entire archive with `pg_restore`. Add `--verify-restore` to restore into a uniquely named temporary database, compare counts for core business tables and remove only that temporary database. A successful restore test records its time and archive size in `BackupCheck`, without storing the archive path or content. This requires a PostgreSQL role with `CREATEDB`. Pass it as `--maintenance-user <role>` and set `PGMAINTENANCEPASSWORD` only in the verification process environment; do not store a privileged password in the project or the application service environment. The temporary database belongs to the application role so restore uses its ordinary credentials. The command never restores over the live database. Set `BACKUP_DIRECTORY` to the restricted directory to make the latest `microflow-*.dump` archive timestamp available to the owner-only API; the API does not expose its path. Keep an additional copy in secure off-device storage and periodically test restore. Schedule the backup separately from the FX job. A local archive was restored and its record counts matched on November 11, 2026; that temporary database and archive were then removed. A new archive was stored in a restricted local profile directory and read successfully. No persistent backup schedule or off-device storage is configured.
 
 Active pipeline uses the latest common rate date, at most four days old. Paid deals and invoices use a fixed available rate date at or before their payment date. A later import does not replace a fixed date or an existing rate. The Dashboard response includes the rate source, dates and missing currencies in `fx`; an affected KPI or revenue period is `null` if a required rate is missing. Reporting preference is saved per workspace member and exposed in `/auth/me`. Original invoice amounts and currency never change during reporting conversion. The Invoices currency selector filters both the original-currency summary and the table. Deals displays currency totals when a currency filter is selected; the all-currencies view shows deal counts and original amounts without combining currencies.
 
 ## Workspaces and maintenance
 
-Normal user creation provisions a personal workspace. Each user has one membership; members share their company's records. Public signup and matching email domains never join an existing company. Member changes require an authenticated workspace owner.
+Normal user creation provisions a personal workspace. Each user has one membership; members share their company's records. Public signup keeps a temporary password hash and one-time token digest, but creates no user or workspace until email verification. The link expires after 24 hours; requesting a new link invalidates the old one. Existing accounts remain usable without a migration of their email status. Public signup and matching email domains never join an existing company. Member changes require an authenticated workspace owner.
 
 The earliest member of an existing workspace becomes its owner when the owner migration runs; new personal workspaces belong to their creator. In Settings, the owner can add an existing account by username after a recent sign-in. The account must be the only member and owner of an empty personal workspace. An account with clients, deals or invoices cannot be moved. This action does not merge business records or create an account, and there is no email invitation or member-removal flow. Any current member can rename the shared workspace. Only its owner can view or edit saved seller bank details. The member directory includes usernames, full names and email addresses of members in the current workspace.
 
@@ -149,7 +158,7 @@ When upgrading legacy personal-ownership data, stop application processes, take 
 
 ## Authentication configuration
 
-Passwords use Django hashing/validation. Reset tokens expire after one hour and cannot be reused; reset invalidates old sessions. Forgot-password responses remain neutral. Local email is printed in the backend terminal.
+Passwords use Django hashing/validation. Verification links expire after 24 hours and cannot be reused; pending registrations store no plaintext passwords or tokens. Reset tokens expire after one hour and cannot be reused; reset invalidates old sessions. Signup and resend responses do not reveal whether an email is already registered. Local email is printed in the backend terminal.
 
 Set provider credentials in the root .env and restart Django. Missing credentials disable the provider. Register Web OAuth applications with these exact local callback URLs:
 
@@ -159,8 +168,8 @@ Set provider credentials in the root .env and restart Django. Missing credential
 | GitHub | GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET | http://127.0.0.1:5173/api/v1/auth/oauth/github/callback/ |
 | Microsoft | MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET, MICROSOFT_TENANT | http://127.0.0.1:5173/api/v1/auth/oauth/microsoft/callback/ |
 
-Microsoft uses the common tenant by default; registration must allow the corresponding account types. Google testing mode requires permitted test users. Provider identities use state/PKCE and are never automatically merged by email. Existing users must sign in and explicitly connect a provider. Connection/disconnection requires authentication within five minutes or password confirmation and cannot remove the final usable method. Provider tokens are not retained.
+Microsoft uses the common tenant by default; registration must allow the corresponding account types. Google testing mode requires permitted test users. New provider accounts require a verified email from the provider. Provider identities use state/PKCE and are never automatically merged by email. Existing users must sign in and explicitly connect a provider. Connection/disconnection requires authentication within five minutes or password confirmation and cannot remove the final usable method. Provider tokens are not retained.
 
-PostgreSQL-backed rate limits cover login, signup, reset and provider/security actions. Periodically run clear_auth_attempts to remove old counters. Proxy trust and network limits depend on deployment.
+PostgreSQL-backed rate limits cover login, signup, verification/resend, reset and provider/security actions. Periodically run `clear_auth_attempts` and `clear_expired_signups` to remove old counters and unverified requests. Proxy trust and network limits depend on deployment.
 
-Production uses config.settings.production, an HTTPS FRONTEND_URL, SMTP EMAIL_BACKEND and EMAIL_HOST, EMAIL_PORT, EMAIL_HOST_USER, EMAIL_HOST_PASSWORD, EMAIL_USE_TLS and DEFAULT_FROM_EMAIL. It enables HTTPS redirects and Secure cookies. Hosting, backups, live provider consent and SMTP delivery require environment-specific verification.
+Production uses config.settings.production, an HTTPS FRONTEND_URL, authenticated SMTP EMAIL_BACKEND and EMAIL_HOST, EMAIL_PORT, EMAIL_HOST_USER, EMAIL_HOST_PASSWORD, EMAIL_USE_TLS and DEFAULT_FROM_EMAIL. Startup rejects missing SMTP credentials or the local placeholder sender. After configuring SMTP, run `uv run python manage.py check_email_delivery --to operator@example.com` and confirm the message arrives in that inbox. This command refuses the console email backend; successful submission alone does not prove delivery. Production enables HTTPS redirects and Secure cookies. Hosting, backups, live provider consent and SMTP delivery require environment-specific verification.
