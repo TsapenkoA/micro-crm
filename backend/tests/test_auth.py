@@ -1,6 +1,6 @@
 import datetime
 from concurrent.futures import ThreadPoolExecutor
-from io import StringIO
+from io import BytesIO, StringIO
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
@@ -8,11 +8,13 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.core import mail
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.db import close_old_connections, connections
 from django.utils import timezone
 
 import pytest
+from PIL import Image
 from allauth.account.models import EmailAddress
 from allauth.socialaccount.models import SocialAccount, SocialLogin
 from rest_framework.test import APIClient
@@ -34,6 +36,7 @@ def test_login_me_logout_and_csrf_rotation(api, user):
     assert response.status_code == 200
     assert response.json()["user"] == {
         "id": user.pk, "username": user.username, "email": user.email,
+        "avatar_url": None,
         "reporting_currency": "USD",
         "workspace": {"id": str(user.workspace_membership.workspace_id), "name": user.workspace_membership.workspace.name},
     }
@@ -437,3 +440,33 @@ def test_google_email_collision_preserves_existing_company_until_explicit_connec
     assert get_user_model().objects.count() == 2
     assert Client.objects.filter(pk=client_record.pk).values().get() == before_client
     assert list(WorkspaceMembership.objects.order_by("pk").values()) == before_memberships
+
+
+def test_profile_avatar_is_private_validated_and_removable(api, user, other_user):
+    path = "/api/v1/auth/avatar"
+    image = BytesIO()
+    Image.new("RGB", (20, 20), "navy").save(image, format="PNG")
+    upload = SimpleUploadedFile("avatar.png", image.getvalue(), content_type="image/png")
+    assert api.get(path).status_code == 403
+    api.force_login(user)
+    assert api.get(path).status_code == 404
+    assert api.post(path, {"avatar": upload}, format="multipart").status_code == 403
+    token = api.get("/api/v1/auth/csrf").json()["csrfToken"]
+    upload.seek(0)
+    response = api.post(path, {"avatar": upload}, format="multipart", HTTP_X_CSRFTOKEN=token)
+    assert response.status_code == 200
+    assert response.json()["user"]["avatar_url"].startswith(path)
+    image_response = api.get(path)
+    assert image_response.status_code == 200
+    assert image_response["Content-Type"] == "image/jpeg"
+    assert image_response["Cache-Control"] == "private, no-store"
+    with Image.open(BytesIO(image_response.content)) as stored:
+        assert stored.size == (20, 20)
+    invalid = SimpleUploadedFile("bad.png", b"<script>alert(1)</script>", content_type="image/png")
+    assert api.post(path, {"avatar": invalid}, format="multipart", HTTP_X_CSRFTOKEN=token).status_code == 400
+
+    other = APIClient()
+    other.force_login(other_user)
+    assert other.get(path).status_code == 404
+    assert api.delete(path, HTTP_X_CSRFTOKEN=token).json()["user"]["avatar_url"] is None
+    assert api.get(path).status_code == 404

@@ -2,6 +2,7 @@ from django.urls import path
 
 from crm.api.health import health
 from crm.auth import views as auth_views
+from crm.auth.avatar import AvatarView
 from crm.workspaces import views as workspace_views
 from crm.clients import views as client_views
 from crm.deals import views as deal_views
@@ -18,9 +19,12 @@ urlpatterns = [
     path("api/v1/auth/logout", auth_views.logout),
     path("api/v1/auth/me", auth_views.me),
     path("api/v1/workspace/counts", workspace_views.workspace_counts),
+    path("api/v1/workspace/settings", workspace_views.WorkspaceSettings.as_view()),
+    path("api/v1/workspace/members", workspace_views.WorkspaceMembers.as_view()),
     path("api/v1/workspace/bank-details", workspace_views.WorkspaceBankDetails.as_view()),
     path("api/v1/workspace/preview", workspace_views.preview_dataset),
     path("api/v1/auth/profile", auth_views.ProfileView.as_view()),
+    path("api/v1/auth/avatar", AvatarView.as_view()),
     path("api/v1/auth/reporting-currency", auth_views.ReportingCurrencyView.as_view()),
     path("api/v1/auth/sign-up", auth_views.SignupView.as_view()),
     path("api/v1/auth/forgot-password", auth_views.ForgotPasswordView.as_view()),

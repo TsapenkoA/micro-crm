@@ -21,7 +21,7 @@ from rest_framework.views import APIView
 from crm.api.permissions import IsWorkspaceMember
 from crm.auth.security import AuthThrottle, email_in_use, email_lock, email_user, recent_auth
 from crm.auth.serializers import LoginSerializer, SignupSerializer, EmailSerializer, ResetSerializer, UsernameSerializer, NewPasswordSerializer, check_password
-from crm.models import Workspace, WorkspaceMembership
+from crm.models import UserAvatar, Workspace, WorkspaceMembership
 from crm.services.fx import ECB_CURRENCIES
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,9 @@ logger = logging.getLogger(__name__)
 def user_data(user):
     membership = WorkspaceMembership.objects.select_related("workspace").filter(user=user).first()
     workspace = {"id": str(membership.workspace_id), "name": membership.workspace.name} if membership else None
-    return {"id": user.pk, "username": user.username, "email": user.email, "workspace": workspace, "reporting_currency": membership.reporting_currency if membership else "USD"}
+    avatar_updated = UserAvatar.objects.filter(user=user).values_list("updated_at", flat=True).first()
+    avatar_url = f"/api/v1/auth/avatar?v={avatar_updated.timestamp()}" if avatar_updated else None
+    return {"id": user.pk, "username": user.username, "email": user.email, "workspace": workspace, "reporting_currency": membership.reporting_currency if membership else "USD", "avatar_url": avatar_url}
 
 
 @api_view(["GET"])
