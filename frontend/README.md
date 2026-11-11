@@ -21,7 +21,7 @@ npm.cmd run build
 
 Vite runs at http://127.0.0.1:5173 and proxies /api to Django at http://127.0.0.1:8000. The build includes TypeScript checking; npm.cmd run typecheck runs it separately. Django does not serve the frontend build.
 
-Account routes are /login, /sign-up, /forgot-password, /reset-password and /oauth-result. Workspace sections use /#/clients, /#/deals, /#/invoices, /#/dashboard and /#/settings. System, light and dark themes are available in account settings. The selected section survives reload.
+Account routes are /login, /sign-up, /verify-email, /resend-verification, /forgot-password, /reset-password and /oauth-result. Password registration shows a neutral message and waits for the user to confirm the emailed link before opening the workspace. The verification page requires a button click so email link scanners do not consume the token on page load. Workspace sections use /#/clients, /#/deals, /#/invoices, /#/dashboard and /#/settings. System, light and dark themes are available in account settings. The selected section survives reload.
 
 Business pages use real workspace data. Forms preserve rejected drafts, wait for server confirmation and refresh saved records. Deal changes send the observed version and surface stale-edit conflicts. Invoice amounts and analytics come from the backend; PDF download and browser print are available for live invoices.
 
