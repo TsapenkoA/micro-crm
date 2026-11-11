@@ -134,7 +134,7 @@ function Application() {
           </button>)}
         </nav>
         <div className="sidebar-bottom"><div className="workspace-sidebar-note"><span aria-hidden="true">✧</span><strong>Your workspace, simplified.</strong><p>Less admin. More room for good work.</p></div>
-          <div className="account-menu"><button className="workspace-user" onClick={() => navigate('Settings')}><span className="workspace-user-avatar" aria-hidden="true">{user.username.slice(0, 2).toUpperCase()}</span><span><strong>{user.username}</strong><small>{user.email || 'Your account'}</small></span><span className="workspace-user-arrow" aria-hidden="true">→</span></button></div></div>
+          <div className="account-menu"><button className="workspace-user" onClick={() => navigate('Settings')}><span className="workspace-user-avatar" aria-hidden="true">{user.avatar_url ? <img src={user.avatar_url} alt="" /> : user.username.slice(0, 2).toUpperCase()}</span><span><strong>{user.username}</strong><small>{user.email || 'Your account'}</small></span><span className="workspace-user-arrow" aria-hidden="true">→</span></button></div></div>
       </div>
     </aside>
     <main id="workspace-content" tabIndex={-1} className={`workspace-main ${page === 'Deals' ? 'deals-workspace' : ''}`}>

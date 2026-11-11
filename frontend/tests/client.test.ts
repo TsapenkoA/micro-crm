@@ -56,3 +56,13 @@ it('distinguishes expired sessions from CSRF denial and reports rate limits', as
     await expect(request('/auth/providers')).rejects.toMatchObject({ status: 429, message: expect.stringContaining('Too many attempts') });
   } finally { window.removeEventListener('session-expired', expired); }
 });
+
+it('uploads an avatar as multipart data with session credentials', async () => {
+  const fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ user: { id: 1, username: 'alex', email: '' }, csrfToken: 'upload' }))));
+  vi.stubGlobal('fetch', fetch);
+  await auth.uploadAvatar(new File(['photo'], 'avatar.png', { type: 'image/png' }));
+  const options = fetch.mock.lastCall?.[1];
+  expect(options.body).toBeInstanceOf(FormData);
+  expect(options.headers).not.toHaveProperty('Content-Type');
+  expect(options.credentials).toBe('same-origin');
+});
