@@ -101,6 +101,70 @@ def test_workspace_counts_are_private_and_include_invoices(api, user, other_user
     assert other.get("/api/v1/workspace/counts").json() == {"clients": 1, "deals": 0, "invoices": 0}
 
 
+def test_workspace_settings_rename_is_shared_and_isolated(api, user, other_user):
+    path = "/api/v1/workspace/settings"
+    workspace = user.workspace_membership.workspace
+    foreign = other_user.workspace_membership.workspace
+    assert api.get(path).status_code == 403
+
+    api.force_login(user)
+    assert api.get(path).json()["members"] == [{"id": user.pk, "username": user.username, "name": "", "email": user.email}]
+    assert api.patch(path, {"name": "New name"}, format="json").status_code == 403
+    token = api.get("/api/v1/auth/csrf").json()["csrfToken"]
+    assert api.patch(path, {"name": "  Northstar Studio  "}, format="json", HTTP_X_CSRFTOKEN=token).json()["name"] == "Northstar Studio"
+    for payload in ({"name": " "}, {"name": "x" * 201}, {"name": "Valid", "workspace_id": str(foreign.pk)}):
+        assert api.patch(path, payload, format="json", HTTP_X_CSRFTOKEN=token).status_code == 400
+    workspace.refresh_from_db()
+    assert workspace.name == "Northstar Studio"
+    foreign.refresh_from_db()
+    assert foreign.name != workspace.name
+
+    colleague = other_user
+    call_command("assign_workspace", colleague.username, str(workspace.pk), stdout=StringIO())
+    same = APIClient()
+    same.force_login(colleague)
+    assert same.get(path).json()["name"] == "Northstar Studio"
+    assert {member["username"] for member in same.get(path).json()["members"]} == {user.username, colleague.username}
+
+
+def test_only_owner_can_add_an_existing_account_with_an_empty_personal_workspace(api, user, other_user):
+    path = "/api/v1/workspace/members"
+    target = user.workspace_membership.workspace
+    source = other_user.workspace_membership.workspace
+    assert target.owner_id == user.pk
+    assert source.owner_id == other_user.pk
+    assert api.post(path, {"username": other_user.username}, format="json").status_code == 403
+
+    csrf = api.get("/api/v1/auth/csrf").json()["csrfToken"]
+    login = api.post("/api/v1/auth/login", {"username": user.username, "password": "test-password-123"}, format="json", HTTP_X_CSRFTOKEN=csrf)
+    assert login.status_code == 200
+    token = login.json()["csrfToken"]
+    assert api.post(path, {"username": other_user.username}, format="json").status_code == 403
+    assert api.post(path, {"username": "unknown"}, format="json", HTTP_X_CSRFTOKEN=token).status_code == 409
+    assert api.post(path, {"username": other_user.username, "workspace_id": str(target.pk)}, format="json", HTTP_X_CSRFTOKEN=token).status_code == 400
+    response = api.post(path, {"username": other_user.username}, format="json", HTTP_X_CSRFTOKEN=token)
+    assert response.status_code == 201
+    assert response.json()["member"] == {"id": other_user.pk, "username": other_user.username, "name": "", "email": other_user.email}
+    assert WorkspaceMembership.objects.get(user=other_user).workspace_id == target.pk
+    source.refresh_from_db()
+    assert source.owner_id is None
+
+    colleague = APIClient(enforce_csrf_checks=True)
+    colleague_csrf = colleague.get("/api/v1/auth/csrf").json()["csrfToken"]
+    colleague_token = colleague.post("/api/v1/auth/login", {"username": other_user.username, "password": "other-password-123"}, format="json", HTTP_X_CSRFTOKEN=colleague_csrf).json()["csrfToken"]
+    assert colleague.get("/api/v1/workspace/settings").json()["can_manage_members"] is False
+    assert colleague.post(path, {"username": user.username}, format="json", HTTP_X_CSRFTOKEN=colleague_token).status_code == 403
+
+
+def test_member_with_business_records_cannot_be_moved(api, user, other_user):
+    Client.objects.create(workspace=other_user.workspace_membership.workspace, created_by=other_user, name="Existing work")
+    csrf = api.get("/api/v1/auth/csrf").json()["csrfToken"]
+    token = api.post("/api/v1/auth/login", {"username": user.username, "password": "test-password-123"}, format="json", HTTP_X_CSRFTOKEN=csrf).json()["csrfToken"]
+    response = api.post("/api/v1/workspace/members", {"username": other_user.username}, format="json", HTTP_X_CSRFTOKEN=token)
+    assert response.status_code == 409
+    assert WorkspaceMembership.objects.get(user=other_user).workspace_id == other_user.workspace_membership.workspace_id
+
+
 def test_preview_dataset_requires_membership_and_stays_with_its_workspace(api, user, other_user):
     own_payload = {"workspaceName": "Own preview", "clients": []}
     foreign_payload = {"workspaceName": "Other preview", "clients": []}
@@ -193,6 +257,7 @@ def test_migration_preserves_all_business_records_and_admin(legacy_database):
         assert actual == expected
     Membership = migrated.get_model("accounts", "WorkspaceMembership")
     workspace_id = Membership.objects.get(user_id=admin.pk).workspace_id
+    assert migrated.get_model("accounts", "Workspace").objects.get(pk=workspace_id).owner_id == admin.pk
     assert Membership.objects.get(user_id=other.pk).workspace_id != workspace_id
     assert migrated.get_model("clients", "Client").objects.get(pk=client.pk).workspace_id == workspace_id
     assert migrated.get_model("deals", "Deal").objects.get(pk=deal.pk).workspace_id == workspace_id

@@ -59,6 +59,7 @@ def test_bank_details_are_workspace_scoped_and_frozen_in_invoices(authenticated_
     saved = authenticated_api.put("/api/v1/workspace/bank-details", seller_bank, format="json")
     assert saved.status_code == 200, saved.json()
     assert saved.json() == seller_bank
+    assert saved["Cache-Control"] == "no-store"
     updated = authenticated_api.patch(f"/api/v1/clients/{client_record.pk}", {"bank_details": buyer_bank}, format="json")
     assert updated.status_code == 200, updated.json()
     assert authenticated_api.get(f"/api/v1/clients/{client_record.pk}").json()["bank_details"] == buyer_bank
@@ -94,9 +95,28 @@ def test_bank_details_are_workspace_scoped_and_frozen_in_invoices(authenticated_
     membership.save()
     teammate = APIClient(enforce_csrf_checks=True)
     teammate.force_login(colleague)
-    assert teammate.get("/api/v1/workspace/bank-details").json() == {"bank_name": "New Bank"}
+    assert teammate.get("/api/v1/workspace/bank-details").status_code == 403
     assert teammate.get(f"/api/v1/invoices/{invoice_id}").json()["seller_snapshot"]["bank_details"] == seller_bank
     assert teammate.put("/api/v1/workspace/bank-details", {"bank_name": "Blocked without CSRF"}, format="json").status_code == 403
+    token = teammate.get("/api/v1/auth/csrf").json()["csrfToken"]
+    assert teammate.put("/api/v1/workspace/bank-details", {"bank_name": "Blocked"}, format="json", HTTP_X_CSRFTOKEN=token).status_code == 403
+    owner_details = authenticated_api.get("/api/v1/workspace/bank-details")
+    assert owner_details["Cache-Control"] == "no-store"
+    assert owner_details.json() == {"bank_name": "New Bank"}
+
+
+def test_saved_payment_details_require_recent_owner_authentication(authenticated_api, user):
+    path = "/api/v1/workspace/bank-details"
+    assert authenticated_api.put(path, {"bank_name": "Private Bank"}, format="json").status_code == 200
+    session = authenticated_api.session
+    session["auth_time"] = 0
+    session.save()
+
+    assert authenticated_api.get(path).status_code == 403
+    assert authenticated_api.put(path, {"bank_name": "Changed Bank"}, format="json").status_code == 403
+    workspace = user.workspace_membership.workspace
+    workspace.refresh_from_db()
+    assert workspace.bank_details == {"bank_name": "Private Bank"}
 
 
 def test_bank_details_reject_unknown_fields_and_invalid_identifiers(authenticated_api, client_record):

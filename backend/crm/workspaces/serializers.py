@@ -2,6 +2,10 @@ import re
 from rest_framework import serializers
 
 
+class WorkspaceNameSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=200, allow_blank=False, trim_whitespace=True)
+
+
 class BankDetailsSerializer(serializers.Serializer):
     account_holder = serializers.CharField(max_length=200, required=False, allow_blank=True, trim_whitespace=True)
     bank_name = serializers.CharField(max_length=200, required=False, allow_blank=True, trim_whitespace=True)
