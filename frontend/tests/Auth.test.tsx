@@ -12,6 +12,7 @@ const providers = [{ id: 'google', name: 'Google', configured: false }, { id: 'g
 beforeEach(() => {
   vi.spyOn(auth, 'providers').mockResolvedValue({ providers });
   vi.spyOn(auth, 'methods').mockResolvedValue({ password: true, recent_auth: true, providers: [] });
+  vi.spyOn(workspace, 'settings').mockResolvedValue({ id: 'workspace', name: 'Example Studio', can_manage_members: true, members: [{ id: 1, username: 'alex', name: '', email: user.email }] });
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -94,11 +95,78 @@ it('saves workspace payment details for new invoices', async () => {
   const save = vi.spyOn(workspace, 'saveBankDetails').mockImplementation(async value => value);
   render(<AccountSettings user={user} />);
   await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+  expect(await screen.findByRole('button', { name: 'Reveal payment details' })).toBeInTheDocument();
+  expect(load).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole('button', { name: 'Reveal payment details' }));
   expect(await screen.findByDisplayValue('Example Bank')).toBeInTheDocument();
   await userEvent.type(screen.getByLabelText('IBAN'), 'DE89370400440532013000');
   await userEvent.click(screen.getByRole('button', { name: 'Save payment details' }));
   await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ bank_name: 'Example Bank', iban: 'DE89370400440532013000' })));
   expect(load).toHaveBeenCalledTimes(1);
+  await userEvent.click(screen.getByRole('button', { name: 'Hide details' }));
+  expect(screen.queryByDisplayValue('Example Bank')).not.toBeInTheDocument();
+});
+
+it('asks the owner to confirm identity before revealing payment details', async () => {
+  const load = vi.spyOn(workspace, 'bankDetails').mockRejectedValue(new ApiError(403, 'Forbidden'));
+  render(<AccountSettings user={user} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Reveal payment details' }));
+  expect(await screen.findByText('Confirm your identity in Security, then return to reveal payment details.')).toBeInTheDocument();
+  expect(load).toHaveBeenCalledTimes(1);
+  expect(screen.queryByLabelText('IBAN')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Confirm identity in Security' }));
+  expect(screen.getByRole('heading', { name: 'Password & security' })).toBeInTheDocument();
+});
+
+it('does not request or show bank details to a workspace member', async () => {
+  vi.mocked(workspace.settings).mockResolvedValue({ id: 'workspace', name: 'Example Studio', can_manage_members: false, members: [{ id: 1, username: 'alex', name: '', email: user.email }] });
+  const load = vi.spyOn(workspace, 'bankDetails');
+  render(<AccountSettings user={user} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+  expect(await screen.findByText('Payment details are available to the workspace owner.')).toBeInTheDocument();
+  expect(load).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: 'Save payment details' })).not.toBeInTheDocument();
+});
+
+it('renames the shared workspace and shows its members', async () => {
+  const rename = vi.spyOn(workspace, 'rename').mockResolvedValue({ id: 'workspace', name: 'Northstar Studio' });
+  const onUserUpdated = vi.fn();
+  render(<AccountSettings user={user} onUserUpdated={onUserUpdated} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+  expect(await screen.findByText('alex (you)')).toBeInTheDocument();
+  await userEvent.clear(screen.getByLabelText('Name'));
+  await userEvent.type(screen.getByLabelText('Name'), 'Northstar Studio');
+  await userEvent.click(screen.getByRole('button', { name: 'Save workspace name' }));
+  await waitFor(() => expect(rename).toHaveBeenCalledWith('Northstar Studio'));
+  expect(onUserUpdated).toHaveBeenCalledWith(expect.objectContaining({ workspace: { id: 'workspace', name: 'Northstar Studio' } }));
+});
+
+it('lets the workspace owner add an existing account', async () => {
+  const add = vi.spyOn(workspace, 'addMember').mockResolvedValue({ member: { id: 2, username: 'colleague', name: 'Sam Parker', email: 'sam@example.test' } });
+  render(<AccountSettings user={user} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+  await userEvent.type(await screen.findByLabelText('Username'), 'colleague');
+  await userEvent.click(screen.getByRole('button', { name: 'Add member' }));
+  await waitFor(() => expect(add).toHaveBeenCalledWith('colleague'));
+  expect(await screen.findByText('Sam Parker')).toBeInTheDocument();
+});
+
+it('uploads and removes the profile photo through the account API', async () => {
+  const withPhoto = { ...user, avatar_url: '/api/v1/auth/avatar?v=1' };
+  const upload = vi.spyOn(auth, 'uploadAvatar').mockResolvedValue({ user: withPhoto });
+  const remove = vi.spyOn(auth, 'removeAvatar').mockResolvedValue({ user: { ...user, avatar_url: null } });
+  const onUserUpdated = vi.fn();
+  const { rerender } = render(<AccountSettings user={user} onUserUpdated={onUserUpdated} />);
+  const file = new File(['image bytes'], 'photo.png', { type: 'image/png' });
+  await userEvent.upload(screen.getByLabelText('Photo'), file);
+  await userEvent.click(screen.getByRole('button', { name: 'Save photo' }));
+  await waitFor(() => expect(upload).toHaveBeenCalledWith(file));
+  expect(onUserUpdated).toHaveBeenCalledWith(withPhoto);
+  rerender(<AccountSettings user={withPhoto} onUserUpdated={onUserUpdated} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Remove photo' }));
+  await waitFor(() => expect(remove).toHaveBeenCalled());
+  expect(onUserUpdated).toHaveBeenCalledWith(expect.objectContaining({ avatar_url: null }));
 });
 
 it('saves a non-USD reporting currency in Settings', async () => {
