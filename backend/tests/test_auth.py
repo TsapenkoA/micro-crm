@@ -19,7 +19,7 @@ from allauth.account.models import EmailAddress
 from allauth.socialaccount.models import SocialAccount, SocialLogin
 from rest_framework.test import APIClient
 
-from crm.models import AuthAttempt, Client, ClientNote, Workspace, WorkspaceMembership
+from crm.models import AuthAttempt, Client, ClientNote, PendingSignup, Workspace, WorkspaceMembership
 
 pytestmark = pytest.mark.django_db
 
@@ -37,6 +37,7 @@ def test_login_me_logout_and_csrf_rotation(api, user):
     assert response.json()["user"] == {
         "id": user.pk, "username": user.username, "email": user.email,
         "avatar_url": None,
+            "is_workspace_owner": True,
         "reporting_currency": "USD",
         "workspace": {"id": str(user.workspace_membership.workspace_id), "name": user.workspace_membership.workspace.name},
     }
@@ -89,29 +90,108 @@ def sign_in(api, user):
     return post(api, "login", {"username": user.username, "password": "test-password-123"})
 
 
-def test_signup_atomic_personal_workspace_and_email_login(api):
+def verification_token():
+    url = next(line.strip() for line in mail.outbox[-1].body.splitlines() if line.startswith("http"))
+    return parse_qs(urlparse(url).query)["token"][0]
+
+
+def test_signup_verifies_email_before_creating_personal_workspace(api, settings):
+    settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
     data = {"username": "newuser", "email": "New@Example.com", "password": "New-secure-pass-123", "password_confirm": "New-secure-pass-123"}
     response = post(api, "sign-up", data)
+    assert response.status_code == 202
+    assert get_user_model().objects.count() == Workspace.objects.count() == 0
+    assert api.get("/api/v1/auth/me").status_code == 403
+    assert post(api, "login", {"email": data["email"], "password": data["password"]}).status_code == 403
+    token = verification_token()
+    assert token not in PendingSignup.objects.get(email="new@example.com").token_hash
+    assert post(api, "verify-email", {"token": "invalid"}).status_code == 400
+    response = post(api, "verify-email", {"token": token})
     assert response.status_code == 201
     user = get_user_model().objects.get(email="new@example.com")
+    assert EmailAddress.objects.get(user=user).verified
     assert WorkspaceMembership.objects.filter(user=user).count() == 1
     assert Workspace.objects.count() == 1
     assert user.username == "newuser"
     assert user.workspace_membership.workspace.name == "newuser's workspace"
     assert api.get("/api/v1/auth/me").json()["user"]["id"] == user.pk
     assert post(api, "login", {"email": "NEW@example.com", "password": data["password"]}).status_code == 200
-    assert post(api, "sign-up", data).status_code == 400
+    assert post(api, "verify-email", {"token": token}).status_code == 400
+    assert post(api, "sign-up", data).status_code == 202
     assert get_user_model().objects.count() == 1
 
 
-def test_signup_failure_rolls_back_user_and_workspace(api, monkeypatch):
+def test_signup_failure_rolls_back_user_and_workspace(api, monkeypatch, settings):
+    settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
     def fail(*args, **kwargs):
         raise RuntimeError("provisioning failed")
+    assert post(api, "sign-up", {"username": "newuser", "email": "new@example.com", "password": "New-secure-pass-123", "password_confirm": "New-secure-pass-123"}).status_code == 202
     monkeypatch.setattr(WorkspaceMembership, "save", fail)
     with pytest.raises(RuntimeError):
-        post(api, "sign-up", {"username": "newuser", "email": "new@example.com", "password": "New-secure-pass-123", "password_confirm": "New-secure-pass-123"})
+        post(api, "verify-email", {"token": verification_token()})
     assert get_user_model().objects.count() == 0
     assert Workspace.objects.count() == 0
+    assert PendingSignup.objects.count() == 1
+
+
+def test_resend_rotates_token_and_expiry_blocks_verification(api, settings):
+    settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+    data = {"username": "newuser", "email": "new@example.com", "password": "New-secure-pass-123", "password_confirm": "New-secure-pass-123"}
+    assert post(api, "sign-up", data).status_code == 202
+    first = verification_token()
+    assert post(api, "resend-verification", {"email": data["email"]}).status_code == 202
+    second = verification_token()
+    assert first != second
+    assert post(api, "verify-email", {"token": first}).status_code == 400
+    PendingSignup.objects.update(expires_at=timezone.now() - datetime.timedelta(seconds=1))
+    assert post(api, "verify-email", {"token": second}).status_code == 400
+    assert get_user_model().objects.count() == 0
+
+
+def test_signup_retry_replaces_pending_details_and_old_link(api, settings):
+    settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+    data = {"username": "first_name", "email": "new@example.com", "password": "First-secure-pass-123", "password_confirm": "First-secure-pass-123"}
+    assert post(api, "sign-up", data).status_code == 202
+    first = verification_token()
+    changed = {**data, "username": "second_name", "password": "Second-secure-pass-123", "password_confirm": "Second-secure-pass-123"}
+    assert post(api, "sign-up", changed).status_code == 202
+    assert PendingSignup.objects.count() == 1
+    assert post(api, "verify-email", {"token": first}).status_code == 400
+    assert post(api, "verify-email", {"token": verification_token()}).status_code == 201
+    user = get_user_model().objects.get(email=data["email"])
+    assert user.username == "second_name"
+    assert user.check_password(changed["password"])
+    assert not user.check_password(data["password"])
+
+
+def test_clear_expired_signups_preserves_live_requests(api, settings):
+    settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+    data = {"username": "first_name", "email": "first@example.com", "password": "First-secure-pass-123", "password_confirm": "First-secure-pass-123"}
+    assert post(api, "sign-up", data).status_code == 202
+    PendingSignup.objects.filter(email=data["email"]).update(expires_at=timezone.now() - datetime.timedelta(seconds=1))
+    assert post(api, "sign-up", {**data, "username": "second_name", "email": "second@example.com"}).status_code == 202
+    call_command("clear_expired_signups", stdout=StringIO())
+    assert list(PendingSignup.objects.values_list("email", flat=True)) == ["second@example.com"]
+
+
+def test_signup_delivery_failure_leaves_no_pending_account(api, monkeypatch):
+    def fail(*args, **kwargs):
+        raise RuntimeError("private SMTP details")
+    monkeypatch.setattr("crm.auth.verification.send_mail", fail)
+    response = post(api, "sign-up", {"username": "newuser", "email": "new@example.com", "password": "New-secure-pass-123", "password_confirm": "New-secure-pass-123"})
+    assert response.status_code == 503
+    assert "private" not in response.content.decode()
+    assert PendingSignup.objects.count() == get_user_model().objects.count() == 0
+
+
+def test_signup_existing_email_and_resend_have_neutral_responses(api, user, settings):
+    settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+    data = {"username": "different", "email": user.email, "password": "New-secure-pass-123", "password_confirm": "New-secure-pass-123"}
+    signup = post(api, "sign-up", data)
+    resend = post(api, "resend-verification", {"email": user.email})
+    assert signup.status_code == resend.status_code == 202
+    assert signup.json() == resend.json()
+    assert not mail.outbox
 
 
 @pytest.mark.parametrize("data,field", [
@@ -126,7 +206,7 @@ def test_signup_validators(api, data, field):
     assert get_user_model().objects.count() == 0
 
 
-@pytest.mark.parametrize("path", ["sign-up", "forgot-password", "reset-password", "oauth/google/start"])
+@pytest.mark.parametrize("path", ["sign-up", "resend-verification", "verify-email", "forgot-password", "reset-password", "oauth/google/start"])
 def test_public_writes_require_csrf(api, path):
     assert api.post("/api/v1/auth/" + path, {}, format="json").status_code == 403
     token = api.get("/api/v1/auth/csrf").json()["csrfToken"]
@@ -179,7 +259,7 @@ def oauth_settings(settings, monkeypatch):
     return settings
 
 
-def oauth_roundtrip(api, provider, uid="external-id", email="social@example.com", process="login"):
+def oauth_roundtrip(api, provider, uid="external-id", email="social@example.com", process="login", verified=True):
     response = post(api, f"oauth/{provider}/start", {"process": process})
     assert response.status_code == 200, response.content
     params = parse_qs(urlparse(response.json()["url"]).query)
@@ -188,7 +268,7 @@ def oauth_roundtrip(api, provider, uid="external-id", email="social@example.com"
     callback = urlparse(params["redirect_uri"][0]).path
     def complete(adapter, request, app, token, **kwargs):
         return SocialLogin(provider=adapter.get_provider(), user=get_user_model()(email=email), account=SocialAccount(provider=provider, uid=uid),
-                           email_addresses=[EmailAddress(email=email, verified=True, primary=True)])
+                           email_addresses=[EmailAddress(email=email, verified=verified, primary=True)])
     classes = {"google": "google.views.GoogleOAuth2Adapter", "github": "github.views.GitHubOAuth2Adapter", "microsoft": "microsoft.views.MicrosoftGraphOAuth2Adapter"}
     with patch("allauth.socialaccount.providers." + classes[provider] + ".complete_login", complete):
         return api.get(callback, {"code": "mock-code", "state": params["state"][0]})
@@ -211,6 +291,14 @@ def test_oauth_callback_signup_repeat_and_invalid_state(api, oauth_settings, pro
     replay = api.get(response.request["PATH_INFO"] + "?" + response.request["QUERY_STRING"])
     assert replay.status_code == 302
     assert replay.url.endswith("status=failed")
+
+
+@pytest.mark.parametrize("provider", ["google", "github", "microsoft"])
+def test_oauth_signup_requires_provider_verified_email(api, oauth_settings, provider):
+    response = oauth_roundtrip(api, provider, verified=False)
+    assert response.status_code == 302
+    assert response.url.endswith("status=failed")
+    assert get_user_model().objects.count() == Workspace.objects.count() == 0
 
 
 def test_oauth_email_collision_does_not_merge_and_explicit_connect_works(api, user, oauth_settings):
@@ -346,8 +434,9 @@ def test_concurrent_signup_cannot_claim_the_same_username_with_different_emails(
             connections.close_all()
     with ThreadPoolExecutor(max_workers=2) as pool:
         statuses = list(pool.map(signup, range(2)))
-    assert sorted(statuses) == [201, 400]
-    assert get_user_model().objects.count() == Workspace.objects.count() == WorkspaceMembership.objects.count() == 1
+    assert sorted(statuses) == [202, 400]
+    assert PendingSignup.objects.count() == 1
+    assert get_user_model().objects.count() == Workspace.objects.count() == WorkspaceMembership.objects.count() == 0
 
 
 @pytest.fixture

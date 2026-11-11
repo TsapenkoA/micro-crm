@@ -9,8 +9,8 @@ from django.utils import timezone
 
 import pytest
 
-from crm.models import Client, Deal, FxRate, Invoice, WorkspaceMembership
-from crm.services.fx import convert, rate_date_for
+from crm.models import Client, Deal, FxRate, FxSyncRun, Invoice, WorkspaceMembership
+from crm.services.fx import ECB_CURRENCIES, convert, rate_date_for
 
 
 pytestmark = pytest.mark.django_db
@@ -87,14 +87,54 @@ def test_rate_import_is_idempotent_and_never_rewrites_history(monkeypatch):
     call_command("sync_fx_rates", since=day.isoformat(), until=day.isoformat())
     call_command("sync_fx_rates", since=day.isoformat(), until=day.isoformat())
     assert FxRate.objects.count() == 2
+    assert list(FxSyncRun.objects.values_list("status", flat=True)) == ["success", "success"]
     monkeypatch.setattr("crm.management.commands.sync_fx_rates.urlopen", lambda *args, **kwargs: BytesIO(content.replace(b"1.20", b"1.30")))
     with pytest.raises(CommandError, match="stored rates differ"):
         call_command("sync_fx_rates", since=day.isoformat(), until=day.isoformat())
     assert FxRate.objects.get(currency="USD").per_eur == Decimal("1.20")
+    assert FxSyncRun.objects.latest("started_at").status == "failed"
     stored = FxRate.objects.get(currency="USD")
     stored.per_eur = Decimal("1.40")
     with pytest.raises(DjangoValidationError, match="cannot be changed"):
         stored.save()
+
+
+def test_rate_health_reports_stale_sync_incomplete_rates_and_missing_paid_records(user, client_record):
+    today = timezone.localdate()
+    run = FxSyncRun.objects.create(status="success", finished_at=timezone.now(), latest_rate_date=today)
+    with pytest.raises(CommandError, match="missing or stale"):
+        call_command("check_fx_rates")
+    for currency in ECB_CURRENCIES:
+        rate(today, currency, "1.20")
+    call_command("check_fx_rates")
+
+    deal = Deal.objects.create(
+        workspace=client_record.workspace, created_by=user, client=client_record,
+        title="Paid without rate date", status="paid", amount=Decimal("100"), currency="USD", paid_at=timezone.now(),
+    )
+    with pytest.raises(CommandError, match="paid records have no fixed"):
+        call_command("check_fx_rates")
+    deal.fx_rate_date = today
+    deal.save(update_fields=["fx_rate_date"])
+    run.finished_at = timezone.now() - timedelta(days=3)
+    run.save(update_fields=["finished_at"])
+    with pytest.raises(CommandError, match="synchronization is stale"):
+        call_command("check_fx_rates")
+
+
+def test_refresh_failure_sends_an_operator_alert_without_error_details(monkeypatch, settings, mailoutbox):
+    settings.FX_ALERT_EMAIL = "operator@example.com"
+    settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+
+    def fail(*args, **kwargs):
+        raise CommandError("Sensitive diagnostic detail")
+
+    monkeypatch.setattr("crm.management.commands.refresh_fx_rates.call_command", fail)
+    with pytest.raises(CommandError, match="Sensitive diagnostic detail"):
+        call_command("refresh_fx_rates")
+    assert len(mailoutbox) == 1
+    assert mailoutbox[0].to == ["operator@example.com"]
+    assert "Sensitive diagnostic detail" not in mailoutbox[0].body
 
 
 def test_paid_records_receive_and_keep_rate_dates(api, user, client_record):
