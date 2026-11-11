@@ -22,7 +22,7 @@ const descriptions: Record<Page, string> = {
   Deals: 'From the first hello to the final handoff.',
   Clients: 'Good relationships are the heart of good business.',
   Invoices: 'Keep the details of your work in order.',
-  Settings: 'A shared home for your business.',
+  Settings: 'Manage your account and workspace.',
 };
 
 function Application() {
@@ -112,7 +112,7 @@ function Application() {
   if (loading) return <p role="status" className="p-10">Loading…</p>;
   if (!user && !authPaths.includes(path)) return <p role="status" className="p-10">Opening sign-in…</p>;
   if (user && path === '/oauth-result' && ['success', 'connected'].includes(new URLSearchParams(window.location.search).get('status') ?? '')) return <p role="status" className="p-10">Completing sign-in…</p>;
-  if (!user || ['/forgot-password', '/reset-password', '/oauth-result'].includes(path)) return <AuthScreen key={path} path={path} notice={error} onLogin={account => {
+  if (!user || ['/forgot-password', '/reset-password', '/verify-email', '/resend-verification', '/oauth-result'].includes(path)) return <AuthScreen key={path} path={path} notice={error} onLogin={account => {
     setUser(account); setError(''); navigateAuth('/' + window.location.hash, true);
   }} />;
 
