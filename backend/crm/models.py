@@ -99,6 +99,19 @@ class AuthAttempt(models.Model):
         app_label = "accounts"
 
 
+class PendingSignup(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    username = models.CharField(max_length=150)
+    email = models.EmailField(unique=True)
+    password_hash = models.CharField(max_length=128)
+    token_hash = models.CharField(max_length=64, unique=True)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = "accounts"
+
+
 class FxRate(ValidatedModel):
     date = models.DateField()
     currency = models.CharField(max_length=3, validators=[currency_validator])
@@ -118,6 +131,31 @@ class FxRate(ValidatedModel):
             models.UniqueConstraint(fields=["date", "currency"], name="fx_rate_date_currency_unique"),
             models.CheckConstraint(condition=Q(per_eur__gt=0), name="fx_rate_positive"),
         ]
+
+
+class FxSyncRun(models.Model):
+    class Status(models.TextChoices):
+        RUNNING = "running", "Running"
+        SUCCESS = "success", "Success"
+        FAILED = "failed", "Failed"
+
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=7, choices=Status.choices, default=Status.RUNNING)
+    latest_rate_date = models.DateField(null=True, blank=True)
+    imported_count = models.PositiveIntegerField(default=0)
+    error = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        app_label = "accounts"
+
+
+class BackupCheck(models.Model):
+    verified_at = models.DateTimeField(auto_now_add=True)
+    archive_bytes = models.PositiveBigIntegerField()
+
+    class Meta:
+        app_label = "accounts"
 
 
 class Client(ValidatedModel):

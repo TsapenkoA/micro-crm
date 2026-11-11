@@ -45,6 +45,8 @@ class SocialAdapter(DefaultSocialAccountAdapter):
                 oauth_error()
             if len(email) > 254:
                 oauth_error()
+            if not any(address.verified and address.email.casefold() == email for address in sociallogin.email_addresses):
+                oauth_error()
             if email_in_use(email):
                 oauth_error("account")
 

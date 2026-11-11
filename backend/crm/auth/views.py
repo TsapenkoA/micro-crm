@@ -19,8 +19,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from crm.api.permissions import IsWorkspaceMember
-from crm.auth.security import AuthThrottle, email_in_use, email_lock, email_user, recent_auth
-from crm.auth.serializers import LoginSerializer, SignupSerializer, EmailSerializer, ResetSerializer, UsernameSerializer, NewPasswordSerializer, check_password
+from crm.auth.security import AuthThrottle, email_lock, email_user, recent_auth
+from crm.auth.serializers import LoginSerializer, EmailSerializer, ResetSerializer, UsernameSerializer, NewPasswordSerializer, check_password
 from crm.models import UserAvatar, Workspace, WorkspaceMembership
 from crm.services.fx import ECB_CURRENCIES
 
@@ -32,7 +32,9 @@ def user_data(user):
     workspace = {"id": str(membership.workspace_id), "name": membership.workspace.name} if membership else None
     avatar_updated = UserAvatar.objects.filter(user=user).values_list("updated_at", flat=True).first()
     avatar_url = f"/api/v1/auth/avatar?v={avatar_updated.timestamp()}" if avatar_updated else None
-    return {"id": user.pk, "username": user.username, "email": user.email, "workspace": workspace, "reporting_currency": membership.reporting_currency if membership else "USD", "avatar_url": avatar_url}
+    return {"id": user.pk, "username": user.username, "email": user.email, "workspace": workspace,
+            "is_workspace_owner": bool(membership and membership.workspace.owner_id == user.pk),
+            "reporting_currency": membership.reporting_currency if membership else "USD", "avatar_url": avatar_url}
 
 
 @api_view(["GET"])
@@ -77,33 +79,6 @@ def logout(request):
 @api_view(["GET"])
 def me(request):
     return Response({"user": user_data(request.user)})
-
-
-@method_decorator(csrf_protect, name="dispatch")
-class SignupView(PublicAuthView):
-    rate_scope = "signup"
-
-    def post(self, request):
-        serializer = SignupSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        fields = serializer.validated_data
-        email = fields["email"].casefold()
-        if len(email) > 254:
-            raise serializers.ValidationError({"email": ["Use 254 characters or fewer."]})
-        User = get_user_model()
-        with email_lock(email), email_lock("username:" + fields["username"]):
-            if email_in_use(email):
-                raise serializers.ValidationError({"email": ["Unable to create an account with these details. Try signing in or resetting your password."]})
-            try:
-                username = serializer.validate_username(fields["username"])
-            except serializers.ValidationError as error:
-                raise serializers.ValidationError({"username": error.detail})
-            user = User(username=username, email=email)
-            check_password(fields["password"], user)
-            user.set_password(fields["password"])
-            user.save()
-        session_login(request, user)
-        return Response({"user": user_data(user), "csrfToken": get_token(request)}, status=201)
 
 
 @method_decorator(csrf_protect, name="dispatch")

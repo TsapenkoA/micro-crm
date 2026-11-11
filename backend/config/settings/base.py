@@ -96,9 +96,11 @@ for provider, options in SOCIALACCOUNT_PROVIDERS.items():
         options["APPS"] = [{"client_id": client_id, "secret": secret, "key": ""}]
 
 PASSWORD_RESET_TIMEOUT = 3600
+SIGNUP_VERIFICATION_TIMEOUT = 86400
 AUTH_REAUTH_SECONDS = 300
 AUTH_RATE_LIMITS = {"login": (10, 300), "signup": (5, 3600), "forgot": (5, 3600),
-                    "reset": (10, 300), "security": (10, 300), "oauth": (20, 300)}
+                    "reset": (10, 300), "verify": (10, 300), "resend": (5, 3600),
+                    "security": (10, 300), "oauth": (20, 300)}
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Micro-CRM <noreply@localhost>")
 EMAIL_HOST = os.getenv("EMAIL_HOST", "")
@@ -107,3 +109,5 @@ EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() == "true"
 EMAIL_TIMEOUT = 10
+FX_ALERT_EMAIL = os.getenv("FX_ALERT_EMAIL", "")
+BACKUP_DIRECTORY = os.getenv("BACKUP_DIRECTORY", "")

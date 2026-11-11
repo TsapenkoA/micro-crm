@@ -2,8 +2,10 @@ from django.urls import path
 
 from crm.api.health import health
 from crm.auth import views as auth_views
+from crm.auth import verification as verification_views
 from crm.auth.avatar import AvatarView
 from crm.workspaces import views as workspace_views
+from crm.workspaces.operations import operations_status
 from crm.clients import views as client_views
 from crm.deals import views as deal_views
 from crm.invoices import views as invoice_views
@@ -19,6 +21,7 @@ urlpatterns = [
     path("api/v1/auth/logout", auth_views.logout),
     path("api/v1/auth/me", auth_views.me),
     path("api/v1/workspace/counts", workspace_views.workspace_counts),
+    path("api/v1/workspace/operations", operations_status),
     path("api/v1/workspace/settings", workspace_views.WorkspaceSettings.as_view()),
     path("api/v1/workspace/members", workspace_views.WorkspaceMembers.as_view()),
     path("api/v1/workspace/bank-details", workspace_views.WorkspaceBankDetails.as_view()),
@@ -26,7 +29,9 @@ urlpatterns = [
     path("api/v1/auth/profile", auth_views.ProfileView.as_view()),
     path("api/v1/auth/avatar", AvatarView.as_view()),
     path("api/v1/auth/reporting-currency", auth_views.ReportingCurrencyView.as_view()),
-    path("api/v1/auth/sign-up", auth_views.SignupView.as_view()),
+    path("api/v1/auth/sign-up", verification_views.SignupView.as_view()),
+    path("api/v1/auth/resend-verification", verification_views.ResendVerificationView.as_view()),
+    path("api/v1/auth/verify-email", verification_views.VerifyEmailView.as_view()),
     path("api/v1/auth/forgot-password", auth_views.ForgotPasswordView.as_view()),
     path("api/v1/auth/reset-password", auth_views.ResetPasswordView.as_view()),
     path("api/v1/auth/password", auth_views.PasswordView.as_view()),

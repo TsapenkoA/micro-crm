@@ -39,6 +39,8 @@ class UsernameSerializer(serializers.Serializer):
     def validate_username(self, value):
         if "@" in value:
             raise serializers.ValidationError("Use a username without @; enter your email separately.")
+        if self.context.get("check_username_unique") is False:
+            return value
         users = get_user_model().objects.filter(username__iexact=value)
         if self.instance:
             users = users.exclude(pk=self.instance.pk)
@@ -53,6 +55,10 @@ class SignupSerializer(NewPasswordSerializer, UsernameSerializer):
 
 class EmailSerializer(serializers.Serializer):
     email = serializers.EmailField(max_length=254)
+
+
+class VerifyEmailSerializer(serializers.Serializer):
+    token = serializers.CharField(max_length=128)
 
 
 class ResetSerializer(NewPasswordSerializer):

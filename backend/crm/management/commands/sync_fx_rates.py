@@ -8,8 +8,9 @@ from urllib.request import Request, urlopen
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.utils import timezone
 
-from crm.models import FxRate
+from crm.models import FxRate, FxSyncRun
 from crm.services.fx import ECB_CURRENCIES
 
 
@@ -59,6 +60,23 @@ class Command(BaseCommand):
             raise CommandError("Use YYYY-MM-DD for --since and --until.") from exc
         if since > until or (until - since).days > 3660:
             raise CommandError("Choose a valid date range of at most ten years.")
+        run = FxSyncRun.objects.create()
+        try:
+            imported, latest_rate_date = self.import_rates(since, until)
+        except CommandError as exc:
+            run.status = FxSyncRun.Status.FAILED
+            run.finished_at = timezone.now()
+            run.error = str(exc)
+            run.save(update_fields=["status", "finished_at", "error"])
+            raise
+        run.status = FxSyncRun.Status.SUCCESS
+        run.finished_at = timezone.now()
+        run.latest_rate_date = latest_rate_date
+        run.imported_count = imported
+        run.save(update_fields=["status", "finished_at", "latest_rate_date", "imported_count"])
+        self.stdout.write(self.style.SUCCESS(f"Imported {imported} ECB rates; latest date {latest_rate_date}."))
+
+    def import_rates(self, since, until):
         key = "+".join(ECB_CURRENCIES)
         query = urlencode({"startPeriod": since.isoformat(), "endPeriod": until.isoformat(), "format": "csvdata"})
         request = Request(f"{BASE_URL}D.{key}.EUR.SP00.A?{query}", headers={"Accept": "text/csv", "User-Agent": "MicroFlow/1.0"})
@@ -77,4 +95,4 @@ class Command(BaseCommand):
                 raise CommandError(f"{len(conflicts)} stored rates differ from ECB. Review before changing historical rates.")
             new = [FxRate(date=day, currency=currency, per_eur=value) for (day, currency), value in rates.items() if (day, currency) not in existing]
             FxRate.objects.bulk_create(new)
-        self.stdout.write(self.style.SUCCESS(f"Imported {len(new)} ECB rates; {len(rates) - len(new)} already stored."))
+        return len(new), max(day for day, _ in rates)
