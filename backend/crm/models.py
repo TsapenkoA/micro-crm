@@ -40,6 +40,7 @@ def validate_workspace(instance):
 
 class Workspace(ValidatedModel):
     name = models.CharField(max_length=200)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="owned_workspaces")
     bank_details = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -70,6 +71,15 @@ class WorkspaceMembership(ValidatedModel):
             workspace = previous.workspace
             if workspace.clients.exists() or workspace.deals.exists() or workspace.invoices.exists():
                 raise ValidationError({"workspace": "Cannot leave a workspace containing business records. A reviewed data transfer is required."})
+
+
+class UserAvatar(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, primary_key=True, related_name="crm_avatar")
+    image = models.BinaryField()
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "accounts"
 
 
 class PreviewDataset(ValidatedModel):
