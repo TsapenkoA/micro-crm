@@ -13,7 +13,7 @@ from crm.models import Workspace, WorkspaceMembership
 def create_user_workspace(sender, instance, created, raw, using, **kwargs):
     if created and not raw:
         with transaction.atomic(using=using):
-            workspace = Workspace.objects.using(using).create(name=f"{instance.username}'s workspace")
+            workspace = Workspace.objects.using(using).create(name=f"{instance.username}'s workspace", owner=instance)
             WorkspaceMembership.objects.using(using).create(workspace=workspace, user=instance)
 
 
