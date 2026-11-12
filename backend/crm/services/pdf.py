@@ -51,10 +51,10 @@ def render_invoice(invoice):
 
     stream = BytesIO()
     document = SimpleDocTemplate(stream, pagesize=A4, rightMargin=18 * mm, leftMargin=18 * mm, topMargin=18 * mm, bottomMargin=18 * mm)
-    content = [Table([[paragraph("INVOICE", heading), paragraph(invoice.invoice_number, right_bold)]], colWidths=[98 * mm, 76 * mm]), Spacer(1, 10 * mm)]
+    content = [Table([[paragraph("CANCELLED INVOICE" if invoice.status == invoice.Status.CANCELLED else "INVOICE", heading), paragraph(invoice.invoice_number, right_bold)]], colWidths=[98 * mm, 76 * mm]), Spacer(1, 10 * mm)]
     seller = invoice.seller_snapshot
     buyer = invoice.buyer_snapshot
-    from_lines = [seller.get("name"), seller.get("address"), seller.get("email"), f"Tax ID: {seller['tax_id']}" if seller.get("tax_id") else None]
+    from_lines = [seller.get("name"), seller.get("address"), seller.get("email"), seller.get("phone"), f"Tax ID: {seller['tax_id']}" if seller.get("tax_id") else None]
     to_lines = [buyer.get("company") or buyer.get("name"), buyer.get("name") if buyer.get("company") else None, buyer.get("email"), buyer.get("phone")]
     parties = Table([[
         [paragraph("FROM", small)] + [paragraph(value) for value in from_lines if value],
@@ -76,6 +76,14 @@ def render_invoice(invoice):
     if seller_bank or buyer_bank:
         content.extend([bank_table, Spacer(1, 8 * mm)])
     content.extend([metadata, Spacer(1, 7 * mm)])
+    if invoice.due_date:
+        content.append(paragraph(f"Due: {calendar.month_abbr[invoice.due_date.month]} {invoice.due_date.day}, {invoice.due_date.year}"))
+    if invoice.payment_terms:
+        content.append(paragraph(f"Payment terms: {invoice.payment_terms}"))
+    if invoice.status == invoice.Status.CANCELLED:
+        content.append(paragraph(f"Cancelled: {invoice.cancellation_reason}"))
+    if invoice.due_date or invoice.payment_terms or invoice.status == invoice.Status.CANCELLED:
+        content.append(Spacer(1, 5 * mm))
     rows = [[paragraph(title, small) for title in ("DESCRIPTION", "QTY", "UNIT PRICE", "TAX", "AMOUNT")]]
     for item in invoice.items.all():
         rows.append([
