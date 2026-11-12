@@ -6,6 +6,7 @@ export type User = { id: number; username: string; email: string; avatar_url?: s
 export type WorkspaceCounts = { clients: number; deals: number; invoices: number };
 export type WorkspaceSettings = { id: string; name: string; can_manage_members: boolean; members: { id: number; username: string; name: string; email: string }[] };
 export type BankDetails = { account_holder?: string; bank_name?: string; iban?: string; bic?: string; account_number?: string; routing_number?: string; payment_instructions?: string };
+export type SellerDetails = { name: string; email: string; phone?: string; address?: string; tax_id?: string };
 type Session = { user: User; csrfToken?: string };
 
 export class ApiError extends Error {
@@ -105,8 +106,11 @@ export const workspace = {
   settings: () => request<WorkspaceSettings>('/workspace/settings'),
   rename: (name: string) => request<Pick<WorkspaceSettings, 'id' | 'name'>>('/workspace/settings', { method: 'PATCH', body: JSON.stringify({ name }) }),
   addMember: (username: string) => request<{ member: WorkspaceSettings['members'][number] }>('/workspace/members', { method: 'POST', body: JSON.stringify({ username }) }),
+  removeMember: (id: number) => request<void>(`/workspace/members/${id}`, { method: 'DELETE' }),
   bankDetails: () => request<BankDetails>('/workspace/bank-details'),
   saveBankDetails: (details: BankDetails) => request<BankDetails>('/workspace/bank-details', { method: 'PUT', body: JSON.stringify(details) }),
+  sellerDetails: () => request<SellerDetails>('/workspace/seller-details'),
+  saveSellerDetails: (details: SellerDetails) => request<SellerDetails>('/workspace/seller-details', { method: 'PUT', body: JSON.stringify(details) }),
   preview: (signal?: AbortSignal) => request<PreviewData>('/workspace/preview', { signal }),
 };
 

@@ -183,6 +183,9 @@
   .account-profile-identity strong { font-weight: 600; }
   .account-profile-identity small { color: var(--text-muted); font-size: var(--font-xs); }
   .account-settings .auth-form { max-width: 480px; }
+  .avatar-file-control { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+  .avatar-file-control .avatar-file-input { position: absolute; width: 1px; height: 1px; padding: 0; opacity: 0; pointer-events: none; }
+  .avatar-file-control > span { color: var(--text-muted); font-size: var(--font-xs); overflow-wrap: anywhere; }
   .bank-details-fields { display: grid; gap: var(--space-4); }
   .account-settings .auth-form > button { justify-self: start; }
   .account-readonly-field { display: grid; gap: 8px; max-width: 480px; font-size: var(--font-sm); }

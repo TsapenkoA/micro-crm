@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ApiError, workspace, type User, type WorkspaceSettings } from '../../api/client';
 import { fieldErrors } from './fields';
+import Dialog from '../../components/Dialog';
 
 export default function WorkspaceIdentitySettings({ user, onUserUpdated, onOpenSecurity }: { user: User; onUserUpdated?: (user: User) => void; onOpenSecurity: () => void }) {
   const [details, setDetails] = useState<WorkspaceSettings | null>(null);
@@ -14,6 +15,7 @@ export default function WorkspaceIdentitySettings({ user, onUserUpdated, onOpenS
   const [memberPending, setMemberPending] = useState(false);
   const [memberError, setMemberError] = useState('');
   const [memberMessage, setMemberMessage] = useState('');
+  const [removing, setRemoving] = useState<WorkspaceSettings['members'][number] | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -57,6 +59,22 @@ export default function WorkspaceIdentitySettings({ user, onUserUpdated, onOpenS
     } finally { setMemberPending(false); }
   }
 
+  async function removeMember() {
+    if (!removing || memberPending) return;
+    setMemberPending(true); setMemberError(''); setMemberMessage('');
+    try {
+      await workspace.removeMember(removing.id);
+      setDetails(previous => previous ? { ...previous, members: previous.members.filter(member => member.id !== removing.id) } : previous);
+      setMemberMessage(`${removing.name || removing.username} no longer has access to this workspace.`);
+      setRemoving(null);
+    } catch (cause) {
+      setMemberError(cause instanceof ApiError && cause.status === 403
+        ? 'Confirm your identity in Security before removing a member.'
+        : cause instanceof Error ? cause.message : 'Unable to remove the member.');
+      setRemoving(null);
+    } finally { setMemberPending(false); }
+  }
+
   if (loading) return <p role="status">Loading workspace…</p>;
   if (!details) return <div><p role="alert">{error}</p><button className="secondary" onClick={() => window.location.reload()}>Retry</button></div>;
   return <section className="account-settings-section">
@@ -67,11 +85,12 @@ export default function WorkspaceIdentitySettings({ user, onUserUpdated, onOpenS
       {fieldError && <p id="workspace-name-error" className="field-error">{fieldError}</p>}
     </div><button className="primary" disabled={pending || !name.trim() || name.trim() === details.name}>{pending ? 'Saving…' : 'Save workspace name'}</button></form>
     {error && <p role="alert" className="notice error">{error}</p>}{message && <p role="status" className="notice success">{message}</p>}
-    <div><h3>Members</h3><p className="muted">{details.members.length} {details.members.length === 1 ? 'person' : 'people'} in this workspace</p><ul className="account-member-list">{details.members.map(member => <li key={member.id}><strong>{member.name || member.username}{member.id === user.id ? ' (you)' : ''}</strong><small>{member.username}{member.email ? ` · ${member.email}` : ''}</small></li>)}</ul></div>
+    <div><h3>Members</h3><p className="muted">{details.members.length} {details.members.length === 1 ? 'person' : 'people'} in this workspace</p><ul className="account-member-list">{details.members.map(member => <li key={member.id}><strong>{member.name || member.username}{member.id === user.id ? ' (you)' : ''}</strong><small>{member.username}{member.email ? ` · ${member.email}` : ''}</small>{details.can_manage_members && member.id !== user.id && <button type="button" className="secondary" disabled={memberPending} onClick={() => setRemoving(member)}>Remove member</button>}</li>)}</ul></div>
     {details.can_manage_members ? <div><h3>Add an existing account</h3><p className="muted">Enter the employee's username. Their personal workspace must contain no business records. Confirm your identity in Security before adding them.</p>
       <form className="auth-form" onSubmit={addMember}><div className="field"><label htmlFor="workspace-new-member">Username</label><input id="workspace-new-member" value={username} onChange={event => setUsername(event.target.value)} maxLength={150} required disabled={memberPending} autoComplete="off" /></div>
         <div className="button-row"><button className="primary" disabled={memberPending || !username.trim()}>{memberPending ? 'Adding…' : 'Add member'}</button><button type="button" className="secondary" onClick={onOpenSecurity}>Open Security</button></div>
       </form>{memberError && <p role="alert" className="notice error">{memberError}</p>}{memberMessage && <p role="status" className="notice success">{memberMessage}</p>}</div>
-      : <p className="muted">Only the workspace owner can add members.</p>}
+      : <p className="muted">Only the workspace owner can manage members.</p>}
+    {removing && <Dialog title="Remove member" role="alertdialog" busy={memberPending} onClose={() => setRemoving(null)}><div className="dialog-body"><p>Remove {removing.name || removing.username} from this workspace? Their access will end immediately. Clients, deals and invoices stay with the company.</p><div className="dialog-actions"><button className="secondary" disabled={memberPending} onClick={() => setRemoving(null)} data-autofocus>Cancel</button><button className="primary destructive" disabled={memberPending} onClick={removeMember}>{memberPending ? 'Removing…' : 'Confirm removal'}</button></div></div></Dialog>}
   </section>;
 }

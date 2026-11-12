@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Client } from '../clients/api';
+import { invoices, money as invoiceMoney, type Invoice } from '../invoices/api';
 import { date, money, stages, type Deal, type Outcome, type Status } from './api';
 
 const timestamp = (value: string) => new Date(value).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
@@ -21,6 +22,18 @@ export default function DealDetails({ deal, client, loading, error, busy, outcom
   onOpenClient: () => void;
 }) {
   const [tab, setTab] = useState<'overview' | 'notes'>('overview');
+  const [linkedInvoices, setLinkedInvoices] = useState<Invoice[]>([]);
+  const [invoiceError, setInvoiceError] = useState('');
+  const [invoicesLoading, setInvoicesLoading] = useState(true);
+  useEffect(() => {
+    if (!deal) return;
+    const controller = new AbortController();
+    invoices.list('', '', controller.signal, deal.id)
+      .then(rows => { if (!controller.signal.aborted) setLinkedInvoices(rows); })
+      .catch(cause => { if (!controller.signal.aborted) setInvoiceError(cause instanceof Error ? cause.message : 'Unable to load linked invoices.'); })
+      .finally(() => { if (!controller.signal.aborted) setInvoicesLoading(false); });
+    return () => controller.abort();
+  }, [deal?.id]);
   return <aside className="live-deal-detail" aria-label="Deal details" onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); onClose(); } }}>
     <div className="live-detail-top"><span className="eyebrow">DEAL DETAILS</span><button className="live-detail-close" aria-label="Close deal details" onClick={onClose} data-deal-close>×</button></div>
     {loading ? <p role="status" className="muted">Loading deal…</p> : error ? <div className="deal-inline-error"><p role="alert">{error}</p><button className="secondary" onClick={onReload}>Reload current</button></div> : deal && <>
@@ -32,6 +45,7 @@ export default function DealDetails({ deal, client, loading, error, busy, outcom
       {tab === 'overview' ? <>
         <dl className="live-detail-fields"><dt>Deal value</dt><dd className="live-detail-value">{money(deal.amount, deal.currency)}</dd><dt>Client</dt><dd>{client ? <button className="client-name" onClick={onOpenClient}>{client.name}{client.company && <small>{client.company}</small>}</button> : 'Client unavailable'}</dd><dt>Deadline</dt><dd>{date(deal.deadline)}</dd><dt>Created</dt><dd>{timestamp(deal.created_at)}</dd><dt>Updated</dt><dd>{timestamp(deal.updated_at)}</dd>{deal.paid_at && <><dt>Paid at</dt><dd>{timestamp(deal.paid_at)}</dd></>}{deal.status === 'archived' && <><dt>Outcome</dt><dd>{deal.outcome === 'none' ? 'None' : deal.outcome === 'lost' ? 'Lost' : 'Cancelled'}</dd></>}</dl>
         <div className="live-detail-section"><h3>Activity</h3><p className="muted">Created {timestamp(deal.created_at)} · Updated {timestamp(deal.updated_at)}</p></div>
+        <div className="live-detail-section live-detail-invoices"><h3>Invoices</h3>{invoiceError ? <p role="alert">{invoiceError}</p> : invoicesLoading ? <p role="status" className="muted">Loading invoices…</p> : linkedInvoices.length ? <ul>{linkedInvoices.map(invoice => <li key={invoice.id}><button className="client-name" onClick={() => { window.location.hash = `/invoices?invoice=${encodeURIComponent(invoice.id)}`; }}>{invoice.invoice_number} · {invoiceMoney(invoice.total_amount, invoice.currency)} →</button></li>)}</ul> : <p className="muted">No invoices linked to this deal.</p>}</div>
         <label className="field live-detail-stage">Stage<select aria-label="Change status" disabled={busy} value={deal.status} onChange={event => onStatus(event.target.value as Status)}>{stages.map(stage => <option key={stage.id} value={stage.id}>{stage.label}</option>)}</select></label>
         {deal.status === 'archived' && <div className="live-detail-outcome"><label className="field">Archive outcome<select value={outcome} onChange={event => onOutcome(event.target.value as Outcome)} disabled={busy}><option value="none">None</option><option value="lost">Lost</option><option value="cancelled">Cancelled</option></select></label><button className="secondary" disabled={busy || outcome === deal.outcome} onClick={() => onStatus('archived', outcome)}>Save outcome</button></div>}
       </> : <div className="live-detail-section live-detail-notes"><h3>Client notes</h3><p className="muted">Notes are saved on the client record and shared with your company.</p>{client ? <button className="secondary" onClick={onOpenClient}>Open client notes</button> : <p className="muted">Client unavailable.</p>}</div>}
