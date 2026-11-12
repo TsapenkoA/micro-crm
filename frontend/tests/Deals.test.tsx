@@ -6,6 +6,7 @@ import DealForm from '../src/features/deals/DealForm';
 import { ApiError } from '../src/api/client';
 import { date, deals, money, type Deal } from '../src/features/deals/api';
 import type { Client } from '../src/features/clients/api';
+import { invoices, type Invoice } from '../src/features/invoices/api';
 
 const drag = vi.hoisted(() => ({ end: null as null | ((event: { active: { id: string }; over: { id: string } }) => void) }));
 vi.mock('@dnd-kit/core', () => ({
@@ -19,6 +20,10 @@ vi.mock('../src/features/deals/api', async importOriginal => {
   const actual = await importOriginal<typeof import('../src/features/deals/api')>();
   return { ...actual, deals: { list: vi.fn(), clients: vi.fn(), detail: vi.fn(), create: vi.fn(), update: vi.fn(), status: vi.fn(), remove: vi.fn() } };
 });
+vi.mock('../src/features/invoices/api', async importOriginal => {
+  const actual = await importOriginal<typeof import('../src/features/invoices/api')>();
+  return { ...actual, invoices: { ...actual.invoices, list: vi.fn() } };
+});
 
 const client: Client = { id: 'client-1', workspace: 'company-1', created_by: 1, name: 'Alex Client', company: 'Studio', email: 'alex@example.com', phone: '', created_at: '2026-01-01T12:00:00Z', updated_at: '2026-01-01T12:00:00Z' };
 const deal: Deal = { id: 'deal-1', title: 'Website project', client: client.id, status: 'new_lead', amount: '1234.56', currency: 'EUR', deadline: '2026-12-01T12:00:00Z', version: 1, outcome: 'none', paid_at: null, created_at: '2026-01-01T12:00:00Z', updated_at: '2026-01-01T12:00:00Z' };
@@ -29,6 +34,19 @@ beforeEach(() => {
   vi.mocked(deals.list).mockResolvedValue({ results: [deal], totals: [{ status: 'new_lead', currency: 'EUR', count: 1, amount: '1234.56' }] });
   vi.mocked(deals.clients).mockResolvedValue([client]);
   vi.mocked(deals.detail).mockResolvedValue(deal);
+  vi.mocked(invoices.list).mockResolvedValue([]);
+});
+
+it('shows linked invoices on a deal and opens the invoice route', async () => {
+  const linked = { id: 'invoice-1', invoice_number: 'INV-000001', total_amount: '120.00', currency: 'EUR' } as Invoice;
+  vi.mocked(invoices.list).mockResolvedValue([linked]);
+  render(<DealsPage />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Open Website project' }));
+  const details = await screen.findByRole('complementary', { name: 'Deal details' });
+  await userEvent.click(await within(details).findByRole('button', { name: 'INV-000001 · 120 EUR →' }));
+  expect(invoices.list).toHaveBeenCalledWith('', '', expect.any(AbortSignal), deal.id);
+  expect(window.location.hash).toBe('#/invoices?invoice=invoice-1');
+  window.location.hash = '/deals';
 });
 
 it('renders all five stages, exact money, server totals and the table from real API DTOs', async () => {

@@ -150,6 +150,30 @@ it('does not request or show bank details to a workspace member', async () => {
   expect(screen.queryByRole('button', { name: 'Save payment details' })).not.toBeInTheDocument();
 });
 
+it('lets the owner save the seller profile for new invoice drafts', async () => {
+  const load = vi.spyOn(workspace, 'sellerDetails').mockResolvedValue({ name: 'Example Agency', email: 'billing@example.test', address: '12 Main Street' });
+  const save = vi.spyOn(workspace, 'saveSellerDetails').mockImplementation(async value => value);
+  render(<AccountSettings user={user} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Reveal seller profile' }));
+  expect(await screen.findByDisplayValue('Example Agency')).toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText('Tax ID'), 'GB123456789');
+  await userEvent.click(screen.getByRole('button', { name: 'Save seller profile' }));
+  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ name: 'Example Agency', email: 'billing@example.test', tax_id: 'GB123456789' })));
+  expect(load).toHaveBeenCalledTimes(1);
+  await userEvent.click(screen.getByRole('button', { name: 'Hide profile' }));
+  expect(screen.queryByDisplayValue('Example Agency')).not.toBeInTheDocument();
+});
+
+it('keeps the saved seller profile hidden from workspace members', async () => {
+  vi.mocked(workspace.settings).mockResolvedValue({ id: 'workspace', name: 'Example Studio', can_manage_members: false, members: [] });
+  const load = vi.spyOn(workspace, 'sellerDetails');
+  render(<AccountSettings user={user} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+  expect(await screen.findByText('The seller profile is available to the workspace owner.')).toBeInTheDocument();
+  expect(load).not.toHaveBeenCalled();
+});
+
 it('renames the shared workspace and shows its members', async () => {
   const rename = vi.spyOn(workspace, 'rename').mockResolvedValue({ id: 'workspace', name: 'Northstar Studio' });
   const onUserUpdated = vi.fn();
@@ -182,6 +206,25 @@ it('lets the workspace owner add an existing account', async () => {
   expect(await screen.findByText('Sam Parker')).toBeInTheDocument();
 });
 
+it('confirms member removal and updates the workspace directory', async () => {
+  vi.mocked(workspace.settings).mockResolvedValue({ id: 'workspace', name: 'Example Studio', can_manage_members: true, members: [
+    { id: 1, username: 'alex', name: '', email: user.email },
+    { id: 2, username: 'colleague', name: 'Sam Parker', email: 'sam@example.test' },
+  ] });
+  const remove = vi.spyOn(workspace, 'removeMember').mockResolvedValue(undefined);
+  render(<AccountSettings user={user} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+  expect(await screen.findByText('Sam Parker')).toBeInTheDocument();
+  expect(screen.getAllByRole('button', { name: 'Remove member' })).toHaveLength(1);
+  await userEvent.click(screen.getByRole('button', { name: 'Remove member' }));
+  expect(screen.getByRole('alertdialog')).toHaveTextContent('Clients, deals and invoices stay with the company.');
+  expect(remove).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole('button', { name: 'Confirm removal' }));
+  await waitFor(() => expect(remove).toHaveBeenCalledWith(2));
+  expect(screen.queryByText('Sam Parker')).not.toBeInTheDocument();
+  expect(screen.getByText('1 person in this workspace')).toBeInTheDocument();
+});
+
 it('uploads and removes the profile photo through the account API', async () => {
   const withPhoto = { ...user, avatar_url: '/api/v1/auth/avatar?v=1' };
   const upload = vi.spyOn(auth, 'uploadAvatar').mockResolvedValue({ user: withPhoto });
@@ -189,9 +232,13 @@ it('uploads and removes the profile photo through the account API', async () => 
   const onUserUpdated = vi.fn();
   const { rerender } = render(<AccountSettings user={user} onUserUpdated={onUserUpdated} />);
   const file = new File(['image bytes'], 'photo.png', { type: 'image/png' });
+  expect(screen.getByRole('button', { name: 'Choose photo' })).toBeInTheDocument();
+  expect(screen.getByText('No file selected')).toBeInTheDocument();
   await userEvent.upload(screen.getByLabelText('Photo'), file);
+  expect(screen.getByText('photo.png')).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Save photo' }));
   await waitFor(() => expect(upload).toHaveBeenCalledWith(file));
+  expect(screen.getByText('No file selected')).toBeInTheDocument();
   expect(onUserUpdated).toHaveBeenCalledWith(withPhoto);
   rerender(<AccountSettings user={withPhoto} onUserUpdated={onUserUpdated} />);
   await userEvent.click(screen.getByRole('button', { name: 'Remove photo' }));
