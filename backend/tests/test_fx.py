@@ -9,7 +9,7 @@ from django.utils import timezone
 
 import pytest
 
-from crm.models import Client, Deal, FxRate, FxSyncRun, Invoice, WorkspaceMembership
+from crm.models import Client, Deal, FxRate, FxSyncRun, Invoice, InvoicePayment, WorkspaceMembership
 from crm.services.fx import ECB_CURRENCIES, convert, rate_date_for
 
 
@@ -46,9 +46,11 @@ def test_cross_rates_and_historical_dashboard(api, user, other_user, client_reco
     workspace = client_record.workspace
     Deal.objects.create(workspace=workspace, created_by=user, client=client_record, title="Active", amount=Decimal("100"), currency="GBP")
     Deal.objects.create(workspace=workspace, created_by=user, client=client_record, title="Paid", status="paid", amount=Decimal("100"), currency="PLN", paid_at=timezone.now(), fx_rate_date=yesterday)
-    Invoice.objects.create(workspace=workspace, created_by=user, client=client_record, invoice_number="GBP-1", status="paid", currency="GBP", total_amount=Decimal("100"), paid_at=timezone.now(), fx_rate_date=yesterday)
+    paid_invoice = Invoice.objects.create(workspace=workspace, created_by=user, client=client_record, invoice_number="GBP-1", status="paid", currency="GBP", total_amount=Decimal("100"), paid_at=timezone.now(), fx_rate_date=yesterday)
+    InvoicePayment.objects.create(invoice=paid_invoice, recorded_by=user, amount=Decimal("100"), received_on=yesterday, fx_rate_date=yesterday)
     foreign = Client.objects.create(workspace=other_user.workspace_membership.workspace, created_by=other_user, name="Foreign")
-    Invoice.objects.create(workspace=foreign.workspace, created_by=other_user, client=foreign, invoice_number="GBP-2", status="paid", currency="GBP", total_amount=Decimal("999"), paid_at=timezone.now(), fx_rate_date=yesterday)
+    foreign_invoice = Invoice.objects.create(workspace=foreign.workspace, created_by=other_user, client=foreign, invoice_number="GBP-2", status="paid", currency="GBP", total_amount=Decimal("999"), paid_at=timezone.now(), fx_rate_date=yesterday)
+    InvoicePayment.objects.create(invoice=foreign_invoice, recorded_by=other_user, amount=Decimal("999"), received_on=yesterday, fx_rate_date=yesterday)
     api.force_login(user)
     usd = api.get(URL).json()
     assert (usd["pipeline_value"], usd["average_deal_size"], usd["revenue"], usd["win_rate"]) == ("150.00", "27.50", "200.00", "100.00")
@@ -67,7 +69,8 @@ def test_missing_or_stale_rates_never_return_partial_totals(api, user, client_re
     workspace = client_record.workspace
     Deal.objects.create(workspace=workspace, created_by=user, client=client_record, title="Priced in GBP", amount=Decimal("100"), currency="GBP")
     Deal.objects.create(workspace=workspace, created_by=user, client=client_record, title="Priced in USD", amount=Decimal("10"), currency="USD")
-    Invoice.objects.create(workspace=workspace, created_by=user, client=client_record, invoice_number="PLN-1", status="paid", currency="PLN", total_amount=Decimal("100"), paid_at=timezone.now())
+    paid_invoice = Invoice.objects.create(workspace=workspace, created_by=user, client=client_record, invoice_number="PLN-1", status="paid", currency="PLN", total_amount=Decimal("100"), paid_at=timezone.now())
+    InvoicePayment.objects.create(invoice=paid_invoice, recorded_by=user, amount=Decimal("100"), received_on=timezone.localdate())
     old = timezone.localdate() - timedelta(days=10)
     rate(old, "USD", "1.2")
     rate(old, "GBP", "0.8")

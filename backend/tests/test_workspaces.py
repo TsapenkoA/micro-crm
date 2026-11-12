@@ -199,6 +199,71 @@ def test_member_with_business_records_cannot_be_moved(api, user, other_user):
     assert WorkspaceMembership.objects.get(user=other_user).workspace_id == other_user.workspace_membership.workspace_id
 
 
+def test_owner_removes_member_without_moving_company_records(user, other_user):
+    company = user.workspace_membership.workspace
+    call_command("assign_workspace", other_user.username, str(company.pk), stdout=StringIO())
+    other_user.refresh_from_db()
+    client = Client.objects.create(workspace=company, created_by=other_user, name="Shared client")
+    deal = make_deal(other_user, client)
+    invoice = make_invoice(other_user, client)
+    note = ClientNote.objects.create(client=client, author=other_user, text="Shared history")
+
+    employee = APIClient(enforce_csrf_checks=True)
+    employee_csrf = employee.get("/api/v1/auth/csrf").json()["csrfToken"]
+    employee.post("/api/v1/auth/login", {"username": other_user.username, "password": "other-password-123"}, format="json", HTTP_X_CSRFTOKEN=employee_csrf)
+    assert employee.get("/api/v1/clients").json()["count"] == 1
+
+    owner = APIClient(enforce_csrf_checks=True)
+    owner_csrf = owner.get("/api/v1/auth/csrf").json()["csrfToken"]
+    token = owner.post("/api/v1/auth/login", {"username": user.username, "password": "test-password-123"}, format="json", HTTP_X_CSRFTOKEN=owner_csrf).json()["csrfToken"]
+    url = f"/api/v1/workspace/members/{other_user.pk}"
+    assert owner.delete("/api/v1/workspace/members", HTTP_X_CSRFTOKEN=token).status_code == 405
+    assert owner.delete(url).status_code == 403
+    assert owner.delete(url, HTTP_X_CSRFTOKEN=token).status_code == 204
+    assert employee.get("/api/v1/clients").status_code == 403
+
+    membership = WorkspaceMembership.objects.get(user=other_user)
+    assert membership.workspace_id != company.pk
+    assert membership.workspace.owner_id == other_user.pk
+    assert owner.get("/api/v1/clients").json()["count"] == 1
+    assert owner.get(f"/api/v1/clients/{client.pk}").status_code == 200
+    assert owner.get(f"/api/v1/deals/{deal.pk}").status_code == 200
+    assert owner.get(f"/api/v1/invoices/{invoice.pk}").status_code == 200
+    assert owner.get(f"/api/v1/clients/{client.pk}/notes").json()["results"][0]["id"] == str(note.pk)
+    client.name = "Updated by company"
+    client.save()
+    invoice.payment_terms = "Net 30"
+    invoice.save()
+
+    new_csrf = employee.get("/api/v1/auth/csrf").json()["csrfToken"]
+    employee.post("/api/v1/auth/login", {"username": other_user.username, "password": "other-password-123"}, format="json", HTTP_X_CSRFTOKEN=new_csrf)
+    assert employee.get("/api/v1/clients").json()["count"] == 0
+    assert employee.get(f"/api/v1/clients/{client.pk}").status_code == 404
+    assert employee.get(f"/api/v1/deals/{deal.pk}").status_code == 404
+    assert employee.get(f"/api/v1/invoices/{invoice.pk}").status_code == 404
+    assert employee.get(f"/api/v1/invoices/{invoice.pk}/pdf").status_code == 404
+
+
+def test_only_recently_authenticated_owner_can_remove_another_member(user, other_user):
+    company = user.workspace_membership.workspace
+    call_command("assign_workspace", other_user.username, str(company.pk), stdout=StringIO())
+    owner = APIClient(enforce_csrf_checks=True)
+    csrf = owner.get("/api/v1/auth/csrf").json()["csrfToken"]
+    token = owner.post("/api/v1/auth/login", {"username": user.username, "password": "test-password-123"}, format="json", HTTP_X_CSRFTOKEN=csrf).json()["csrfToken"]
+    assert owner.delete(f"/api/v1/workspace/members/{user.pk}", HTTP_X_CSRFTOKEN=token).status_code == 403
+    assert owner.delete("/api/v1/workspace/members/999999", HTTP_X_CSRFTOKEN=token).status_code == 404
+    session = owner.session
+    session["auth_time"] = 0
+    session.save()
+    assert owner.delete(f"/api/v1/workspace/members/{other_user.pk}", HTTP_X_CSRFTOKEN=token).status_code == 403
+
+    colleague = APIClient(enforce_csrf_checks=True)
+    colleague_csrf = colleague.get("/api/v1/auth/csrf").json()["csrfToken"]
+    colleague_token = colleague.post("/api/v1/auth/login", {"username": other_user.username, "password": "other-password-123"}, format="json", HTTP_X_CSRFTOKEN=colleague_csrf).json()["csrfToken"]
+    assert colleague.delete(f"/api/v1/workspace/members/{user.pk}", HTTP_X_CSRFTOKEN=colleague_token).status_code == 403
+    assert WorkspaceMembership.objects.get(user=other_user).workspace_id == company.pk
+
+
 def test_preview_dataset_requires_membership_and_stays_with_its_workspace(api, user, other_user):
     own_payload = {"workspaceName": "Own preview", "clients": []}
     foreign_payload = {"workspaceName": "Other preview", "clients": []}
@@ -282,6 +347,11 @@ def test_migration_preserves_all_business_records_and_admin(legacy_database):
         if model in ("deal", "invoice"):
             assert actual.pop("fx_rate_date") is None
         if model == "invoice":
+            assert actual.pop("deal_id") is None
+            assert actual.pop("due_date") is None
+            assert actual.pop("payment_terms") == ""
+            assert actual.pop("cancelled_at") is None
+            assert actual.pop("cancellation_reason") == ""
             assert actual.pop("updated_at") == expected["created_at"]
             assert actual.pop("issued_at") is None
         if model == "invoiceitem":

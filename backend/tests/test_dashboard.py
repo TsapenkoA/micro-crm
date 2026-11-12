@@ -5,7 +5,7 @@ from django.utils import timezone
 
 import pytest
 
-from crm.models import Client, Deal, FxRate, Invoice
+from crm.models import Client, Deal, FxRate, Invoice, InvoicePayment
 
 pytestmark = pytest.mark.django_db
 
@@ -23,11 +23,14 @@ def deal(user, client, status, amount, currency="USD", outcome="none"):
 
 
 def invoice(user, client, amount, currency="USD", paid_at=None):
-    return Invoice.objects.create(
+    paid_at = paid_at or timezone.now()
+    record = Invoice.objects.create(
         workspace=client.workspace, created_by=user, client=client,
         invoice_number=f"INV-{Invoice.objects.count() + 1}", currency=currency,
-        status="paid", paid_at=paid_at or timezone.now(), fx_rate_date=timezone.localtime(paid_at).date() if paid_at else timezone.localdate(), total_amount=Decimal(amount),
+        status="paid", paid_at=paid_at, fx_rate_date=timezone.localtime(paid_at).date(), total_amount=Decimal(amount),
     )
+    InvoicePayment.objects.create(invoice=record, recorded_by=user, amount=Decimal(amount), received_on=timezone.localtime(paid_at).date(), fx_rate_date=record.fx_rate_date)
+    return record
 
 
 def test_empty_dashboard_and_validation(api, user):
