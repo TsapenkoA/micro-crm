@@ -6,6 +6,22 @@ class WorkspaceNameSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=200, allow_blank=False, trim_whitespace=True)
 
 
+class SellerDetailsSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=200, trim_whitespace=True)
+    email = serializers.EmailField()
+    phone = serializers.CharField(max_length=80, required=False, allow_blank=True, trim_whitespace=True)
+    address = serializers.CharField(max_length=500, required=False, allow_blank=True, trim_whitespace=True)
+    tax_id = serializers.CharField(max_length=100, required=False, allow_blank=True, trim_whitespace=True)
+
+    def to_internal_value(self, data):
+        if not isinstance(data, dict):
+            raise serializers.ValidationError("Enter seller details as an object.")
+        unknown = set(data) - set(self.fields)
+        if unknown:
+            raise serializers.ValidationError({field: "This field is not writable." for field in sorted(unknown)})
+        return super().to_internal_value(data)
+
+
 class BankDetailsSerializer(serializers.Serializer):
     account_holder = serializers.CharField(max_length=200, required=False, allow_blank=True, trim_whitespace=True)
     bank_name = serializers.CharField(max_length=200, required=False, allow_blank=True, trim_whitespace=True)

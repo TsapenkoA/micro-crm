@@ -27,7 +27,7 @@ class ValidatedModel(UUIDModel):
 
 
 def validate_workspace(instance):
-    if instance.workspace_id and instance.created_by_id:
+    if instance._state.adding and instance.workspace_id and instance.created_by_id:
         if not WorkspaceMembership.objects.filter(user_id=instance.created_by_id, workspace_id=instance.workspace_id).exists():
             raise ValidationError({"created_by": "Creator must belong to the workspace."})
     if not instance._state.adding:
@@ -42,6 +42,7 @@ class Workspace(ValidatedModel):
     name = models.CharField(max_length=200)
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="owned_workspaces")
     bank_details = models.JSONField(default=dict, blank=True)
+    seller_details = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -187,7 +188,7 @@ class ClientNote(ValidatedModel):
         ordering = ["created_at", "id"]
 
     def clean(self):
-        if self.client_id and self.author_id:
+        if self._state.adding and self.client_id and self.author_id:
             if not WorkspaceMembership.objects.filter(user_id=self.author_id, workspace_id=self.client.workspace_id).exists():
                 raise ValidationError({"author": "Author must belong to the client's workspace."})
 
@@ -257,10 +258,12 @@ class Invoice(ValidatedModel):
         DRAFT = "draft", "Draft"
         SENT = "sent", "Sent"
         PAID = "paid", "Paid"
+        CANCELLED = "cancelled", "Cancelled"
 
     workspace = models.ForeignKey("accounts.Workspace", on_delete=models.PROTECT, related_name="invoices")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="invoices")
     client = models.ForeignKey("clients.Client", on_delete=models.PROTECT, related_name="invoices")
+    deal = models.ForeignKey("deals.Deal", null=True, blank=True, on_delete=models.PROTECT, related_name="invoices")
     invoice_number = models.CharField(max_length=50)
     currency = models.CharField(max_length=3, validators=[currency_validator])
     tax_rate = models.DecimalField(max_digits=7, decimal_places=4, default=0)
@@ -268,6 +271,10 @@ class Invoice(ValidatedModel):
     paid_at = models.DateTimeField(null=True, blank=True)
     fx_rate_date = models.DateField(null=True, blank=True)
     issued_at = models.DateTimeField(null=True, blank=True)
+    due_date = models.DateField(null=True, blank=True)
+    payment_terms = models.CharField(max_length=500, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancellation_reason = models.CharField(max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     seller_snapshot = models.JSONField(default=dict, blank=True)
@@ -282,12 +289,56 @@ class Invoice(ValidatedModel):
             models.UniqueConstraint(fields=["workspace", "invoice_number"], name="invoice_workspace_number_unique"),
             models.CheckConstraint(condition=Q(tax_rate__gte=0), name="invoice_tax_nonnegative"),
             models.CheckConstraint(condition=Q(subtotal__gte=0) & Q(tax_total__gte=0) & Q(total_amount__gte=0), name="invoice_totals_nonnegative"),
-            models.CheckConstraint(condition=Q(status__in=["draft", "sent", "paid"]), name="invoice_status_valid"),
+            models.CheckConstraint(condition=Q(status__in=["draft", "sent", "paid", "cancelled"]), name="invoice_status_valid"),
             models.CheckConstraint(condition=(Q(status="paid", paid_at__isnull=False) | (~Q(status="paid") & Q(paid_at__isnull=True))), name="invoice_paid_at_matches_status"),
+            models.CheckConstraint(condition=(Q(status="cancelled", cancelled_at__isnull=False) | (~Q(status="cancelled") & Q(cancelled_at__isnull=True))), name="invoice_cancelled_at_matches_status"),
         ]
 
     def clean(self):
         validate_workspace(self)
+        if self.deal_id and (self.deal.workspace_id != self.workspace_id or self.deal.client_id != self.client_id):
+            raise ValidationError({"deal": "Deal must belong to the same client and workspace."})
+
+
+class InvoicePayment(ValidatedModel):
+    invoice = models.ForeignKey(Invoice, on_delete=models.PROTECT, related_name="payments")
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="recorded_invoice_payments")
+    amount = models.DecimalField(max_digits=20, decimal_places=4)
+    received_on = models.DateField()
+    reference = models.CharField(max_length=200, blank=True)
+    fx_rate_date = models.DateField(null=True, blank=True)
+    is_legacy = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = "invoices"
+        ordering = ["received_on", "created_at", "id"]
+        constraints = [models.CheckConstraint(condition=Q(amount__gt=0), name="invoice_payment_amount_positive")]
+
+    def clean(self):
+        if self._state.adding and self.invoice_id and not WorkspaceMembership.objects.filter(user_id=self.recorded_by_id, workspace_id=self.invoice.workspace_id).exists():
+            raise ValidationError({"recorded_by": "Recorder must belong to the invoice workspace."})
+
+
+class InvoiceDelivery(ValidatedModel):
+    class Kind(models.TextChoices):
+        INVOICE = "invoice", "Invoice"
+        REMINDER = "reminder", "Reminder"
+
+    class Result(models.TextChoices):
+        ACCEPTED = "accepted", "Accepted by mail server"
+        FAILED = "failed", "Failed"
+
+    invoice = models.ForeignKey(Invoice, on_delete=models.PROTECT, related_name="deliveries")
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="invoice_deliveries")
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    result = models.CharField(max_length=10, choices=Result.choices)
+    recipient = models.EmailField()
+    attempted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = "invoices"
+        ordering = ["-attempted_at", "-id"]
 
 
 class InvoiceItem(ValidatedModel):

@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 from django.db.models import Count
 from django.utils import timezone
-from crm.models import Deal, FxRate, Invoice
+from crm.models import Deal, FxRate, InvoicePayment
 from crm.services.calculations import money_string, round_money
 from crm.services.fx import common_rate_date, convert
 
@@ -31,14 +31,15 @@ def dashboard_data(workspace_id, currency, period):
     active = deals.filter(status__in=[Deal.Status.NEW_LEAD, Deal.Status.NEGOTIATION, Deal.Status.IN_PROGRESS])
     active_records = list(active.values("amount", "currency"))
     paid_records = list(deals.filter(status=Deal.Status.PAID).values("amount", "currency", "fx_rate_date"))
-    invoices = list(Invoice.objects.filter(
-        workspace_id=workspace_id, client__workspace_id=workspace_id,
-        status=Invoice.Status.PAID, paid_at__gte=start, paid_at__lt=end,
-    ).values("total_amount", "currency", "paid_at", "fx_rate_date"))
+    payments = list(InvoicePayment.objects.filter(
+        invoice__workspace_id=workspace_id, invoice__client__workspace_id=workspace_id,
+        received_on__gte=start.date(), received_on__lt=end.date(),
+    ).values("amount", "invoice__currency", "received_on", "fx_rate_date"))
 
     needs_pipeline_rate = any(row["currency"] != currency for row in active_records)
     pipeline_date = common_rate_date((row["currency"] for row in active_records), currency, now.date()) if needs_pipeline_rate else None
-    dates = {row["fx_rate_date"] for row in paid_records + invoices if row["currency"] != currency and row["fx_rate_date"]}
+    dates = {row["fx_rate_date"] for row in paid_records if row["currency"] != currency and row["fx_rate_date"]}
+    dates.update(row["fx_rate_date"] for row in payments if row["invoice__currency"] != currency and row["fx_rate_date"])
     if pipeline_date:
         dates.add(pipeline_date)
     rates = {(row.date, row.currency): row.per_eur for row in FxRate.objects.filter(date__in=dates)}
@@ -72,17 +73,17 @@ def dashboard_data(workspace_id, currency, period):
     missing_periods = set()
     revenue_missing = set()
     revenue_dates = set()
-    for invoice in invoices:
-        paid_at = timezone.localtime(invoice["paid_at"], zone)
-        bucket = (paid_at.year, paid_at.month if period == "month" else (paid_at.month - 1) // 3 * 3 + 1)
-        value = convert(invoice["total_amount"], invoice["currency"], currency, invoice["fx_rate_date"], rates)
+    for payment in payments:
+        received_on = payment["received_on"]
+        bucket = (received_on.year, received_on.month if period == "month" else (received_on.month - 1) // 3 * 3 + 1)
+        value = convert(payment["amount"], payment["invoice__currency"], currency, payment["fx_rate_date"], rates)
         if value is None:
-            revenue_missing.add(invoice["currency"])
+            revenue_missing.add(payment["invoice__currency"])
             missing_periods.add(bucket)
         else:
             amounts[bucket] = amounts.get(bucket, Decimal("0")) + value
-            if invoice["currency"] != currency:
-                revenue_dates.add(invoice["fx_rate_date"])
+            if payment["invoice__currency"] != currency:
+                revenue_dates.add(payment["fx_rate_date"])
     rows = [{"period": f"{year:04d}-{month:02d}", "revenue": None if (year, month) in missing_periods else money_string(amounts.get((year, month), Decimal("0")), currency)} for year, month in labels]
     revenue = None if revenue_missing else sum(amounts.values(), Decimal("0"))
     stages = list(deals.values("status").annotate(count=Count("id")).order_by("status"))

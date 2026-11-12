@@ -4,7 +4,7 @@ from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import filters, generics, status
-from rest_framework.exceptions import APIException, PermissionDenied
+from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from crm.api.pagination import ClientPagination
@@ -79,6 +79,8 @@ class DealDetail(DealQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
             raise DealConflict()
         if "client" in values:
             values["client"] = self.lock_client(values["client"])
+            if values["client"].pk != instance.client_id and instance.invoices.exists():
+                raise ValidationError({"client": "Remove linked invoices before changing this deal's client."})
         status = values.get("status", instance.status)
         now = timezone.now()
         values["paid_at"] = (instance.paid_at if instance.status == Deal.Status.PAID else now) if status == Deal.Status.PAID else None
@@ -94,6 +96,8 @@ class DealDetail(DealQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
         changed = Deal.objects.filter(pk=instance.pk, workspace_id=request.workspace_id, version=version, version__lt=2147483647).update(**values)
         if not changed:
             raise DealConflict()
+        if "client" in values and values["client"].pk != instance.client_id and instance.invoices.exists():
+            raise ValidationError({"client": "Remove linked invoices before changing this deal's client."})
         instance.refresh_from_db()
         return Response(DealSerializer(instance, context=self.get_serializer_context()).data)
 
