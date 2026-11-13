@@ -6,27 +6,51 @@ import { auth, workspace } from '../src/api/client';
 import LoginForm from '../src/features/auth/LoginForm';
 import ThemeSelect from '../src/components/ThemeSelect';
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); localStorage.removeItem('sidebar-collapsed'); });
 
 it('opens each workspace section after restoring a session', async () => {
   vi.spyOn(auth, 'me').mockResolvedValue({ user: { id: 1, username: 'alex', email: '' } });
   render(<App />);
   await screen.findByRole('heading', { name: 'Dashboard', level: 1 });
+  const topNavigation = screen.getByRole('navigation', { name: 'Top navigation' });
+  expect(within(topNavigation).getByRole('link', { name: 'Tasks' })).toBeInTheDocument();
+  expect(within(topNavigation).queryByRole('link', { name: 'Activity' })).not.toBeInTheDocument();
+  const sideNavigation = screen.getByRole('navigation', { name: 'Main navigation' });
+  expect(within(sideNavigation).getByRole('button', { name: 'Activity' })).toBeInTheDocument();
+  expect(within(sideNavigation).queryByRole('button', { name: 'Tasks' })).not.toBeInTheDocument();
   for (const page of ['Deals', 'Clients', 'Invoices', 'Settings']) {
     await userEvent.click(screen.getByRole('button', { name: new RegExp(page) }));
     expect(screen.getByRole('heading', { name: page, level: 1 })).toBeInTheDocument();
   }
+  await userEvent.click(within(topNavigation).getByRole('link', { name: 'Clients' }));
+  expect(screen.getByRole('heading', { name: 'Clients', level: 1 })).toBeInTheDocument();
 });
 
 it('shows live workspace counts in navigation', async () => {
   vi.spyOn(auth, 'me').mockResolvedValue({ user: { id: 1, username: 'alex', email: '', workspace: { id: 'company-id', name: 'Example Studio' } } });
-  vi.spyOn(workspace, 'counts').mockResolvedValue({ clients: 5, deals: 11, invoices: 6 });
+  vi.spyOn(workspace, 'counts').mockResolvedValue({ clients: 5, deals: 11, tasks: 8, invoices: 6 });
   render(<App />);
   const navigation = await screen.findByRole('navigation', { name: 'Main navigation' });
   expect(await within(navigation).findByText('11')).toBeInTheDocument();
   expect(within(navigation).getByText('5')).toBeInTheDocument();
   expect(within(navigation).getByText('6')).toBeInTheDocument();
   expect(within(navigation).getByRole('button', { name: 'Clients' })).toBeInTheDocument();
+  const topNavigation = screen.getByRole('navigation', { name: 'Top navigation' });
+  expect(within(topNavigation).getByText('11')).toBeInTheDocument();
+  expect(within(topNavigation).getByText('8')).toBeInTheDocument();
+});
+
+it('collapses and restores the sidebar without losing navigation', async () => {
+  vi.spyOn(auth, 'me').mockResolvedValue({ user: { id: 1, username: 'alex', email: '' } });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'Dashboard', level: 1 });
+  await userEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+  expect(screen.getByRole('button', { name: 'Expand sidebar' })).toHaveAttribute('aria-expanded', 'false');
+  expect(localStorage.getItem('sidebar-collapsed')).toBe('true');
+  await userEvent.click(screen.getByRole('button', { name: 'Activity' }));
+  expect(await screen.findByRole('heading', { name: 'Activity', level: 1 })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }));
+  expect(screen.getByRole('button', { name: 'Collapse sidebar' })).toHaveAttribute('aria-expanded', 'true');
 });
 
 it('opens and closes navigation with Escape and restores focus', async () => {
