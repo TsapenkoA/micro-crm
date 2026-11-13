@@ -34,9 +34,15 @@ crm/
     deals/
         views.py
         serializers.py
+    tasks/
+        views.py
+        serializers.py
     invoices/
         views.py
         serializers.py
+        services.py
+    activity/
+        views.py
         services.py
     analytics/
         views.py
@@ -56,9 +62,9 @@ A request enters through config/urls.py and reaches the relevant feature's views
 
 management/commands/ contains trusted local maintenance commands. migrations/ preserves the existing histories grouped by their original application labels.
 
-config/ holds settings and URL routes. tests/ contains six suites: authentication, clients/history, deals, invoices, dashboard and workspaces/migrations.
+config/ holds settings and URL routes. tests/ covers authentication, workspaces, clients, deals, tasks, invoices, activity and analytics.
 
-The historical accounts, clients, deals and invoices labels are registered in crm/apps.py and mapped with MIGRATION_MODULES. Models retain those labels so table names, content types, permissions and applied migration records stay compatible. Keep them when adding models or migrations. The old migration histories must remain intact; moving source code does not require a database reset.
+The application labels are registered in crm/apps.py and mapped with MIGRATION_MODULES. Existing models retain their labels so table names, content types, permissions and applied migration records stay compatible. Keep them when adding models or migrations. The old migration histories must remain intact; moving source code does not require a database reset.
 
 ## API
 
@@ -96,6 +102,10 @@ All routes start with /api/v1. Business endpoints require a session and workspac
 | /deals | GET/POST: filtered deals or create a deal |
 | /deals/<id> | GET/PUT/PATCH/DELETE: deal details and changes |
 | /deals/<id>/status | PATCH: status/outcome change |
+| /tasks | GET: paginated workspace tasks; POST: create an open task |
+| /tasks/<id> | GET/PATCH/DELETE: view, update or remove a workspace task |
+| /activity | GET: paginated activity for the current workspace; optional entity_type=client, deal, task or invoice |
+| /operations/overview | GET: current user's due tasks and shared invoice/deal deadlines within seven days |
 | /invoices | GET/POST: search/filter invoices or create a draft |
 | /invoices/<id> | GET/PATCH: details or draft changes |
 | /invoices/<id>/status | PATCH: issue without email or record the full outstanding balance |
@@ -111,6 +121,12 @@ Invoice creation and draft updates accept an optional `deal` UUID (or `null`). T
 Client input accepts name, company, email, phone and optional `bank_details`. The server supplies workspace, creator, IDs and timestamps. Bank details are returned on client detail, not in the list. Related history or financial records protect clients from deletion (409).
 
 Deals use title, client, amount, currency and an optional timezone-qualified deadline. Statuses are new_lead, negotiation, in_progress, paid and archived; archived outcomes are none, lost or cancelled. Updates, status changes and deletion require the observed integer version. A stale version returns 409. Send decimal amounts as strings.
+
+Tasks belong to a client and may also link a deal for that client. Create with `{"client":"<uuid>","deal":"<uuid-or-null>","title":"Send proposal","assignee":123,"due_at":"2026-12-01T12:00:00Z"}`. Assignee defaults to the current user if omitted and must be an active member of the same workspace. New tasks start `open`; PATCH can change title, due_at, assignee or status (`open`/`done`). Completion sets `completed_at`; reopening clears it. Client and deal cannot be changed after creation. GET supports `mine=1`, `status=open|done`, `due=overdue|upcoming`, `search`, `client`, `deal`, `page` and `page_size`; results sort by due time and ID. Foreign tasks return 404 and foreign clients, deals or assignees cannot be used. When a member is removed, their open and completed tasks stay with the company but become unassigned until a teammate takes them. The UI shows due and overdue tasks; automatic email notifications are not configured.
+
+Activity records successful client, deal, task and invoice actions in the same database transaction as the change. The read-only `GET /activity` response contains `id`, `actor_name`, `entity_type`, `entity_id`, `entity_label`, `action`, allowlisted `changes` and `created_at`, newest first. For example, changing a deal amount adds `"amount":{"from":"100.00","to":"150.00"}`. It never copies bank details, email content, payment references or invoice line text. Client notes remain separate. A former member's displayed actor name stays in the journal, but they cannot read it after removal. Direct database changes and actions before this migration are not backfilled; this is a workspace activity history, not a tamper-proof audit trail.
+
+`GET /operations/overview` returns `today` and `reminders`, each with a total count and up to 20 earliest due records. Today includes open tasks assigned to the current user and the workspace's sent invoice and active deal deadlines. Reminders includes only those invoice and deal deadlines. Both include overdue records and dates within the next seven days. Each item has a kind, ID, title, client or deal subtitle, due time and overdue flag. It contains no invoice bank details or email content. Members only see their own assigned tasks; shared financial deadlines remain visible within their workspace. The UI uses the existing reminder preview and explicit send endpoints. No automatic sending or scheduler is configured.
 
 Invoices accept client, currency, optional deal, due_date, payment_terms, seller details and items (description, quantity, unit_price, tax_rate). The backend assigns numbers, calculates currency-specific totals and stores buyer/seller snapshots. Workspace bank details are copied into the seller snapshot; client bank details are copied into the buyer snapshot. Both appear in the invoice view and PDF. Later changes to saved bank details do not alter existing snapshots. Only drafts can be edited. Issuing a draft sets its issue time and defaults to a 30-day due date if none was entered. Issued documents retain their original recipient, amount, terms and PDF; cancellation preserves the document and records a reason. Existing invoices without a due date remain without one until edited as drafts.
 
