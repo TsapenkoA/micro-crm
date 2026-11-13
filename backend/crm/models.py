@@ -253,6 +253,56 @@ class Deal(ValidatedModel):
         validate_workspace(self)
 
 
+class Task(ValidatedModel):
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        DONE = "done", "Done"
+
+    workspace = models.ForeignKey("accounts.Workspace", on_delete=models.PROTECT, related_name="tasks")
+    client = models.ForeignKey("clients.Client", on_delete=models.PROTECT, related_name="tasks")
+    deal = models.ForeignKey("deals.Deal", null=True, blank=True, on_delete=models.SET_NULL, related_name="tasks")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_tasks")
+    assignee = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="assigned_tasks")
+    title = models.CharField(max_length=250)
+    due_at = models.DateTimeField()
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "tasks"
+        indexes = [models.Index(fields=["workspace", "status", "due_at"], name="task_workspace_due_idx")]
+
+    def clean(self):
+        validate_workspace(self)
+        if self.deal_id and (self.deal.workspace_id != self.workspace_id or self.deal.client_id != self.client_id):
+            raise ValidationError({"deal": "Deal must belong to the same client and workspace."})
+        if self.assignee_id and (self._state.adding or self.assignee_id != type(self).objects.get(pk=self.pk).assignee_id):
+            if not WorkspaceMembership.objects.filter(user_id=self.assignee_id, workspace_id=self.workspace_id).exists():
+                raise ValidationError({"assignee": "Assignee must belong to the workspace."})
+        if not self._state.adding:
+            previous = type(self).objects.get(pk=self.pk)
+            if previous.client_id != self.client_id or previous.deal_id != self.deal_id:
+                raise ValidationError("Task client and deal cannot be changed after creation.")
+
+
+class ActivityEvent(UUIDModel):
+    workspace = models.ForeignKey("accounts.Workspace", on_delete=models.PROTECT, related_name="activity_events")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="activity_events")
+    actor_name = models.CharField(max_length=150)
+    entity_type = models.CharField(max_length=10)
+    entity_id = models.UUIDField()
+    entity_label = models.CharField(max_length=250)
+    action = models.CharField(max_length=30)
+    changes = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = "activity"
+        indexes = [models.Index(fields=["workspace", "-created_at"], name="activity_workspace_time_idx")]
+
+
 class Invoice(ValidatedModel):
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"

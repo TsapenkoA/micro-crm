@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from crm.api.pagination import ClientPagination
 from crm.api.permissions import IsWorkspaceMember, WorkspaceQuerysetMixin
+from crm.activity.services import log_activity, snapshot
 from crm.clients.serializers import ClientDetailSerializer, ClientLinkSerializer, ClientListSerializer, ClientNoteSerializer, ClientSerializer
 from crm.models import Client, WorkspaceMembership
 
@@ -38,7 +39,8 @@ class ClientList(ClientQuerysetMixin, generics.ListCreateAPIView):
     @transaction.atomic
     def perform_create(self, serializer):
         self.lock_membership()
-        serializer.save(workspace_id=self.request.workspace_id, created_by=self.request.user)
+        client = serializer.save(workspace_id=self.request.workspace_id, created_by=self.request.user)
+        log_activity(client, self.request.user, "created")
 
 
 class ClientInUse(APIException):
@@ -55,13 +57,16 @@ class ClientDetail(ClientQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
     @transaction.atomic
     def perform_update(self, serializer):
         self.lock_membership()
-        serializer.save()
+        before = snapshot(serializer.instance)
+        client = serializer.save()
+        log_activity(client, self.request.user, "updated", before)
 
     @transaction.atomic
     def perform_destroy(self, instance):
         self.lock_membership()
         instance = get_object_or_404(self.get_queryset().select_for_update(), pk=instance.pk)
         try:
+            log_activity(instance, self.request.user, "deleted")
             instance.delete()
         except ProtectedError as exc:
             raise ClientInUse() from exc

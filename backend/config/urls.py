@@ -10,6 +10,9 @@ from crm.clients import views as client_views
 from crm.deals import views as deal_views
 from crm.invoices import views as invoice_views
 from crm.analytics import views as analytics_views
+from crm.tasks import views as task_views
+from crm.activity import views as activity_views
+from crm.operations.views import OperationsOverview
 from crm.auth.oauth import OAuthStartView, PROVIDERS, callback
 
 handler500 = "crm.api.errors.server_error"
@@ -50,6 +53,10 @@ urlpatterns = [
     path("api/v1/deals", deal_views.DealList.as_view()),
     path("api/v1/deals/<uuid:pk>", deal_views.DealDetail.as_view()),
     path("api/v1/deals/<uuid:pk>/status", deal_views.DealStatus.as_view()),
+    path("api/v1/tasks", task_views.TaskList.as_view()),
+    path("api/v1/tasks/<uuid:pk>", task_views.TaskDetail.as_view()),
+    path("api/v1/activity", activity_views.ActivityList.as_view()),
+    path("api/v1/operations/overview", OperationsOverview.as_view()),
     path("api/v1/invoices", invoice_views.InvoiceList.as_view()),
     path("api/v1/invoices/<uuid:pk>", invoice_views.InvoiceDetail.as_view()),
     path("api/v1/invoices/<uuid:pk>/status", invoice_views.InvoiceStatus.as_view()),

@@ -34,3 +34,13 @@ class DealsConfig(MigrationConfig):
 class InvoicesConfig(MigrationConfig):
     name = "crm.migrations.invoices"
     label = "invoices"
+
+
+class TasksConfig(MigrationConfig):
+    name = "crm.migrations.tasks"
+    label = "tasks"
+
+
+class ActivityConfig(MigrationConfig):
+    name = "crm.migrations.activity"
+    label = "activity"
