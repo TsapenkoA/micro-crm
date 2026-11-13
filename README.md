@@ -48,9 +48,10 @@ Open http://127.0.0.1:5173. Register at /sign-up or use the optional local admin
 
 1. Sign in or register and verify your email to create a personal workspace. Assign a colleague through the backend management command when company data should be shared.
 2. Open Clients and create a contact. Its details contain shared notes and links.
-3. Open Deals and create a deal for that client. Move it through the board or edit its status in the details panel.
+3. Open Deals and create a deal for that client. Move it through the board or edit its status in the details panel. In Tasks, assign a next step to a teammate with a due time. Check My tasks, Team, Overdue and Upcoming; the Dashboard also shows your next open tasks.
 4. In Settings, update your profile photo or workspace name and review members. The workspace owner can add an existing account with an empty personal workspace and save both the seller profile and payment details after a recent identity check. Add a client's payer bank details in the client form. Open Invoices, create a draft with line items, a due date and optional deal for the same client. New drafts copy the saved seller profile; older invoices keep their original details. Issue without email or explicitly email the PDF when SMTP is configured. Review overdue invoices, preview and confirm reminders, and record confirmed partial or full payments. Linked invoices and deals open from each other's details; their statuses remain independent.
 5. Open Dashboard to inspect deal metrics and revenue from recorded invoice payments. Choose USD, EUR, GBP, PLN, AUD, CAD, CHF or JPY as your personal reporting currency; supported original currencies are converted using stored ECB reference rates. The original amounts remain unchanged.
+6. Open Operations to review assigned tasks and upcoming or overdue invoice and deal deadlines. Complete a task there or review the text before manually sending an overdue invoice reminder. Open Activity to see who created, changed or deleted a client, deal, task or invoice. The journal starts when the activity migration is applied; earlier actions cannot be reconstructed.
 
 Import ECB rates before using converted analytics, then refresh them daily after publication:
 
