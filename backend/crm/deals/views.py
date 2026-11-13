@@ -9,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from crm.api.pagination import ClientPagination
 from crm.api.permissions import IsWorkspaceMember, WorkspaceQuerysetMixin
+from crm.activity.services import log_activity, snapshot
 from crm.deals.serializers import DealDeleteSerializer, DealFilters, DealSerializer, DealStatusSerializer
 from crm.models import Client, Deal, WorkspaceMembership
 from crm.services.fx import rate_date_for
@@ -63,7 +64,8 @@ class DealList(DealQuerysetMixin, generics.ListCreateAPIView):
         status = serializer.validated_data.get("status", Deal.Status.NEW_LEAD)
         paid_at = timezone.now() if status == Deal.Status.PAID else None
         rate_date = rate_date_for(serializer.validated_data["currency"], timezone.localtime(paid_at).date()) if paid_at else None
-        serializer.save(workspace_id=self.request.workspace_id, created_by=self.request.user, client=client, paid_at=paid_at, fx_rate_date=rate_date)
+        deal = serializer.save(workspace_id=self.request.workspace_id, created_by=self.request.user, client=client, paid_at=paid_at, fx_rate_date=rate_date)
+        log_activity(deal, self.request.user, "created")
 
 
 class DealDetail(DealQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
@@ -71,6 +73,7 @@ class DealDetail(DealQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
     def update(self, request, *args, **kwargs):
         self.lock_membership()
         instance = self.get_object()
+        before = snapshot(instance)
         serializer = self.get_serializer(instance, data=request.data, partial=kwargs.pop("partial", False))
         serializer.is_valid(raise_exception=True)
         values = dict(serializer.validated_data)
@@ -99,6 +102,7 @@ class DealDetail(DealQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
         if "client" in values and values["client"].pk != instance.client_id and instance.invoices.exists():
             raise ValidationError({"client": "Remove linked invoices before changing this deal's client."})
         instance.refresh_from_db()
+        log_activity(instance, request.user, "updated", before)
         return Response(DealSerializer(instance, context=self.get_serializer_context()).data)
 
     @transaction.atomic
@@ -111,6 +115,7 @@ class DealDetail(DealQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
         if serializer.validated_data["version"] != instance.version:
             raise DealConflict()
         try:
+            log_activity(instance, request.user, "deleted")
             instance.delete()
         except ProtectedError as exc:
             raise DealConflict("This deal has related records and cannot be deleted.") from exc

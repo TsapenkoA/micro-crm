@@ -9,8 +9,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from crm.api.permissions import IsWorkspaceMember
+from crm.activity.services import log_activity, snapshot
 from crm.auth.security import AuthThrottle, recent_auth
-from crm.models import Client, Deal, Invoice, PreviewDataset, Workspace, WorkspaceMembership
+from crm.models import Client, Deal, Invoice, PreviewDataset, Task, Workspace, WorkspaceMembership
 from crm.workspaces.serializers import BankDetailsSerializer, SellerDetailsSerializer, WorkspaceNameSerializer
 
 
@@ -21,6 +22,7 @@ def workspace_counts(request):
     return Response({
         "clients": Client.objects.filter(workspace_id=workspace_id).count(),
         "deals": Deal.objects.filter(workspace_id=workspace_id).count(),
+        "tasks": Task.objects.filter(workspace_id=workspace_id).count(),
         "invoices": Invoice.objects.filter(workspace_id=workspace_id).count(),
     })
 
@@ -188,6 +190,11 @@ class WorkspaceMemberDetail(APIView):
         employee = get_user_model().objects.select_for_update().get(pk=user_id)
         personal = Workspace.objects.create(name=f"{employee.username}'s workspace", owner=employee)
         currency = membership.reporting_currency
+        for task in Task.objects.filter(workspace=workspace, assignee=employee).select_for_update().select_related("assignee"):
+            before = snapshot(task)
+            task.assignee = None
+            task.save(update_fields=["assignee", "updated_at"])
+            log_activity(task, request.user, "updated", before)
         membership.delete()
         WorkspaceMembership.objects.create(user=employee, workspace=personal, reporting_currency=currency)
         for session in Session.objects.filter(expire_date__gt=timezone.now()).iterator():

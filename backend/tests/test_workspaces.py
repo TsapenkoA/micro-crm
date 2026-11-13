@@ -13,7 +13,7 @@ from django.utils import timezone
 import pytest
 from rest_framework.test import APIClient
 
-from crm.models import BackupCheck, Client, ClientNote, Deal, FxRate, FxSyncRun, Invoice, PreviewDataset, Workspace, WorkspaceMembership
+from crm.models import BackupCheck, Client, ClientNote, Deal, FxRate, FxSyncRun, Invoice, PreviewDataset, Task, Workspace, WorkspaceMembership
 
 pytestmark = pytest.mark.django_db
 
@@ -119,20 +119,21 @@ def test_invoice_number_unique_per_workspace(user, other_user, client_record):
     assert make_invoice(other_user, other_client).invoice_number == "INV-001"
 
 
-def test_workspace_counts_are_private_and_include_invoices(api, user, other_user):
+def test_workspace_counts_are_private_and_include_tasks(api, user, other_user):
     workspace = user.workspace_membership.workspace
     client = Client.objects.create(workspace=workspace, created_by=user, name="Own client")
     Deal.objects.create(workspace=workspace, created_by=user, client=client, title="Own deal", amount=100, currency="USD")
     Invoice.objects.create(workspace=workspace, created_by=user, client=client, invoice_number="INV-1", currency="USD")
+    Task.objects.create(workspace=workspace, created_by=user, client=client, assignee=user, title="Follow up", due_at=timezone.now())
     Client.objects.create(workspace=other_user.workspace_membership.workspace, created_by=other_user, name="Other client")
 
     assert api.get("/api/v1/workspace/counts").status_code == 403
     api.force_login(user)
-    assert api.get("/api/v1/workspace/counts").json() == {"clients": 1, "deals": 1, "invoices": 1}
+    assert api.get("/api/v1/workspace/counts").json() == {"clients": 1, "deals": 1, "tasks": 1, "invoices": 1}
 
     other = APIClient()
     other.force_login(other_user)
-    assert other.get("/api/v1/workspace/counts").json() == {"clients": 1, "deals": 0, "invoices": 0}
+    assert other.get("/api/v1/workspace/counts").json() == {"clients": 1, "deals": 0, "tasks": 0, "invoices": 0}
 
 
 def test_workspace_settings_rename_is_shared_and_isolated(api, user, other_user):

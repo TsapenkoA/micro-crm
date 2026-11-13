@@ -18,11 +18,11 @@ INSTALLED_APPS = [
     "allauth.socialaccount.providers.microsoft",
     "rest_framework", "crm.apps.CRMConfig",
     "crm.apps.AccountsConfig", "crm.apps.ClientsConfig",
-    "crm.apps.DealsConfig", "crm.apps.InvoicesConfig",
+    "crm.apps.DealsConfig", "crm.apps.InvoicesConfig", "crm.apps.TasksConfig", "crm.apps.ActivityConfig",
 ]
 MIGRATION_MODULES = {
     label: f"crm.migrations.{label}"
-    for label in ("accounts", "clients", "deals", "invoices")
+    for label in ("accounts", "clients", "deals", "invoices", "tasks", "activity")
 }
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
