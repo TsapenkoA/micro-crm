@@ -24,7 +24,7 @@ export function Icon({ name }: { name: 'search' | 'plus' | 'arrow' | 'grid' | 't
 }
 
 export function Avatar({ client, small = false }: { client: PreviewClient; small?: boolean }) {
-  return <span className={`pv-avatar tone-${client.color} ${small ? 'small' : ''}`} aria-hidden="true">{client.initials}</span>;
+  return <span className={`pv-avatar ${small ? 'small' : ''}`} aria-hidden="true">{client.initials}</span>;
 }
 
 export function Badge({ status }: { status: string }) {

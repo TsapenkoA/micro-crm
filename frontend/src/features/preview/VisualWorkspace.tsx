@@ -10,6 +10,7 @@ import InvoicesPreview from './PreviewInvoices';
 import SettingsPreview from './PreviewSettings';
 import PreviewEditor from './PreviewEditor';
 import './preview.css';
+import './preview-shell.css';
 
 export default function VisualWorkspace() {
   const [page, setPage] = useState<Page>(currentPage);
@@ -64,7 +65,7 @@ export default function VisualWorkspace() {
     const previousTitle = document.title;
     const icon = document.createElement('link');
     icon.rel = 'icon';
-    icon.href = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="#222b51"/><path d="M5 23 15 6l4 8 8-5-7 17-5-7-10 4Z" fill="#b8afff"/></svg>')}`;
+    icon.href = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="#080808"/><path d="M5 23 15 6l4 8 8-5-7 17-5-7-10 4Z" fill="#ffffff"/></svg>')}`;
     document.head.append(icon);
     document.title = 'MicroFlow · Preview';
     return () => { icon.remove(); document.title = previousTitle; };
@@ -89,18 +90,18 @@ export default function VisualWorkspace() {
 
   return <div className={`visual-workspace ${compact ? 'pv-compact' : ''} ${reducedMotion ? 'pv-reduced-motion' : ''}`} data-preview-theme={theme === 'system' ? (deviceDark ? 'dark' : 'light') : theme}>
     <a className="skip-link" href="#preview-content" onClick={event => { event.preventDefault(); document.getElementById('preview-content')?.focus(); }}>Skip to content</a>
+    <header className="pv-topbar"><div className="pv-brand"><span className="pv-brand-symbol" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M5 23 15 6l4 8 8-5-7 17-5-7-10 4Z" fill="currentColor" /></svg></span><span>MicroFlow</span></div><nav aria-label="Preview top navigation">{pages.filter(name => name !== 'Settings' && name !== 'Dashboard').map(name => <button key={name} className={page === name ? 'active' : ''} aria-current={page === name ? 'page' : undefined} onClick={() => navigate(name)}><NavIcon page={name} />{name}</button>)}</nav><a className="pv-topbar-back" href="/">Back to application</a><button className="pv-topbar-user" aria-label="Open preview settings" onClick={() => navigate('Settings')}><UserAvatar profile={profile} /></button></header>
     <aside className={`pv-sidebar ${menu ? 'is-open' : ''}`} onKeyDown={event => { if (event.key === 'Escape') { setMenu(false); menuRef.current?.focus(); } }}>
       <div className="pv-brand"><span className="pv-brand-symbol" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M5 23 15 6l4 8 8-5-7 17-5-7-10 4Z" fill="currentColor" /></svg></span><span>Micro<span className="pv-brand-accent">Flow</span></span><button ref={menuRef} className="pv-menu" aria-label={menu ? 'Close navigation' : 'Open navigation'} aria-expanded={menu} aria-controls="preview-navigation" onClick={() => setMenu(!menu)}>☰</button></div>
       <div className="pv-sidebar-body" id="preview-navigation">
         <div className="pv-workspace"><span className="pv-workspace-mark">{workspaceName.charAt(0).toUpperCase()}</span><div><strong>{workspaceName}</strong><small>Sample workspace</small></div></div>
         <p className="pv-nav-caption">WORKSPACE</p>
-        <nav aria-label="Preview navigation">{pages.map(name => <button key={name} className={`pv-nav-item ${page === name ? 'active' : ''}`} aria-current={page === name ? 'page' : undefined} onClick={() => navigate(name)}>{name === 'Settings' ? <Icon name="settings" /> : <NavIcon page={name} />}<span>{name}</span>{name === 'Deals' && <small>{deals.length}</small>}{name === 'Clients' && <small>{clients.length}</small>}{name === 'Invoices' && <small>{invoices.length}</small>}</button>)}</nav>
-        <div className="pv-sidebar-bottom"><div className="pv-preview-note"><span className="pv-spark">✧</span><strong>Your workspace, simplified.</strong><p>Less admin. More room for good work.</p></div><button className="pv-user" onClick={() => navigate('Settings')}><UserAvatar profile={profile} /><div><strong>{profile.name}</strong><small>Preview profile</small></div><Icon name="arrow" /></button></div>
+        <nav aria-label="Preview navigation">{pages.filter(name => name !== 'Settings').map(name => <button key={name} className={`pv-nav-item ${page === name ? 'active' : ''}`} aria-current={page === name ? 'page' : undefined} onClick={() => navigate(name)}><NavIcon page={name} /><span>{name}</span>{name === 'Deals' && <small>{deals.length}</small>}{name === 'Clients' && <small>{clients.length}</small>}{name === 'Invoices' && <small>{invoices.length}</small>}</button>)}</nav>
+        <div className="pv-sidebar-bottom"><button className={`pv-nav-item pv-sidebar-settings ${page === 'Settings' ? 'active' : ''}`} aria-current={page === 'Settings' ? 'page' : undefined} onClick={() => navigate('Settings')}><NavIcon page="Settings" /><span>Settings</span></button><div className="pv-preview-note"><span className="pv-spark">✧</span><strong>Your workspace, simplified.</strong><p>Less admin. More room for good work.</p></div><button className="pv-user" onClick={() => navigate('Settings')}><UserAvatar profile={profile} /><div><strong>{profile.name}</strong><small>Preview profile</small></div><Icon name="arrow" /></button></div>
       </div>
     </aside>
     <main className="pv-main" id="preview-content" tabIndex={-1}>
       <div className="pv-content">
-        <div className="pv-exit-row"><a href="/" className="pv-back-link"><Icon name="arrow" />Back to application</a></div>
         <header className="pv-page-heading"><div><h1>{page === 'Dashboard' ? 'A little clarity for your day.' : page}</h1><p className="muted">{{ Dashboard: 'Your pipeline, relationships and revenue. All in one place.', Deals: 'From the first hello to the final handoff.', Clients: 'Good relationships are the heart of good business.', Invoices: 'Beautifully simple billing. Keep every detail in order.', Settings: 'Make this space feel like yours.' }[page]}</p></div><div className="pv-quick-actions" role="group" aria-label="Page actions">{page === 'Dashboard' && <><button className="pv-button secondary" onClick={() => openEditor('client')}><Icon name="plus" />New client</button><button className="pv-button primary" onClick={() => navigate('Deals')}><Icon name="arrow" />Explore deals</button></>}{page === 'Deals' && <><button className="pv-button secondary" onClick={() => navigate('Clients')}><Icon name="arrow" />View clients</button><button className="pv-button primary" onClick={() => openEditor('deal')}><Icon name="plus" />New deal</button></>}{page === 'Clients' && <><button className="pv-button secondary" onClick={() => navigate('Deals')}><Icon name="arrow" />View deals</button><button className="pv-button primary" onClick={() => openEditor('client')}><Icon name="plus" />New client</button></>}{page === 'Invoices' && <><button className="pv-button secondary" onClick={() => navigate('Clients')}><Icon name="arrow" />View clients</button><button className="pv-button primary" onClick={() => openEditor('invoice')}><Icon name="file" />Create invoice</button></>}</div></header>
         {notice && <div className="pv-toast" role="status"><Icon name="check" />{notice}<button aria-label="Dismiss notification" onClick={() => setNotice('')}>×</button></div>}
         {page === 'Deals' && <DealsPreview deals={deals} clients={clients} profile={profile} content={content} defaultCurrency={defaultCurrency} onEdit={deal => openEditor('deal', deal)} onStatus={(id, status) => { setDeals(current => current.map(deal => deal.id === id ? { ...deal, status } : deal)); setNotice('Status changed in the preview only.'); }} />}
