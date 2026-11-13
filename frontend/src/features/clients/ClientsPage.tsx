@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ApiError } from '../../api/client';
 import Dialog from '../../components/Dialog';
+import ActionIcon from '../../components/ActionIcon';
 import ClientDetails from './ClientDetails';
 import ClientForm from './ClientForm';
 import DeleteClientDialog from './DeleteClientDialog';
@@ -60,11 +61,11 @@ export default function ClientsPage({ createRequested = false, onCreateHandled, 
         <form role="search" onSubmit={submitSearch} className="client-search">
           <label className="sr-only" htmlFor="client-search">Search clients</label>
           <span className="client-search-field"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></svg><input id="client-search" type="search" placeholder="Search by name, company or email…" value={draft} onChange={event => setDraft(event.target.value)} /></span>
-          <button className="secondary">Search</button>
+          <button className="secondary"><ActionIcon name="search" />Search</button>
           {(draft || search) && <button type="button" className="secondary" onClick={() => { setDraft(''); setSearch(''); setPage(1); setRevision(value => value + 1); }}>Clear</button>}
         </form>
         <p className="shared-caption muted">{data ? `${data.count} ${data.count === 1 ? 'relationship' : 'relationships'}` : 'Shared clients'}, one company workspace</p>
-        <button className="secondary" onClick={() => setRevision(value => value + 1)} disabled={loading}>Refresh</button>
+        <button className="secondary" onClick={() => setRevision(value => value + 1)} disabled={loading}><ActionIcon name="refresh" />Refresh</button>
       </div>
       {success && <p role="status" className="notice success">{success}</p>}
       {loading ? <p role="status" className="empty-state muted">Loading clients…</p> : error ? <div className="empty-state"><p role="alert" className="notice error">{error}</p>
@@ -73,7 +74,7 @@ export default function ClientsPage({ createRequested = false, onCreateHandled, 
           <table className="client-table"><caption className="sr-only">Clients in your company workspace</caption>
             <thead><tr><th scope="col">Client</th><th scope="col">Company</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Deals</th><th scope="col"><span className="sr-only">Open client</span></th></tr></thead>
             <tbody>{data.results.map(client => <tr key={client.id}>
-              <th scope="row"><button className="client-name client-identity" aria-label={client.name} onClick={() => setPanel({ kind: 'detail', id: client.id })}><span className={`client-list-avatar tone-${(client.company || client.name).charCodeAt(0) % 4}`} aria-hidden="true">{(client.company || client.name).trim().split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</span><span><strong>{client.name}</strong><small>Shared with your team</small></span></button></th>
+              <th scope="row"><button className="client-name client-identity" aria-label={client.name} onClick={() => setPanel({ kind: 'detail', id: client.id })}><span className="client-list-avatar" aria-hidden="true">{(client.company || client.name).trim().split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</span><span><strong>{client.name}</strong><small>Shared with your team</small></span></button></th>
               <td data-label="Company">{client.company || '—'}</td><td data-label="Email">{client.email || '—'}</td><td data-label="Phone">{client.phone || '—'}</td><td data-label="Deals"><span className="client-deal-count">{client.deal_count ?? 0}</span></td>
               <td className="client-open-cell"><button className="client-open-button" aria-label={`Open ${client.name}`} onClick={() => setPanel({ kind: 'detail', id: client.id })}>→</button></td>
             </tr>)}</tbody>

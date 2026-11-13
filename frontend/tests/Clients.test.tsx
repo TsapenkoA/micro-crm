@@ -143,7 +143,7 @@ it.each(['light', 'dark'])('renders clients and the global create action in the 
   localStorage.setItem('theme', theme);
   vi.spyOn(auth, 'me').mockResolvedValue({ user: { id: 1, username: 'alex', email: '' } });
   render(<App />);
-  await userEvent.click(await screen.findByRole('button', { name: '+ New client' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'New client' }));
   expect(document.documentElement).toHaveAttribute('data-theme', theme);
   expect(screen.getByRole('heading', { name: 'Clients', level: 1 })).toBeInTheDocument();
   expect(screen.getByRole('dialog', { name: 'New client' })).toBeInTheDocument();
@@ -160,12 +160,12 @@ it('shows a colleague’s newly created client after a fresh request and clears 
   vi.mocked(clients.list).mockImplementation(async () => page(currentUser === 'outsider' ? [] : [...shared]));
   vi.mocked(clients.create).mockImplementation(async (data: ClientInput) => { const created = { ...record, ...data }; shared.push(created); return created; });
   render(<App />);
-  await userEvent.click(await screen.findByRole('button', { name: '+ New client' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'New client' }));
   await userEvent.type(screen.getByLabelText('Name'), 'Company contact');
   await userEvent.click(screen.getByRole('button', { name: 'Save client' }));
   expect(await screen.findByRole('button', { name: 'Company contact' })).toBeInTheDocument();
   for (const username of ['bob', 'outsider']) {
-    await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Log out' }));
     expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/login');
     await userEvent.type(screen.getByLabelText('Email or username'), username);
