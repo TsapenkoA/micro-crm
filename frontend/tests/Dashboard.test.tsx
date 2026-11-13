@@ -4,6 +4,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import DashboardPage from '../src/features/dashboard/DashboardPage';
 import { dashboard, type DashboardData } from '../src/features/dashboard/api';
 import { auth } from '../src/api/client';
+import { tasks } from '../src/features/tasks/api';
 
 vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -21,7 +22,7 @@ const data: DashboardData = {
   fx: { source: 'ECB', pipeline_rate_date: '2026-12-01', average_rate_dates: ['2026-11-15'], revenue_rate_dates: ['2026-12-01'], missing: { pipeline: [], average_deal_size: [], revenue: [] } },
 };
 
-beforeEach(() => { vi.resetAllMocks(); vi.mocked(dashboard.get).mockResolvedValue(data); vi.spyOn(auth, 'updateReportingCurrency').mockImplementation(async reporting_currency => ({ reporting_currency })); });
+beforeEach(() => { vi.resetAllMocks(); vi.mocked(dashboard.get).mockResolvedValue(data); vi.spyOn(tasks, 'list').mockResolvedValue({ count: 0, next: null, previous: null, results: [] }); vi.spyOn(auth, 'updateReportingCurrency').mockImplementation(async reporting_currency => ({ reporting_currency })); });
 
 it('renders server KPIs and requests new data when filters change', async () => {
   render(<DashboardPage onNavigate={vi.fn()} />);
@@ -59,4 +60,15 @@ it('does not show partial converted totals when exchange rates are missing', asy
   expect(await screen.findByText(/ECB rates are unavailable for GBP, PLN/)).toBeInTheDocument();
   expect(screen.getAllByText('Rate unavailable')).toHaveLength(3);
   expect(screen.getByText('Revenue is unavailable until the missing ECB rates are imported.')).toBeInTheDocument();
+});
+
+it('shows the current user’s next task with a link to its client', async () => {
+  vi.mocked(tasks.list).mockResolvedValue({ count: 1, next: null, previous: null, results: [{
+    id: 'task-1', client: 'client-1', client_name: 'Acme', deal: null, deal_title: null,
+    title: 'Send brief', assignee: 1, assignee_name: 'alex', due_at: '2026-12-01T12:00:00Z',
+    status: 'open', completed_at: null, created_by: 1, created_at: '', updated_at: '',
+  }] });
+  render(<DashboardPage onNavigate={vi.fn()} />);
+  expect(await screen.findByRole('link', { name: 'Send brief' })).toHaveAttribute('href', '#/clients?client=client-1');
+  expect(tasks.list).toHaveBeenCalledWith({ mine: true, status: 'open', page_size: 5 }, expect.any(AbortSignal));
 });
