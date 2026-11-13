@@ -5,17 +5,17 @@
 .dashboard-toolbar .dashboard-currency { gap: 10px; color: var(--text-muted); font-size: 11px; font-weight: 600; letter-spacing: .5px; }
 .dashboard-toolbar select { min-width: 90px; min-height: 38px; padding: 7px 28px 7px 12px; color: var(--text); font-size: 12px; font-weight: 600; letter-spacing: 0; }
 .dashboard-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-.dashboard-kpis article { display: grid; gap: 12px; min-height: 132px; padding: 16px; }
+.dashboard-kpis article { display: grid; gap: 10px; min-height: 118px; padding: 14px; }
 .dashboard-kpis span, .dashboard-kpis small { color: var(--text-muted); }
 .dashboard-kpis strong { font-size: clamp(18px, 1.8vw, 25px); line-height: 1.15; overflow-wrap: anywhere; }
 .dashboard-main-grid { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(250px, 1fr); gap: 20px; }
-.dashboard-main-grid > section, .dashboard-recent { padding: 18px; min-width: 0; }
+.dashboard-main-grid > section, .dashboard-recent { padding: 16px; min-width: 0; }
 .dashboard-section-heading h2 { margin: 0; font-size: 16px; font-weight: 650; }
 .dashboard-section-heading p { margin: 4px 0 0; font-size: 12px; }
 .dashboard-period { display: flex; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); }
 .dashboard-period button { padding: 7px 11px; border-radius: 6px; font-size: 12px; }
 .dashboard-period button[aria-pressed="true"] { background: var(--surface); box-shadow: var(--shadow-panel); font-weight: 600; }
-.dashboard-chart { height: 280px; margin: 28px 0 0; }
+.dashboard-chart { height: 260px; margin: 20px 0 0; }
 .dashboard-empty { display: grid; place-content: center; min-height: 180px; color: var(--text-muted); text-align: center; }
 .dashboard-deal-count { display: block; margin: 30px 0 22px; font-size: 24px; }
 .dashboard-stage { margin: 15px 0; }
@@ -29,5 +29,12 @@
 .dashboard-table-wrap td small { display: block; color: var(--text-muted); }
 .dashboard-deal-link { color: var(--nav-text); font-weight: 600; text-align: left; }
 .dashboard-deal-link:hover { text-decoration: underline; }
+.dashboard-task-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.dashboard-task-list li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(130px, .5fr) auto; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.dashboard-task-list a { color: var(--text); font-weight: 600; }
+.dashboard-task-list span, .dashboard-task-list time { color: var(--text-muted); }
+.dashboard-task-list time.is-overdue { color: var(--danger); font-weight: 600; }
+.dashboard-task-empty { padding: 20px 0; color: var(--text-muted); }
+@media (max-width: 650px) { .dashboard-task-list li { grid-template-columns: 1fr; gap: 4px; } }
 @media (max-width: 1000px) { .dashboard-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dashboard-main-grid { grid-template-columns: 1fr; } }
 @media (max-width: 650px) { .dashboard-page { padding: 0 0 30px; } .dashboard-kpis { grid-template-columns: 1fr; } .dashboard-section-heading { align-items: flex-start; flex-wrap: wrap; } }

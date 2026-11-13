@@ -3,6 +3,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { dashboard, type DashboardData } from './api';
 import { money as dealMoney, stages } from '../deals/api';
 import { auth, reportingCurrencies, type ReportingCurrency } from '../../api/client';
+import MyTasks from './MyTasks';
 import './dashboard.css';
 
 function amount(value: string, currency: string) {
@@ -16,7 +17,7 @@ function label(period: string, unit: 'month' | 'quarter') {
   return unit === 'quarter' ? `Q${Math.floor((month - 1) / 3) + 1} ${year}` : new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
 }
 
-export default function DashboardPage({ onNavigate, reportingCurrency = 'USD', onReportingCurrencyChanged }: { onNavigate: (page: 'Deals' | 'Clients') => void; reportingCurrency?: ReportingCurrency; onReportingCurrencyChanged?: (currency: ReportingCurrency) => void }) {
+export default function DashboardPage({ onNavigate, reportingCurrency = 'USD', onReportingCurrencyChanged }: { onNavigate: (page: 'Deals' | 'Clients' | 'Tasks') => void; reportingCurrency?: ReportingCurrency; onReportingCurrencyChanged?: (currency: ReportingCurrency) => void }) {
   const [currency, setCurrency] = useState<ReportingCurrency>(reportingCurrency);
   const [currencyError, setCurrencyError] = useState('');
   const [savingCurrency, setSavingCurrency] = useState(false);
@@ -73,6 +74,7 @@ export default function DashboardPage({ onNavigate, reportingCurrency = 'USD', o
         <section className="panel dashboard-pipeline"><div className="dashboard-section-heading"><div><h2>Pipeline at a glance</h2><p className="muted">Deal stages in {currency}</p></div></div><strong className="dashboard-deal-count">{dealCount} deals</strong>{stages.map(stage => { const count = data.deal_counts.find(row => row.status === stage.id)?.count ?? 0; return <div className="dashboard-stage" key={stage.id}><div><span>{stage.label}</span><strong>{count}</strong></div><div className="dashboard-stage-track"><i style={{ width: `${dealCount ? count / dealCount * 100 : 0}%` }} /></div></div>; })}</section>
       </div>
       <section className="panel dashboard-recent"><div className="dashboard-section-heading"><div><h2>On your radar</h2><p className="muted">Upcoming active deals</p></div><button className="secondary" onClick={() => onNavigate('Deals')}>View all deals</button></div>{data.recent_deals.length ? <div className="dashboard-table-wrap"><table><thead><tr><th>Deal / client</th><th>Status</th><th>Deadline</th><th>Value</th></tr></thead><tbody>{data.recent_deals.map(deal => <tr key={deal.id}><td><button className="dashboard-deal-link" onClick={() => onNavigate('Deals')}>{deal.title}</button><small>{deal.client__company || deal.client__name}</small></td><td>{stages.find(stage => stage.id === deal.status)?.label}</td><td>{deal.deadline ? new Date(deal.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'No deadline'}</td><td>{dealMoney(deal.amount, deal.currency)}</td></tr>)}</tbody></table></div> : <p className="dashboard-empty">No active deals. <button className="dashboard-deal-link" onClick={() => onNavigate('Deals')}>Explore deals</button></p>}</section>
+      <MyTasks onNavigate={() => onNavigate('Tasks')} />
     </>}
   </section>;
 }
