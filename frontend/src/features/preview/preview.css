@@ -89,7 +89,7 @@
 .visual-workspace .theme-switch { border-color: var(--border); background: var(--surface-raised); }
 .visual-workspace .theme-option[aria-pressed="true"] { background: var(--surface); color: var(--nav-text); }
 .pv-user { display: flex; align-items: center; gap: 9px; border-top: 1px solid var(--border); margin-top: 20px; padding: 18px 4px 0; }
-.pv-user-avatar { display: grid; place-items: center; height: 32px; width: 32px; border-radius: 50%; flex-shrink: 0; background: linear-gradient(135deg, #e9c6a8, #a48dba); color: #493c57; font-size: 10px; font-weight: 650; }
+.pv-user-avatar { display: grid; place-items: center; height: 32px; width: 32px; border: 1px solid var(--border-control); border-radius: 50%; flex-shrink: 0; background: var(--surface-raised); color: var(--nav-text); font-size: 10px; font-weight: 650; }
 .pv-user strong { font-size: 11px; font-weight: 550; display: block; }
 .pv-user small { font-size: 10px; color: var(--text-muted); }
 .pv-user { width: 100%; text-align: left; }
@@ -98,11 +98,7 @@
 .pv-user-avatar { overflow: hidden; }
 .pv-user-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .pv-main { min-width: 0; }
-.pv-back-link { color: var(--nav-text); font-size: 11px; font-weight: 600; display: inline-flex; gap: 8px; align-items: center; padding: 8px 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); white-space: nowrap; }
-.pv-back-link:hover { background: var(--surface-raised); }
-.pv-back-link .pv-icon { width: 14px; height: 14px; transform: rotate(180deg); }
 .pv-content { padding: 22px 30px 0; }
-.pv-exit-row { display: flex; justify-content: flex-end; margin-bottom: 26px; }
 .pv-preview-tag { border: 1px solid color-mix(in srgb, var(--accent) 27%, var(--border)); background: color-mix(in srgb, var(--accent-soft) 55%, var(--surface)); color: var(--accent); padding: 3px 8px; border-radius: 5px; font-size: 10px; white-space: nowrap; }
 .pv-page-heading { display: flex; justify-content: space-between; gap: 20px; align-items: center; margin-bottom: 26px; }
 .pv-eyebrow { font-size: 8px; letter-spacing: 1.6px; color: var(--text-muted); font-weight: 550; margin-bottom: 7px; }
@@ -147,7 +143,7 @@
 .pv-deal-card:hover { border-color: color-mix(in srgb, var(--nav-text) 50%, var(--border)); transform: translateY(-1px); }
 .pv-deal-card.selected { border-color: var(--nav-text); box-shadow: 0 0 0 1px color-mix(in srgb, var(--nav-text) 18%, transparent); }
 .pv-card-top { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-bottom: 12px; }
-.pv-avatar { display: inline-grid; place-items: center; width: 38px; height: 38px; border-radius: 9px; background: color-mix(in srgb, var(--tone) 13%, var(--surface)); color: var(--tone); border: 1px solid color-mix(in srgb, var(--tone) 18%, transparent); font-size: 12px; font-weight: 650; flex-shrink: 0; }
+.pv-avatar { display: inline-grid; place-items: center; width: 38px; height: 38px; border-radius: 9px; background: var(--surface-raised); color: var(--nav-text); border: 1px solid var(--border-control); font-size: 12px; font-weight: 650; flex-shrink: 0; }
 .pv-avatar.small { width: 25px; height: 25px; font-size: 8px; border-radius: 6px; }
 .pv-category { color: var(--text-muted); font-size: 8px; padding: 2px 4px; border-radius: 3px; background: var(--surface-raised); max-width: 100px; overflow-wrap: anywhere; }
 .pv-deal-card h3 { font-size: 11px; font-weight: 550; line-height: 1.5; margin-bottom: 4px; }
@@ -404,9 +400,7 @@
   .pv-sidebar-bottom { padding-top: 16px; }
   .pv-preview-note { display: none; }
   .pv-user { padding: 12px 0 0; }
-  .pv-back-link { font-size: 10px; padding: 7px 9px; }
   .pv-content { padding: 18px 16px 0; }
-  .pv-exit-row { margin-bottom: 20px; }
   .pv-page-heading { margin-bottom: 20px; }
   .pv-page-heading h1 { font-size: 25px; }
   .pv-quick-actions { gap: 6px; width: 100%; }
