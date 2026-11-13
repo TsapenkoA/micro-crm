@@ -1,0 +1,29 @@
+.operations-page { display: grid; gap: 16px; padding-bottom: 30px; }
+.operations-intro { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.operations-intro h2 { font-size: 18px; font-weight: 700; }
+.operations-intro p { margin-top: 5px; font-size: 12px; }
+.operations-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; width: fit-content; padding: 4px; border-radius: 15px; background: var(--surface-raised); }
+.operations-tabs button, .operations-tabs a { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 7px 11px; border-radius: 10px; color: var(--nav-text); font-size: 12px; text-decoration: none; }
+.operations-tabs button[aria-pressed="true"] { background: var(--button-primary); color: var(--button-primary-text); }
+.operations-tabs span { padding: 1px 6px; border-radius: 10px; background: var(--surface); color: var(--nav-text); font-size: 11px; }
+.operations-tabs a:hover { background: var(--surface); }
+.operations-list { overflow: hidden; }
+.operations-list-caption { padding: 18px 22px; border-bottom: 1px solid var(--border); color: var(--text-muted); font-size: 12px; }
+.operations-list ul { list-style: none; padding: 0 22px; }
+.operations-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 16px; min-height: 72px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.operations-item-main { display: grid; gap: 3px; min-width: 0; }
+.operations-item-main > a { width: fit-content; color: var(--nav-text); font-size: 14px; font-weight: 650; }
+.operations-item-main small { color: var(--text-muted); }
+.operations-kind { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; }
+.operations-list time { white-space: nowrap; font-size: 12px; }
+.operations-list time.is-overdue { color: var(--danger); }
+.operations-item-actions { display: flex; align-items: center; gap: 12px; }
+.operations-item-actions a { color: var(--nav-text); white-space: nowrap; }
+.operations-item-actions a:hover { text-decoration: underline; }
+.operations-empty { padding: 40px 22px; color: var(--text-muted); text-align: center; }
+.operations-list footer { padding: 16px 22px; color: var(--text-muted); font-size: 11px; }
+.operations-reminder { display: grid; justify-items: start; gap: 15px; max-width: 650px; padding: 22px; }
+.operations-reminder > div { display: flex; align-items: center; justify-content: space-between; gap: 20px; width: 100%; }
+.operations-reminder h2 { font-size: 17px; font-weight: 700; }
+.operations-reminder pre { width: 100%; overflow-wrap: anywhere; white-space: pre-wrap; font: inherit; line-height: 1.6; }
+@media (max-width: 850px) { .operations-list li { grid-template-columns: 1fr; gap: 8px; } .operations-item-actions { flex-wrap: wrap; } }
