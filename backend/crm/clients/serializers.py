@@ -1,7 +1,8 @@
 from django.core.validators import URLValidator
 from rest_framework import serializers
 from crm.api.serializers import StrictModelSerializer
-from crm.models import Client, ClientLink, ClientNote, Deal
+from crm.models import Client, ClientContact, ClientLink, ClientNote, Deal, Invoice
+from crm.services.calculations import money_string
 from crm.workspaces.serializers import BankDetailsSerializer
 
 
@@ -15,12 +16,19 @@ class ClientSerializer(StrictModelSerializer):
 
     def create(self, validated_data):
         bank_details = validated_data.pop("bank_details", {})
-        return Client.objects.create(bank_details=bank_details, **validated_data)
+        client = Client.objects.create(bank_details=bank_details, **validated_data)
+        ClientContact.objects.create(client=client, name=client.name, email=client.email, phone=client.phone, is_primary=True)
+        return client
 
     def update(self, instance, validated_data):
         if "bank_details" in validated_data:
             instance.bank_details = validated_data.pop("bank_details")
-        return super().update(instance, validated_data)
+        client = super().update(instance, validated_data)
+        ClientContact.objects.update_or_create(
+            client=client, is_primary=True,
+            defaults={"name": client.name, "email": client.email, "phone": client.phone},
+        )
+        return client
 
 
 class ClientListSerializer(ClientSerializer):
@@ -39,15 +47,43 @@ class ClientDealSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class ClientInvoiceSerializer(serializers.ModelSerializer):
+    total_amount = serializers.SerializerMethodField()
+    overdue = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Invoice
+        fields = ["id", "invoice_number", "status", "currency", "total_amount", "due_date", "overdue"]
+        read_only_fields = fields
+
+    def get_total_amount(self, invoice):
+        return money_string(invoice.total_amount, invoice.currency)
+
+    def get_overdue(self, invoice):
+        from django.utils import timezone
+        return invoice.status == Invoice.Status.SENT and bool(invoice.due_date and invoice.due_date < timezone.localdate())
+
+
+class ClientContactSerializer(StrictModelSerializer):
+    class Meta:
+        model = ClientContact
+        fields = ["id", "client", "name", "role", "email", "phone", "is_primary", "created_at", "updated_at"]
+        read_only_fields = ["id", "client", "created_at", "updated_at"]
+
+
 class ClientDetailSerializer(ClientSerializer):
     deals = serializers.SerializerMethodField()
+    contacts = serializers.SerializerMethodField()
 
     class Meta(ClientSerializer.Meta):
-        fields = [*ClientSerializer.Meta.fields, "deals"]
+        fields = [*ClientSerializer.Meta.fields, "deals", "contacts"]
 
     def get_deals(self, instance):
         deals = instance.deals.filter(workspace_id=self.context["request"].workspace_id).order_by("-created_at", "-id")
         return ClientDealSerializer(deals, many=True).data
+
+    def get_contacts(self, instance):
+        return ClientContactSerializer(instance.contacts.order_by("-is_primary", "created_at", "id"), many=True).data
 
 
 class ClientNoteSerializer(StrictModelSerializer):

@@ -45,7 +45,17 @@ class DealList(DealQuerysetMixin, generics.ListCreateAPIView):
     def filter_queryset(self, queryset):
         params = DealFilters(data=self.request.query_params)
         params.is_valid(raise_exception=True)
-        return super().filter_queryset(queryset.filter(**params.validated_data))
+        ordering = self.request.query_params.get("ordering", "newest")
+        if ordering not in {"newest", "title", "client", "deadline"}:
+            raise ValidationError({"ordering": "Choose newest, title, client or deadline."})
+        queryset = super().filter_queryset(queryset.filter(**params.validated_data))
+        if ordering == "title":
+            return queryset.order_by("title", "id")
+        if ordering == "client":
+            return queryset.order_by("client__name", "id")
+        if ordering == "deadline":
+            return queryset.order_by(F("deadline").asc(nulls_last=True), "id")
+        return queryset
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())

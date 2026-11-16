@@ -113,6 +113,17 @@ class PendingSignup(models.Model):
         app_label = "accounts"
 
 
+class PendingEmailChange(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="pending_email_change")
+    email = models.EmailField(unique=True)
+    token_hash = models.CharField(max_length=64, unique=True)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = "accounts"
+
+
 class FxRate(ValidatedModel):
     date = models.DateField()
     currency = models.CharField(max_length=3, validators=[currency_validator])
@@ -205,6 +216,34 @@ class ClientLink(ValidatedModel):
                 URLValidator(schemes=["http", "https"])(self.url)
             except ValidationError as exc:
                 raise ValidationError({"url": exc.messages}) from exc
+
+    class Meta:
+        app_label = "clients"
+
+
+class ClientContact(ValidatedModel):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="contacts")
+    name = models.CharField(max_length=200)
+    role = models.CharField(max_length=100, blank=True)
+    email = models.EmailField(blank=True)
+    phone = models.CharField(max_length=50, blank=True)
+    is_primary = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "clients"
+        constraints = [models.UniqueConstraint(fields=["client"], condition=Q(is_primary=True), name="one_primary_contact_per_client")]
+
+
+class ClientAttachment(ValidatedModel):
+    client = models.ForeignKey(Client, on_delete=models.PROTECT, related_name="attachments")
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="client_attachments")
+    name = models.CharField(max_length=200)
+    content_type = models.CharField(max_length=100)
+    size = models.PositiveIntegerField()
+    content = models.BinaryField()
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         app_label = "clients"

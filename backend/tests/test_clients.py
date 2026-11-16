@@ -39,7 +39,10 @@ def test_create_and_detail(authenticated_api, user):
     assert data["created_at"] and data["updated_at"]
     detail = authenticated_api.get(f"/api/v1/clients/{data['id']}")
     assert detail.status_code == 200
-    assert detail.json() == {**data, "deals": []}
+    assert {key: value for key, value in detail.json().items() if key != "contacts"} == {**data, "deals": []}
+    assert len(detail.json()["contacts"]) == 1
+    assert detail.json()["contacts"][0]["name"] == "Acme"
+    assert detail.json()["contacts"][0]["is_primary"] is True
 
 
 def test_list_empty_and_stable_pagination(authenticated_api, user):
