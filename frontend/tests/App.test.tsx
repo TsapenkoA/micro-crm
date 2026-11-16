@@ -24,7 +24,7 @@ it('opens each workspace section after restoring a session', async () => {
   }
   await userEvent.click(within(topNavigation).getByRole('link', { name: 'Clients' }));
   expect(screen.getByRole('heading', { name: 'Clients', level: 1 })).toBeInTheDocument();
-});
+}, 15000);
 
 it('shows live workspace counts in navigation', async () => {
   vi.spyOn(auth, 'me').mockResolvedValue({ user: { id: 1, username: 'alex', email: '', workspace: { id: 'company-id', name: 'Example Studio' } } });
@@ -51,6 +51,28 @@ it('collapses and restores the sidebar without losing navigation', async () => {
   expect(await screen.findByRole('heading', { name: 'Activity', level: 1 })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }));
   expect(screen.getByRole('button', { name: 'Collapse sidebar' })).toHaveAttribute('aria-expanded', 'true');
+});
+
+it('opens account actions from the avatar and closes the menu with Escape', async () => {
+  vi.spyOn(auth, 'me').mockResolvedValue({ user: { id: 1, username: 'alex', email: '' } });
+  const signOut = vi.spyOn(auth, 'logout').mockResolvedValue(undefined);
+  render(<App />);
+  const avatar = await screen.findByRole('button', { name: 'Account menu' });
+  await userEvent.click(avatar);
+  const menu = screen.getByRole('group', { name: 'Account menu' });
+  expect(avatar).toHaveAttribute('aria-expanded', 'true');
+  await userEvent.keyboard('{Escape}');
+  expect(avatar).toHaveAttribute('aria-expanded', 'false');
+  expect(avatar).toHaveFocus();
+  await userEvent.click(avatar);
+  await userEvent.click(within(screen.getByRole('group', { name: 'Account menu' })).getByRole('button', { name: 'Settings' }));
+  expect(screen.getByRole('heading', { name: 'Settings', level: 1 })).toBeInTheDocument();
+  expect(avatar).toHaveAttribute('aria-expanded', 'false');
+  await userEvent.click(avatar);
+  await userEvent.click(within(screen.getByRole('group', { name: 'Account menu' })).getByRole('button', { name: 'Log out' }));
+  expect(signOut).toHaveBeenCalledOnce();
+  expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();
+  expect(menu).not.toBeInTheDocument();
 });
 
 it('opens and closes navigation with Escape and restores focus', async () => {

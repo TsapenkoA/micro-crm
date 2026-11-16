@@ -29,6 +29,7 @@ it('renders server KPIs and requests new data when filters change', async () => 
   expect(await screen.findByText('$75.25')).toBeInTheDocument();
   expect(screen.getByText('50%')).toBeInTheDocument();
   expect(screen.getByText('Website')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Website' })).toHaveAttribute('href', '#/deals?deal=one');
   expect(screen.getByText('120 GBP')).toBeInTheDocument();
   await userEvent.selectOptions(screen.getByLabelText('Dashboard currency'), 'EUR');
   await waitFor(() => expect(auth.updateReportingCurrency).toHaveBeenCalledWith('EUR'));
