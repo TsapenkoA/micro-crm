@@ -13,10 +13,15 @@ export type Outcome = 'none' | 'lost' | 'cancelled';
 export type DealInput = { title: string; client: string; status: Status; amount: string; currency: string; deadline: string | null; outcome: Outcome };
 export type Deal = DealInput & { id: string; version: number; paid_at: string | null; created_at: string; updated_at: string };
 export type Total = { status: Status; currency: string; count: number; amount: string };
-type DealPage = { count: number; results: Deal[]; next: string | null; totals: Total[] };
+export type DealPage = { count: number; results: Deal[]; next: string | null; previous: string | null; totals: Total[] };
 export type Filters = { search: string; status: string; currency: string };
 
 export const deals = {
+  page(filters: Filters, page = 1, ordering = 'newest', signal?: AbortSignal) {
+    const query = new URLSearchParams({ page: String(page), ordering });
+    for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
+    return request<DealPage>(`/deals?${query}`, { signal });
+  },
   async list(filters: Filters, signal?: AbortSignal) {
     const query = new URLSearchParams({ page_size: '100' });
     for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);

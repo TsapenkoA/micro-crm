@@ -18,7 +18,7 @@ vi.mock('@dnd-kit/core', () => ({
 }));
 vi.mock('../src/features/deals/api', async importOriginal => {
   const actual = await importOriginal<typeof import('../src/features/deals/api')>();
-  return { ...actual, deals: { list: vi.fn(), clients: vi.fn(), detail: vi.fn(), create: vi.fn(), update: vi.fn(), status: vi.fn(), remove: vi.fn() } };
+  return { ...actual, deals: { page: vi.fn(), list: vi.fn(), clients: vi.fn(), detail: vi.fn(), create: vi.fn(), update: vi.fn(), status: vi.fn(), remove: vi.fn() } };
 });
 vi.mock('../src/features/invoices/api', async importOriginal => {
   const actual = await importOriginal<typeof import('../src/features/invoices/api')>();
@@ -32,6 +32,10 @@ beforeEach(() => {
   vi.resetAllMocks();
   drag.end = null;
   vi.mocked(deals.list).mockResolvedValue({ results: [deal], totals: [{ status: 'new_lead', currency: 'EUR', count: 1, amount: '1234.56' }] });
+  vi.mocked(deals.page).mockImplementation(async (filters, page, ordering, signal) => {
+    const result = await deals.list(filters, signal);
+    return { ...result, count: result.results.length, next: null, previous: null };
+  });
   vi.mocked(deals.clients).mockResolvedValue([client]);
   vi.mocked(deals.detail).mockResolvedValue(deal);
   vi.mocked(invoices.list).mockResolvedValue([]);
@@ -65,6 +69,22 @@ it('renders all five stages, exact money, server totals and the table from real 
   expect(money('9800.50', 'USD')).toBe('9,800.50 USD');
 });
 
+it('loads another board page only on request and keeps server totals', async () => {
+  vi.mocked(deals.page).mockImplementation(async (_filters, page = 1) => ({
+    count: 21,
+    results: page === 1 ? [deal] : [{ ...deal, id: 'deal-2', title: 'Second page project' }],
+    next: page === 1 ? 'next' : null,
+    previous: page > 1 ? 'previous' : null,
+    totals: [{ status: 'new_lead', currency: 'EUR', count: 21, amount: '2100.00' }],
+  }));
+  render(<DealsPage />);
+  expect(await screen.findByRole('button', { name: 'Open Website project' })).toBeInTheDocument();
+  expect(deals.page).toHaveBeenCalledTimes(1);
+  await userEvent.click(screen.getByRole('button', { name: 'Load more deals (1 of 21)' }));
+  expect(await screen.findByRole('button', { name: 'Open Second page project' })).toBeInTheDocument();
+  expect(deals.page).toHaveBeenLastCalledWith({ search: '', status: '', currency: '' }, 2, 'newest', expect.any(AbortSignal));
+});
+
 it('opens preview-style live details with English dates, real fields and client notes navigation', async () => {
   render(<DealsPage />);
   const trigger = await screen.findByRole('button', { name: 'Open Website project' });
@@ -87,11 +107,11 @@ it('submits search explicitly, preserves filters across views and refreshes coll
   render(<DealsPage />);
   await screen.findByText('Website project');
   await userEvent.type(screen.getByLabelText('Search deals'), 'Website');
-  expect(deals.list).toHaveBeenCalledTimes(1);
+  expect(deals.page).toHaveBeenCalledTimes(1);
   await userEvent.click(screen.getByRole('button', { name: 'Search' }));
-  await waitFor(() => expect(deals.list).toHaveBeenLastCalledWith({ search: 'Website', status: '', currency: '' }, expect.any(AbortSignal)));
+  await waitFor(() => expect(deals.page).toHaveBeenLastCalledWith({ search: 'Website', status: '', currency: '' }, 1, 'newest', expect.any(AbortSignal)));
   await userEvent.selectOptions(screen.getByLabelText('Filter by currency'), 'EUR');
-  await waitFor(() => expect(deals.list).toHaveBeenLastCalledWith({ search: 'Website', status: '', currency: 'EUR' }, expect.any(AbortSignal)));
+  await waitFor(() => expect(deals.page).toHaveBeenLastCalledWith({ search: 'Website', status: '', currency: 'EUR' }, 1, 'newest', expect.any(AbortSignal)));
   await userEvent.click(screen.getByRole('button', { name: /Table/ }));
   expect(screen.getByLabelText('Filter by currency')).toHaveValue('EUR');
   vi.mocked(deals.list).mockResolvedValue({ results: [{ ...deal, title: 'Colleague update' }], totals: [] });
@@ -114,7 +134,7 @@ it('validates a form, saves a string amount and refetches after create', async (
   await userEvent.click(within(dialog).getByRole('button', { name: 'Create deal' }));
   await waitFor(() => expect(deals.create).toHaveBeenCalledWith(expect.objectContaining({ title: 'New project', amount: '120.50', client: client.id, deadline: null })));
   expect(await screen.findByText('Deal saved.')).toBeInTheDocument();
-  expect(deals.list).toHaveBeenCalledTimes(2);
+  expect(deals.page).toHaveBeenCalledTimes(2);
 });
 
 it('chooses a deadline from an English calendar and submits a timezone-qualified value', async () => {
@@ -164,7 +184,7 @@ it.each([409, 403, 500])('rolls back a failed drag with status %s and keeps the 
   expect(await screen.findByRole('alert')).toHaveTextContent(code === 409 ? 'updated elsewhere' : 'Request failed');
   await screen.findByText('Website project');
   expect(within(screen.getByRole('region', { name: 'New Lead' })).getByText('Website project')).toBeInTheDocument();
-  expect(deals.list).toHaveBeenCalledTimes(2);
+  expect(deals.page).toHaveBeenCalledTimes(2);
 });
 
 it('persists a successful drag and refreshes authoritative totals', async () => {
