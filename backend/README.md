@@ -99,6 +99,12 @@ All routes start with /api/v1. Business endpoints require a session and workspac
 | /clients/<id>/notes | GET/POST: shared plain-text notes |
 | /clients/<id>/notes/<note_id> | DELETE: own note only |
 | /clients/<id>/links | GET/POST: shared http/https links |
+| /clients/<id>/links/<link_id> | GET/PATCH/DELETE: edit or remove a saved link |
+| /clients/<id>/contacts | GET/POST: primary and additional client contacts |
+| /clients/<id>/contacts/<contact_id> | GET/PATCH/DELETE: edit a contact or remove a non-primary contact |
+| /clients/<id>/invoices | GET: paginated invoices for this client |
+| /clients/<id>/attachments | GET/POST: list or upload private client files |
+| /clients/<id>/attachments/<attachment_id> | GET/DELETE: download or remove a private file |
 | /deals | GET/POST: filtered deals or create a deal |
 | /deals/<id> | GET/PUT/PATCH/DELETE: deal details and changes |
 | /deals/<id>/status | PATCH: status/outcome change |
@@ -119,6 +125,12 @@ All routes start with /api/v1. Business endpoints require a session and workspac
 Invoice creation and draft updates accept an optional `deal` UUID (or `null`). The deal must belong to the invoice's client and workspace. Invoice responses include `deal`, which is `null` for existing unlinked invoices. `GET /invoices?deal=<uuid>` returns only invoices linked to that deal within the current workspace. A deal may have multiple invoices. A linked deal cannot be moved to another client or deleted until its invoices are unlinked; recording a payment never changes the deal status or value.
 
 Client input accepts name, company, email, phone and optional `bank_details`. The server supplies workspace, creator, IDs and timestamps. Bank details are returned on client detail, not in the list. Related history or financial records protect clients from deletion (409).
+
+Client represents a customer relationship. `company` identifies the business when present; `name`, `email` and `phone` mirror its primary person. The contacts migration copies those fields into a primary `ClientContact` for every existing client, preserving all client and invoice records. API creation and client edits keep the primary contact in sync. Additional contacts have name, optional role, email and phone. Setting `is_primary: true` on a contact makes it the primary contact and updates the mirrored client fields used by new invoice snapshots. The primary contact cannot be deleted until another is selected. Existing issued invoices retain their buyer snapshots.
+
+`GET /clients/<id>/invoices` returns only that client's invoices in the current workspace, newest first, with number, status, original-currency total, due date and overdue flag. It accepts `page` and `page_size`. The client UI links each result to the existing invoice detail. Dashboard deal titles link to the selected deal; deleted or inaccessible deals are handled by the deal detail's error state.
+
+Links can be edited with `PATCH /clients/<id>/links/<link_id>` using `label` or `url`, or removed with DELETE. Only HTTP and HTTPS URLs are accepted. Attachments are stored privately in PostgreSQL and never exposed through a public media URL. Upload a multipart `file` of at most 5 MB; accepted formats are PDF, PNG, JPEG and WebP, checked against file signatures. Each client is limited to 50 files. Workspace membership is checked for listing, upload, download and deletion; foreign client and file IDs return 404. Downloads use an attachment disposition, `no-store` and `nosniff`. Deleting a client removes its attachments only when related financial records do not block deletion. Office documents and external object storage are not supported yet.
 
 Deals use title, client, amount, currency and an optional timezone-qualified deadline. Statuses are new_lead, negotiation, in_progress, paid and archived; archived outcomes are none, lost or cancelled. Updates, status changes and deletion require the observed integer version. A stale version returns 409. Send decimal amounts as strings.
 
@@ -161,6 +173,10 @@ For PostgreSQL backups, create a restricted directory outside the repository and
 Active pipeline uses the latest common rate date, at most four days old. Paid deals and invoices use a fixed available rate date at or before their payment date. A later import does not replace a fixed date or an existing rate. The Dashboard response includes the rate source, dates and missing currencies in `fx`; an affected KPI or revenue period is `null` if a required rate is missing. Reporting preference is saved per workspace member and exposed in `/auth/me`. Original invoice amounts and currency never change during reporting conversion. The Invoices currency selector filters both the original-currency summary and the table. Deals displays currency totals when a currency filter is selected; the all-currencies view shows deal counts and original amounts without combining currencies.
 
 ## Workspaces and maintenance
+
+An authenticated user can request an email change with `POST /auth/email-change` and `{"email":"new@example.test"}` after confirming their password in Security. The new address receives a one-time link valid for 24 hours; the current address and workspace stay unchanged until `POST /auth/email-change/confirm` receives `{"token":"..."}` from the same signed-in user. Existing local or social-account addresses cannot be claimed. Email delivery requires configured SMTP outside local development.
+
+`GET /deals` supports `search`, `status`, `currency`, `page`, `page_size` and stable `ordering=newest|title|client|deadline`. Its `totals` cover all matching deals, regardless of page. `GET /invoices` supports the same page parameters plus `search`, `status`, `currency` and `overdue=true`. `GET /invoices/summary?currency=USD` returns workspace-wide sent balances, received payments, draft totals and overdue balances independently of the current page. These sums keep currencies separate and do not perform FX conversion.
 
 Normal user creation provisions a personal workspace. Each user has one membership; members share their company's records. Public signup keeps a temporary password hash and one-time token digest, but creates no user or workspace until email verification. The link expires after 24 hours; requesting a new link invalidates the old one. Existing accounts remain usable without a migration of their email status. Public signup and matching email domains never join an existing company. Member changes require an authenticated workspace owner.
 
