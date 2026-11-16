@@ -9,7 +9,7 @@ import { deals } from '../src/features/deals/api';
 
 vi.mock('../src/features/invoices/api', async importOriginal => {
   const actual = await importOriginal<typeof import('../src/features/invoices/api')>();
-  return { ...actual, invoices: { list: vi.fn(), detail: vi.fn(), create: vi.fn(), update: vi.fn(), status: vi.fn(), payment: vi.fn(), cancel: vi.fn(), send: vi.fn(), reminderPreview: vi.fn(), remind: vi.fn(), pdf: vi.fn() } };
+  return { ...actual, invoices: { page: vi.fn(), summary: vi.fn(), list: vi.fn(), detail: vi.fn(), create: vi.fn(), update: vi.fn(), status: vi.fn(), payment: vi.fn(), cancel: vi.fn(), send: vi.fn(), reminderPreview: vi.fn(), remind: vi.fn(), pdf: vi.fn() } };
 });
 vi.mock('../src/features/deals/api', async importOriginal => {
   const actual = await importOriginal<typeof import('../src/features/deals/api')>();
@@ -30,6 +30,22 @@ beforeEach(() => {
   vi.mocked(deals.clients).mockResolvedValue([client]);
   vi.mocked(deals.list).mockResolvedValue({ results: [], totals: [] });
   vi.mocked(invoices.list).mockResolvedValue([record]);
+  vi.mocked(invoices.page).mockImplementation(async (search, status, currency, page = 1, signal) => {
+    const rows = (await invoices.list(search, status, signal)).filter(invoice => invoice.currency === currency);
+    return { count: rows.length, results: rows.slice((page - 1) * 20, page * 20), next: page * 20 < rows.length ? 'next' : null, previous: page > 1 ? 'previous' : null };
+  });
+  vi.mocked(invoices.summary).mockImplementation(async currency => {
+    const rows = (await invoices.list()).filter(invoice => invoice.currency === currency);
+    const totals = { sent: { count: 0, amount: '0' }, paid: { count: 0, amount: '0' }, draft: { count: 0, amount: '0' }, overdue: { count: 0, amount: '0' } };
+    for (const invoice of rows) {
+      const status = invoice.overdue ? 'overdue' : invoice.status;
+      if (status !== 'sent' && status !== 'paid' && status !== 'draft' && status !== 'overdue') continue;
+      const bucket = totals[status];
+      bucket.count += 1;
+      bucket.amount = (Number(bucket.amount) + Number(status === 'paid' ? invoice.paid_amount : status === 'overdue' ? invoice.balance_due : invoice.total_amount)).toFixed(2);
+    }
+    return { currency, ...totals };
+  });
   vi.mocked(invoices.create).mockResolvedValue(record);
 });
 
@@ -40,6 +56,22 @@ it('lists saved invoices and shows authoritative details', async () => {
   expect(within(dialog).getByText('Design service')).toBeInTheDocument();
   expect(within(dialog).getAllByText('120 USD').length).toBeGreaterThan(0);
   expect(within(dialog).getByRole('button', { name: 'Issue without email' })).toBeInTheDocument();
+});
+
+it('paginates invoice rows while keeping the workspace summary', async () => {
+  vi.mocked(invoices.page).mockImplementation(async (_search, _status, _currency, page = 1) => ({
+    count: 21, results: [{ ...record, id: `invoice-${page}`, invoice_number: `INV-00000${page}` }],
+    next: page === 1 ? 'next' : null, previous: page > 1 ? 'previous' : null,
+  }));
+  vi.mocked(invoices.summary).mockResolvedValue({ currency: 'USD', sent: { count: 0, amount: '0.00' }, paid: { count: 0, amount: '0.00' }, draft: { count: 21, amount: '2520.00' }, overdue: { count: 0, amount: '0.00' } });
+  render(<InvoicesPage workspaceName="Workspace" userEmail="seller@example.test" />);
+  expect(await screen.findByRole('button', { name: 'INV-000001' })).toBeInTheDocument();
+  expect(screen.getByText('$2,520')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+  expect(await screen.findByRole('button', { name: 'INV-000002' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'INV-000001' })).not.toBeInTheDocument();
+  expect(screen.getByText('$2,520')).toBeInTheDocument();
+  expect(invoices.page).toHaveBeenLastCalledWith('', '', 'USD', 2, expect.any(AbortSignal));
 });
 
 it('selects a client deal for a draft and links back to its details', async () => {
@@ -86,7 +118,7 @@ it('creates a draft, refetches the list, and shows server validation', async () 
   expect(invoices.create).toHaveBeenLastCalledWith(expect.objectContaining({ currency: 'GBP' }));
   expect(vi.mocked(invoices.create).mock.lastCall?.[0].seller).toBeUndefined();
   expect(await screen.findByText('Invoice created.')).toBeInTheDocument();
-  expect(invoices.list).toHaveBeenCalledTimes(2);
+  expect(invoices.page).toHaveBeenCalledTimes(2);
 });
 
 it('previews invoice amounts with the selected currency precision', async () => {
@@ -125,10 +157,10 @@ it('shows currency-specific status totals and keeps search with the status butto
   expect(screen.getAllByText('125.50 PLN')).toHaveLength(2);
   await userEvent.selectOptions(screen.getByLabelText('Summary currency'), 'EUR');
   await userEvent.click(screen.getByRole('button', { name: 'Paid', pressed: false }));
-  await waitFor(() => expect(invoices.list).toHaveBeenCalledWith('', 'paid', expect.any(AbortSignal)));
+  await waitFor(() => expect(invoices.page).toHaveBeenCalledWith('', 'paid', 'EUR', 1, expect.any(AbortSignal)));
   await userEvent.type(screen.getByLabelText('Search invoices'), 'Studio');
   await userEvent.click(screen.getByRole('button', { name: 'Search' }));
-  await waitFor(() => expect(invoices.list).toHaveBeenCalledWith('Studio', 'paid', expect.any(AbortSignal)));
+  await waitFor(() => expect(invoices.page).toHaveBeenCalledWith('Studio', 'paid', 'EUR', 1, expect.any(AbortSignal)));
   expect(screen.getByText('€200')).toBeInTheDocument();
 });
 
