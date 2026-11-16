@@ -83,6 +83,8 @@ export const auth = {
   providers: () => request<{ providers: Provider[] }>('/auth/providers'),
   methods: () => request<SignInMethods>('/auth/methods'),
   updateProfile: (username: string) => request<{ user: User }>('/auth/profile', { method: 'PATCH', body: JSON.stringify({ username }) }),
+  requestEmailChange: (email: string) => request<{ message: string }>('/auth/email-change', { method: 'POST', body: JSON.stringify({ email }) }),
+  confirmEmailChange: (token: string) => request<{ user: User }>('/auth/email-change/confirm', { method: 'POST', body: JSON.stringify({ token }) }),
   uploadAvatar: (file: File) => {
     const form = new FormData(); form.append('avatar', file);
     return request<{ user: User }>('/auth/avatar', { method: 'POST', body: form });
