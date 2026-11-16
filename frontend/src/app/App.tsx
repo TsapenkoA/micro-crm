@@ -42,6 +42,7 @@ function Application() {
   const [createDealRequested, setCreateDealRequested] = useState(false);
   const [createInvoiceRequested, setCreateInvoiceRequested] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem('sidebar-collapsed') === 'true'; } catch { return false; }
   });
@@ -50,6 +51,24 @@ function Application() {
   const [taskSearchDraft, setTaskSearchDraft] = useState('');
   const [taskSearch, setTaskSearch] = useState('');
   const menuButton = useRef<HTMLButtonElement>(null);
+  const accountMenu = useRef<HTMLDivElement>(null);
+  const accountButton = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!accountMenu.current?.contains(event.target as Node)) setAccountMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { setAccountMenuOpen(false); accountButton.current?.focus(); }
+    };
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [accountMenuOpen]);
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
@@ -93,6 +112,7 @@ function Application() {
   function navigate(next: Page) {
     setPage(next);
     window.location.hash = `/${next.toLowerCase()}`;
+    setAccountMenuOpen(false);
     if (menuOpen) { setMenuOpen(false); menuButton.current?.focus(); }
   }
 
@@ -121,7 +141,7 @@ function Application() {
   });
 
   async function logout() {
-    try { await auth.logout(); setUser(null); setError(''); setCreateRequested(false); setMenuOpen(false); navigateAuth('/login' + window.location.hash, true); }
+    try { await auth.logout(); setUser(null); setError(''); setCreateRequested(false); setMenuOpen(false); setAccountMenuOpen(false); navigateAuth('/login' + window.location.hash, true); }
     catch { setError('Unable to sign out. Please try again.'); }
   }
 
@@ -134,7 +154,7 @@ function Application() {
 
   return <div className={`application-workspace tasks-workspace ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
     <a className="skip-link" href="#workspace-content" onClick={event => { event.preventDefault(); document.getElementById('workspace-content')?.focus(); }}>Skip to content</a>
-    <header className="task-topbar"><div className="workspace-brand"><span className="workspace-brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M5 23 15 6l4 8 8-5-7 17-5-7-10 4Z" fill="currentColor" /></svg></span><span>MicroFlow</span></div><nav aria-label="Top navigation">{(['Tasks', 'Deals', 'Clients', 'Invoices'] as const).map(name => <a key={name} href={`#/${name.toLowerCase()}`} className={name === page ? 'active' : ''} aria-current={name === page ? 'page' : undefined} onClick={() => navigate(name)}><NavIcon page={name} />{name}{counts && <small className="top-nav-count">{counts[name.toLowerCase() as keyof WorkspaceCounts]}</small>}</a>)}</nav><form role="search" onSubmit={event => { event.preventDefault(); setTaskSearch(taskSearchDraft.trim()); navigate('Tasks'); }}><label className="task-topbar-search"><span aria-hidden="true">⌕</span><input aria-label="Search tasks" placeholder="Search tasks…" value={taskSearchDraft} onChange={event => { setTaskSearchDraft(event.target.value); if (!event.target.value) setTaskSearch(''); }} /></label></form><button className="task-topbar-user" aria-label="Open account settings" onClick={() => navigate('Settings')}>{user.avatar_url ? <img src={user.avatar_url} alt="" /> : user.username.slice(0, 2).toUpperCase()}</button></header>
+    <header className="task-topbar"><div className="workspace-brand"><span className="workspace-brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M5 23 15 6l4 8 8-5-7 17-5-7-10 4Z" fill="currentColor" /></svg></span><span>MicroFlow</span></div><nav aria-label="Top navigation">{(['Tasks', 'Deals', 'Clients', 'Invoices'] as const).map(name => <a key={name} href={`#/${name.toLowerCase()}`} className={name === page ? 'active' : ''} aria-current={name === page ? 'page' : undefined} onClick={() => navigate(name)}><NavIcon page={name} />{name}{counts && <small className="top-nav-count">{counts[name.toLowerCase() as keyof WorkspaceCounts]}</small>}</a>)}</nav><form role="search" onSubmit={event => { event.preventDefault(); setTaskSearch(taskSearchDraft.trim()); navigate('Tasks'); }}><label className="task-topbar-search"><span aria-hidden="true">⌕</span><input aria-label="Search tasks" placeholder="Search tasks…" value={taskSearchDraft} onChange={event => { setTaskSearchDraft(event.target.value); if (!event.target.value) setTaskSearch(''); }} /></label></form><div className="task-account-menu" ref={accountMenu}><button ref={accountButton} className="task-topbar-user" aria-label="Account menu" aria-expanded={accountMenuOpen} aria-controls="account-menu-options" onClick={() => setAccountMenuOpen(value => !value)}>{user.avatar_url ? <img src={user.avatar_url} alt="" /> : user.username.slice(0, 2).toUpperCase()}</button>{accountMenuOpen && <div id="account-menu-options" className="task-account-options" role="group" aria-label="Account menu"><button onClick={() => navigate('Settings')}><NavIcon page="Settings" />Settings</button><button onClick={() => void logout()}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4 M16 17l5-5-5-5 M21 12H9" /></svg>Log out</button></div>}</div></header>
     <aside className="sidebar flex flex-col" onKeyDown={event => {
       if (event.key === 'Escape' && menuOpen) { setMenuOpen(false); menuButton.current?.focus(); }
     }}>
