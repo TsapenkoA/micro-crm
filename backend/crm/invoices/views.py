@@ -1,5 +1,8 @@
 import re
+from decimal import Decimal
 from django.db import transaction
+from django.db.models import Count, DecimalField, F, OuterRef, Q, Subquery, Sum, Value
+from django.db.models.functions import Coalesce, Greatest
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -15,7 +18,7 @@ from crm.activity.services import log_activity, snapshot
 from crm.invoices.delivery import DeliveryConflict, reminder_blocker, reminder_copy, send_invoice_email
 from crm.invoices.serializers import InvoiceCancelSerializer, InvoiceOutputSerializer, InvoicePaymentInputSerializer, InvoiceStatusSerializer, InvoiceWriteSerializer
 from crm.invoices.services import buyer_snapshot, invoice_number, issue_invoice, record_payment, recorded_total
-from crm.models import Client, Deal, Invoice, InvoiceDelivery, InvoiceItem, Workspace, WorkspaceMembership
+from crm.models import Client, Deal, Invoice, InvoiceDelivery, InvoiceItem, InvoicePayment, Workspace, WorkspaceMembership
 from crm.services.calculations import CURRENCY_PLACES, calculate_items, money_string
 from crm.services.pdf import render_invoice
 
@@ -52,6 +55,29 @@ class InvoiceQuerysetMixin(WorkspaceQuerysetMixin):
     def save_items(self, invoice, calculated):
         for position, item in enumerate(calculated):
             InvoiceItem.objects.create(invoice=invoice, position=position, **item)
+
+
+class InvoiceSummary(InvoiceQuerysetMixin, generics.GenericAPIView):
+    def get(self, request):
+        currency = request.query_params.get("currency", "USD")
+        if currency not in CURRENCY_PLACES:
+            raise ValidationError({"currency": "Unsupported invoice currency."})
+        paid = InvoicePayment.objects.filter(invoice_id=OuterRef("pk")).values("invoice_id").annotate(total=Sum("amount")).values("total")
+        zero = Value(Decimal("0"), output_field=DecimalField(max_digits=20, decimal_places=4))
+        queryset = self.get_queryset().filter(currency=currency).annotate(
+            paid_value=Coalesce(Subquery(paid), zero),
+        ).annotate(balance=Greatest(F("total_amount") - F("paid_value"), zero))
+        overdue = Q(status=Invoice.Status.SENT, due_date__lt=timezone.localdate(), balance__gt=0)
+        rows = {
+            "sent": queryset.filter(status=Invoice.Status.SENT).aggregate(count=Count("pk"), amount=Sum("balance")),
+            "paid": queryset.filter(paid_value__gt=0).aggregate(count=Count("pk"), amount=Sum("paid_value")),
+            "draft": queryset.filter(status=Invoice.Status.DRAFT).aggregate(count=Count("pk"), amount=Sum("total_amount")),
+            "overdue": queryset.filter(overdue).aggregate(count=Count("pk"), amount=Sum("balance")),
+        }
+        return Response({"currency": currency, **{
+            key: {"count": row["count"], "amount": money_string(row["amount"] or Decimal("0"), currency)}
+            for key, row in rows.items()
+        }})
 
 
 class InvoiceList(InvoiceQuerysetMixin, generics.ListCreateAPIView):

@@ -1,16 +1,21 @@
+import os
 from django.db import transaction
 from django.db.models import Count, Q
 from django.db.models.deletion import ProtectedError
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from django.utils.http import content_disposition_header
 from rest_framework import filters, generics, status
-from rest_framework.exceptions import APIException, PermissionDenied
+from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from crm.api.pagination import ClientPagination
 from crm.api.permissions import IsWorkspaceMember, WorkspaceQuerysetMixin
+from crm.api.serializers import StrictModelSerializer
 from crm.activity.services import log_activity, snapshot
-from crm.clients.serializers import ClientDetailSerializer, ClientLinkSerializer, ClientListSerializer, ClientNoteSerializer, ClientSerializer
-from crm.models import Client, WorkspaceMembership
+from crm.clients.serializers import ClientContactSerializer, ClientDetailSerializer, ClientInvoiceSerializer, ClientLinkSerializer, ClientListSerializer, ClientNoteSerializer, ClientSerializer
+from crm.models import Client, ClientAttachment, ClientContact, Invoice, WorkspaceMembership
 
 
 class ClientQuerysetMixin(WorkspaceQuerysetMixin):
@@ -67,6 +72,7 @@ class ClientDetail(ClientQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
         instance = get_object_or_404(self.get_queryset().select_for_update(), pk=instance.pk)
         try:
             log_activity(instance, self.request.user, "deleted")
+            instance.attachments.all().delete()
             instance.delete()
         except ProtectedError as exc:
             raise ClientInUse() from exc
@@ -105,9 +111,196 @@ class ClientNotes(ClientHistoryList):
     serializer_class = ClientNoteSerializer
 
 
+class ClientInvoices(ClientQuerysetMixin, generics.ListAPIView):
+    serializer_class = ClientInvoiceSerializer
+    pagination_class = ClientPagination
+
+    def get_queryset(self):
+        client = get_object_or_404(super().get_queryset(), pk=self.kwargs["pk"])
+        self.check_object_permissions(self.request, client)
+        return Invoice.objects.filter(workspace_id=self.request.workspace_id, client=client).order_by("-created_at", "-id")
+
+
 class ClientLinks(ClientHistoryList):
     relation = "links"
     serializer_class = ClientLinkSerializer
+
+
+class ClientLinkDetail(ClientQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = ClientLinkSerializer
+    http_method_names = ["get", "patch", "delete", "options"]
+
+    def get_queryset(self):
+        client = get_object_or_404(super().get_queryset(), pk=self.kwargs["pk"])
+        return client.links.all()
+
+    def get_object(self):
+        return get_object_or_404(self.get_queryset(), pk=self.kwargs["link_id"])
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        self.lock_membership()
+        serializer.save()
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        self.lock_membership()
+        instance.delete()
+
+
+class ClientContacts(ClientQuerysetMixin, generics.ListCreateAPIView):
+    serializer_class = ClientContactSerializer
+
+    def get_client(self, lock=False):
+        queryset = super().get_queryset()
+        if lock:
+            queryset = queryset.select_for_update()
+        return get_object_or_404(queryset, pk=self.kwargs["pk"])
+
+    def get_queryset(self):
+        return self.get_client().contacts.order_by("-is_primary", "created_at", "id")
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        self.lock_membership()
+        client = self.get_client(lock=True)
+        if serializer.validated_data.get("is_primary"):
+            client.contacts.filter(is_primary=True).update(is_primary=False)
+        contact = serializer.save(client=client)
+        if contact.is_primary:
+            client.name, client.email, client.phone = contact.name, contact.email, contact.phone
+            client.save(update_fields=["name", "email", "phone", "updated_at"])
+
+
+class PrimaryContactInUse(APIException):
+    status_code = 409
+    default_detail = "Choose another primary contact before deleting this one."
+
+
+class ClientContactDetail(ClientQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = ClientContactSerializer
+    http_method_names = ["get", "patch", "delete", "options"]
+
+    def get_client(self):
+        return get_object_or_404(super().get_queryset().select_for_update(), pk=self.kwargs["pk"])
+
+    def get_object(self):
+        client = get_object_or_404(super().get_queryset(), pk=self.kwargs["pk"])
+        return get_object_or_404(client.contacts, pk=self.kwargs["contact_id"])
+
+    @transaction.atomic
+    def patch(self, request, *args, **kwargs):
+        self.lock_membership()
+        client = self.get_client()
+        contact = get_object_or_404(client.contacts.select_for_update(), pk=kwargs["contact_id"])
+        serializer = self.get_serializer(contact, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        primary = serializer.validated_data.get("is_primary", contact.is_primary)
+        if contact.is_primary and not primary:
+            raise PrimaryContactInUse("Choose another primary contact first.")
+        if primary and not contact.is_primary:
+            client.contacts.filter(is_primary=True).update(is_primary=False)
+        contact = serializer.save()
+        if contact.is_primary:
+            client.name, client.email, client.phone = contact.name, contact.email, contact.phone
+            client.save(update_fields=["name", "email", "phone", "updated_at"])
+        return Response(self.get_serializer(contact).data)
+
+    @transaction.atomic
+    def destroy(self, request, *args, **kwargs):
+        self.lock_membership()
+        client = self.get_client()
+        contact = get_object_or_404(client.contacts.select_for_update(), pk=kwargs["contact_id"])
+        if contact.is_primary:
+            raise PrimaryContactInUse()
+        contact.delete()
+        return Response(status=204)
+
+
+class ClientAttachmentSerializer(StrictModelSerializer):
+    class Meta:
+        model = ClientAttachment
+        fields = ["id", "client", "name", "content_type", "size", "uploaded_by", "created_at"]
+        read_only_fields = fields
+
+
+def attachment_type(name, content):
+    extension = os.path.splitext(name)[1].lower()
+    signatures = {
+        ".pdf": (b"%PDF-", "application/pdf"),
+        ".png": (b"\x89PNG\r\n\x1a\n", "image/png"),
+        ".jpg": (b"\xff\xd8\xff", "image/jpeg"),
+        ".jpeg": (b"\xff\xd8\xff", "image/jpeg"),
+        ".webp": (b"RIFF", "image/webp"),
+    }
+    if extension not in signatures:
+        raise ValidationError({"file": "Upload a PDF, PNG, JPEG or WebP file."})
+    signature, mime = signatures[extension]
+    if not content.startswith(signature) or extension == ".webp" and content[8:12] != b"WEBP":
+        raise ValidationError({"file": "The file contents do not match its extension."})
+    return mime
+
+
+class ClientAttachments(ClientQuerysetMixin, generics.ListCreateAPIView):
+    serializer_class = ClientAttachmentSerializer
+    parser_classes = [MultiPartParser]
+    pagination_class = ClientPagination
+
+    def get_client(self, lock=False):
+        queryset = super().get_queryset()
+        if lock:
+            queryset = queryset.select_for_update()
+        return get_object_or_404(queryset, pk=self.kwargs["pk"])
+
+    def get_queryset(self):
+        return self.get_client().attachments.order_by("-created_at", "-id")
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        self.lock_membership()
+        client = self.get_client(lock=True)
+        upload = request.FILES.get("file")
+        if upload is None:
+            raise ValidationError({"file": "Choose a file."})
+        if upload.size > 5 * 1024 * 1024 or upload.size == 0:
+            raise ValidationError({"file": "Choose a file between 1 byte and 5 MB."})
+        if client.attachments.count() >= 50:
+            raise ValidationError({"file": "This client has reached the 50-file limit."})
+        name = os.path.basename(upload.name.replace("\\", "/"))
+        if not name or len(name) > 200:
+            raise ValidationError({"file": "The filename must be 1–200 characters."})
+        content = upload.read(5 * 1024 * 1024 + 1)
+        if len(content) != upload.size:
+            raise ValidationError({"file": "The upload could not be read."})
+        mime = attachment_type(name, content)
+        attachment = ClientAttachment.objects.create(
+            client=client, uploaded_by=request.user, name=name,
+            content_type=mime, size=len(content), content=content,
+        )
+        return Response(self.get_serializer(attachment).data, status=201)
+
+
+class ClientAttachmentDetail(ClientQuerysetMixin, generics.GenericAPIView):
+    def get_attachment(self, lock=False):
+        client = get_object_or_404(super().get_queryset(), pk=self.kwargs["pk"])
+        queryset = client.attachments
+        if lock:
+            queryset = queryset.select_for_update()
+        return get_object_or_404(queryset, pk=self.kwargs["attachment_id"])
+
+    def get(self, request, *args, **kwargs):
+        attachment = self.get_attachment()
+        response = HttpResponse(bytes(attachment.content), content_type=attachment.content_type)
+        response["Content-Disposition"] = content_disposition_header(True, attachment.name)
+        response["Cache-Control"] = "no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
+
+    @transaction.atomic
+    def delete(self, request, *args, **kwargs):
+        self.lock_membership()
+        self.get_attachment(lock=True).delete()
+        return Response(status=204)
 
 
 class ClientNoteDetail(ClientQuerysetMixin, generics.DestroyAPIView):
