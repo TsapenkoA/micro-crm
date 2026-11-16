@@ -12,12 +12,15 @@ const page = (results: Client[] = []): ClientPage => ({ count: results.length, r
 
 beforeEach(() => {
   vi.spyOn(clients, 'list').mockResolvedValue(page());
-  vi.spyOn(clients, 'detail').mockResolvedValue({ ...record, deals: [] });
+  vi.spyOn(clients, 'detail').mockResolvedValue({ ...record, deals: [], contacts: [] });
   vi.spyOn(clients, 'create').mockResolvedValue(record);
   vi.spyOn(clients, 'update').mockResolvedValue(record);
   vi.spyOn(clients, 'remove').mockResolvedValue(undefined);
   vi.spyOn(clients, 'notes').mockResolvedValue({ count: 0, results: [], next: null, previous: null });
   vi.spyOn(clients, 'links').mockResolvedValue({ count: 0, results: [], next: null, previous: null });
+  vi.spyOn(clients, 'invoices').mockResolvedValue({ count: 0, results: [], next: null, previous: null });
+  vi.spyOn(clients, 'contacts').mockResolvedValue([]);
+  vi.spyOn(clients, 'attachments').mockResolvedValue({ count: 0, results: [], next: null, previous: null });
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -118,7 +121,7 @@ it('keeps protected clients visible when deletion returns 409', async () => {
 
 it('opens real details, traps focus and restores focus after Escape', async () => {
   vi.mocked(clients.list).mockResolvedValue(page([record]));
-  vi.mocked(clients.detail).mockResolvedValue({ ...record, deals: [{ id: 'deal-1', title: 'Brand project', amount: '123.45', currency: 'EUR', status: 'in_progress', deadline: null }] });
+  vi.mocked(clients.detail).mockResolvedValue({ ...record, contacts: [], deals: [{ id: 'deal-1', title: 'Brand project', amount: '123.45', currency: 'EUR', status: 'in_progress', deadline: null }] });
   render(<ClientsPage />);
   const trigger = await screen.findByRole('button', { name: record.name });
   await userEvent.click(trigger);
@@ -128,15 +131,49 @@ it('opens real details, traps focus and restores focus after Escape', async () =
   expect(await within(dialog).findByText('No notes yet. Add the first update for your colleagues.')).toBeInTheDocument();
   expect(clients.detail).toHaveBeenCalledWith(record.id, expect.any(AbortSignal));
   await within(dialog).findByText('No links yet. Add a brief, design, or repository URL.');
-  const lastButton = within(dialog).getByRole('button', { name: 'Add link' });
-  lastButton.focus();
-  expect(lastButton).toHaveFocus();
+  const lastControl = within(dialog).getByLabelText('Add a file');
+  lastControl.focus();
+  expect(lastControl).toHaveFocus();
   await userEvent.tab();
   expect(within(dialog).getByRole('button', { name: 'Close' })).toHaveFocus();
   await userEvent.keyboard('{Escape}');
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(trigger).toHaveFocus();
   expect(document.body.style.overflow).toBe('');
+});
+
+it('shows linked invoices and saves an additional primary contact', async () => {
+  vi.mocked(clients.list).mockResolvedValue(page([record]));
+  vi.mocked(clients.invoices).mockResolvedValue({ count: 1, next: null, previous: null, results: [{ id: 'invoice-1', invoice_number: 'INV-001', status: 'sent', currency: 'EUR', total_amount: '150.00', due_date: '2026-12-01', overdue: false }] });
+  vi.spyOn(clients, 'addContact').mockResolvedValue({ id: 'contact-2', client: record.id, name: 'Billing person', role: 'Finance', email: 'billing@example.com', phone: '', is_primary: true, created_at: '', updated_at: '' });
+  render(<ClientsPage />);
+  await userEvent.click(await screen.findByRole('button', { name: record.name }));
+  const dialog = screen.getByRole('dialog', { name: 'Client details' });
+  expect(await within(dialog).findByRole('link', { name: 'INV-001' })).toHaveAttribute('href', '#/invoices?invoice=invoice-1');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Add contact' }));
+  await userEvent.type(within(dialog).getByRole('textbox', { name: 'Name' }), 'Billing person');
+  await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Primary contact' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Save contact' }));
+  await waitFor(() => expect(clients.addContact).toHaveBeenCalledWith(record.id, expect.objectContaining({ name: 'Billing person', is_primary: true })));
+});
+
+it('edits a saved link and uploads a client file', async () => {
+  vi.mocked(clients.list).mockResolvedValue(page([record]));
+  vi.mocked(clients.links).mockResolvedValue({ count: 1, next: null, previous: null, results: [{ id: 'link-1', client: record.id, label: 'Brief', url: 'https://example.com/brief', created_at: '' }] });
+  vi.spyOn(clients, 'updateLink').mockResolvedValue({ id: 'link-1', client: record.id, label: 'Updated brief', url: 'https://example.com/brief', created_at: '' });
+  vi.spyOn(clients, 'addAttachment').mockResolvedValue({ id: 'file-1', client: record.id, name: 'brief.pdf', content_type: 'application/pdf', size: 10, uploaded_by: 1, created_at: '' });
+  render(<ClientsPage />);
+  await userEvent.click(await screen.findByRole('button', { name: record.name }));
+  const dialog = screen.getByRole('dialog', { name: 'Client details' });
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Edit link' }));
+  await userEvent.clear(within(dialog).getByRole('textbox', { name: 'Link label' }));
+  await userEvent.type(within(dialog).getByRole('textbox', { name: 'Link label' }), 'Updated brief');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Save link' }));
+  await waitFor(() => expect(clients.updateLink).toHaveBeenCalledWith(record.id, 'link-1', 'Updated brief', 'https://example.com/brief'));
+  const file = new File(['%PDF-1.4'], 'brief.pdf', { type: 'application/pdf' });
+  await userEvent.upload(within(dialog).getByLabelText('Add a file'), file);
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Upload file' }));
+  await waitFor(() => expect(clients.addAttachment).toHaveBeenCalledWith(record.id, file));
 });
 
 it.each(['light', 'dark'])('renders clients and the global create action in the %s theme', async theme => {
