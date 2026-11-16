@@ -17,9 +17,20 @@ export type Invoice = {
   cancelled_at: string | null; cancellation_reason: string; created_at: string;
 };
 export type ReminderPreview = { subject: string; body: string; can_send: boolean; reason: string };
-type InvoicePage = { count: number; results: Invoice[]; next: string | null };
+export type InvoicePage = { count: number; results: Invoice[]; next: string | null; previous: string | null };
+export type InvoiceSummary = { currency: string; sent: { count: number; amount: string }; paid: { count: number; amount: string }; draft: { count: number; amount: string }; overdue: { count: number; amount: string } };
 
 export const invoices = {
+  page(search = '', status = '', currency = 'USD', page = 1, signal?: AbortSignal) {
+    const query = new URLSearchParams({ page: String(page), currency });
+    if (search) query.set('search', search);
+    if (status === 'overdue') query.set('overdue', 'true');
+    else if (status) query.set('status', status);
+    return request<InvoicePage>(`/invoices?${query}`, { signal });
+  },
+  summary(currency: string, signal?: AbortSignal) {
+    return request<InvoiceSummary>(`/invoices/summary?${new URLSearchParams({ currency })}`, { signal });
+  },
   async list(search = '', status = '', signal?: AbortSignal, deal = '') {
     const rows: Invoice[] = [];
     let page = 1;
