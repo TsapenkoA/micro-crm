@@ -142,3 +142,4 @@
   .deal-editor-dialog .dialog-header, .deal-editor-dialog .live-deal-form { padding: 20px; }
   .deal-calendar { position: static; width: 100%; max-height: none; margin-top: 8px; }
 }
+.deal-load-more { display: flex; justify-content: center; padding: 18px; }
