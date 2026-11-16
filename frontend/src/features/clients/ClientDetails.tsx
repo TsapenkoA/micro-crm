@@ -1,6 +1,9 @@
 import { Fragment, useEffect, useState } from 'react';
 import { clients, type ClientDetail } from './api';
 import ClientHistory from './ClientHistory';
+import ClientInvoices from './ClientInvoices';
+import ClientContacts from './ClientContacts';
+import ClientAttachments from './ClientAttachments';
 import { date, money, stages } from '../deals/api';
 import { bankFields } from '../../components/BankDetailsFields';
 
@@ -42,12 +45,15 @@ export default function ClientDetails({ id, onEdit, onDelete }: {
       <dt>Created</dt><dd>{timestamp(client.created_at)}</dd>
       <dt>Updated</dt><dd>{timestamp(client.updated_at)}</dd>
     </dl></section>
+    <ClientContacts clientId={client.id} onPrimaryChanged={() => setRevision(value => value + 1)} />
     <section><h3>Payer bank details</h3>{bankFields.some(([field]) => client.bank_details?.[field]) ? <dl className="contact-list">
       {bankFields.filter(([field]) => client.bank_details?.[field]).map(([field, label]) => <Fragment key={field}><dt>{label}</dt><dd>{client.bank_details?.[field]}</dd></Fragment>)}
     </dl> : <p className="muted">No bank details saved for this client.</p>}</section>
     <section><h3>Related deals <span className="client-deal-count">{client.deals.length}</span></h3>{client.deals.length ? <ul className="deal-list">
       {client.deals.map(deal => { const stage = stages.find(item => item.id === deal.status); return <li key={deal.id} className="client-related-deal"><a href={`#/deals?deal=${encodeURIComponent(deal.id)}`}>{deal.title}</a><span className={`deal-badge deal-${stage?.color ?? 'gray'}`}><i />{stage?.label ?? deal.status.replaceAll('_', ' ')}</span><p className="muted">{money(deal.amount, deal.currency)} · {deal.deadline ? `Due ${date(deal.deadline)}` : 'No deadline'}</p></li>; })}
     </ul> : <p className="muted">No related deals.</p>}</section>
+    <ClientInvoices clientId={client.id} />
     <ClientHistory clientId={client.id} />
+    <ClientAttachments clientId={client.id} />
   </div>;
 }
