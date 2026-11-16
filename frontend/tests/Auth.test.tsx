@@ -5,6 +5,7 @@ import { ApiError, auth, workspace } from '../src/api/client';
 import App from '../src/app/App';
 import AuthScreen from '../src/features/auth/AuthScreen';
 import AccountSettings from '../src/features/auth/AccountSettings';
+import EmailSettings from '../src/features/auth/EmailSettings';
 
 const user = { id: 1, username: 'alex', email: 'alex@example.com', workspace: { id: 'workspace', name: 'Example Studio' } };
 const providers = [{ id: 'google', name: 'Google', configured: false }, { id: 'github', name: 'GitHub', configured: false }, { id: 'microsoft', name: 'Microsoft', configured: false }];
@@ -109,6 +110,31 @@ it('updates an existing technical username from Settings and returns the refresh
   await waitFor(() => expect(onUserUpdated).toHaveBeenCalledWith(updated));
   expect(update).toHaveBeenCalledWith('ChosenName');
   expect(await screen.findByText('Username updated.')).toBeInTheDocument();
+});
+
+it('requires identity confirmation before requesting an email change', async () => {
+  const request = vi.spyOn(auth, 'requestEmailChange').mockResolvedValue({ message: 'Check the new email address for a confirmation link.' });
+  const onOpenSecurity = vi.fn();
+  const { rerender } = render(<EmailSettings user={user} recentAuth={false} onOpenSecurity={onOpenSecurity} />);
+  expect(screen.getByLabelText('New email address')).toBeDisabled();
+  await userEvent.click(screen.getByRole('button', { name: 'Open Security' }));
+  expect(onOpenSecurity).toHaveBeenCalledOnce();
+  rerender(<EmailSettings user={user} recentAuth onOpenSecurity={onOpenSecurity} />);
+  await userEvent.type(screen.getByLabelText('New email address'), 'new@example.com');
+  await userEvent.click(screen.getByRole('button', { name: 'Send confirmation email' }));
+  expect(request).toHaveBeenCalledWith('new@example.com');
+  expect(await screen.findByRole('status')).toHaveTextContent('Check the new email address');
+});
+
+it('confirms an email change link and refreshes the account', async () => {
+  window.history.replaceState(null, '', '/#/settings?email_change_token=one-time-token');
+  const updated = { ...user, email: 'new@example.com' };
+  const confirm = vi.spyOn(auth, 'confirmEmailChange').mockResolvedValue({ user: updated });
+  const onUserUpdated = vi.fn();
+  render(<EmailSettings user={user} recentAuth onOpenSecurity={vi.fn()} onUserUpdated={onUserUpdated} />);
+  await waitFor(() => expect(confirm).toHaveBeenCalledWith('one-time-token'));
+  await waitFor(() => expect(onUserUpdated).toHaveBeenCalledWith(updated));
+  expect(window.location.hash).toBe('#/settings');
 });
 
 it('saves workspace payment details for new invoices', async () => {
