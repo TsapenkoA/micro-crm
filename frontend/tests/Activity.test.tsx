@@ -11,7 +11,7 @@ it('shows an empty history and filters workspace events', async () => {
   render(<ActivityPage />);
   expect(await screen.findByText('No activity recorded yet. New changes will appear here.')).toBeInTheDocument();
   await userEvent.selectOptions(screen.getByLabelText('Activity type'), 'invoice');
-  expect(list).toHaveBeenCalledWith(1, 'invoice', expect.any(AbortSignal));
+  expect(list).toHaveBeenCalledWith(1, 'invoice', expect.any(AbortSignal), '', '', '');
 });
 
 it('renders changes as text and links to the record', async () => {
@@ -22,4 +22,16 @@ it('renders changes as text and links to the record', async () => {
   expect(container.querySelector('script')).toBeNull();
   expect(screen.getByRole('link', { name: '<script>Project</script>' })).toHaveAttribute('href', '#/deals?deal=deal-1');
   expect(screen.getByText('new lead → in progress')).toBeInTheDocument();
+});
+
+it('shows file names and bank-update actions without private values', async () => {
+  const events: ActivityEvent[] = [
+    { id: 'file', actor_name: 'Maya', entity_type: 'client', entity_id: 'client-1', entity_label: 'Aurora Studio', action: 'attachment_added', changes: { file: 'project-brief.pdf' }, created_at: '2026-11-12T12:00:00Z' },
+    { id: 'bank', actor_name: 'Admin', entity_type: 'client', entity_id: 'client-1', entity_label: 'Aurora Studio', action: 'payer_bank_updated', changes: {}, created_at: '2026-11-12T11:00:00Z' },
+  ];
+  vi.spyOn(activity, 'list').mockResolvedValue({ count: 2, next: null, previous: null, results: events });
+  render(<ActivityPage />);
+  expect(await screen.findByText('project-brief.pdf')).toBeInTheDocument();
+  expect(screen.getByText(/updated payer bank details for client/)).toBeInTheDocument();
+  expect(screen.queryByText(/iban/i)).not.toBeInTheDocument();
 });
