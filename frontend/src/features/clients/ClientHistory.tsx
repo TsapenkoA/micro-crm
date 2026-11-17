@@ -12,7 +12,7 @@ function externalUrl(value: string): string | undefined {
   } catch { return undefined; }
 }
 
-function HistorySection({ clientId, kind }: { clientId: string; kind: Kind }) {
+function HistorySection({ clientId, kind, collapsibleForm }: { clientId: string; kind: Kind; collapsibleForm: boolean }) {
   const [data, setData] = useState<HistoryPage<HistoryItem> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -26,6 +26,7 @@ function HistorySection({ clientId, kind }: { clientId: string; kind: Kind }) {
   const [pending, setPending] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState('');
+  const [showForm, setShowForm] = useState(!collapsibleForm);
   const [success, setSuccess] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -79,6 +80,7 @@ function HistorySection({ clientId, kind }: { clientId: string; kind: Kind }) {
         setLabel(''); setUrl(''); setEditingLink(null);
       }
       setSuccess(isNote ? 'Note added.' : editingLink ? 'Link updated.' : 'Link added.');
+      if (collapsibleForm) setShowForm(false);
       setDestination('latest');
       setRevision(value => value + 1);
     } catch (cause) {
@@ -121,7 +123,7 @@ function HistorySection({ clientId, kind }: { clientId: string; kind: Kind }) {
   }
 
   return <section aria-label={isNote ? 'Notes' : title} className="history-section">
-    <div className="history-heading"><h3>{title}</h3><button className="text-action" disabled={loading} onClick={() => setRevision(value => value + 1)}>Refresh {kind}</button></div>
+    <div className="history-heading"><h3>{title}</h3><div className="button-row">{collapsibleForm && <button className="text-action" onClick={() => setShowForm(value => !value)}>{showForm ? 'Cancel' : isNote ? 'Add note' : 'Add link'}</button>}<button className="text-action" disabled={loading} onClick={() => setRevision(value => value + 1)}>Refresh {kind}</button></div></div>
     {isNote && <p className="history-description muted">Your team’s conversations and context, in one place.</p>}
     {loading ? <p role="status" className="muted">Loading {kind}…</p> : error ? <div><p role="alert" className="notice error">{error}</p>
       <button className="secondary" onClick={() => setRevision(value => value + 1)}>Retry {kind}</button></div>
@@ -137,7 +139,7 @@ function HistorySection({ clientId, kind }: { clientId: string; kind: Kind }) {
                 <button className="primary destructive" disabled={deleting} onClick={() => removeNote(item.id)}>{deleting ? 'Deleting…' : 'Confirm deletion'}</button></div>
             </div> : <button className="text-action danger" disabled={deleting} onClick={() => { setDeleteTarget(item.id); setDeleteError(''); }}>Delete note</button>)}
           </> : <>{externalUrl(item.url) ? <a href={item.url} target="_blank" rel="noopener noreferrer">{item.label}</a> : <span>{item.label}</span>}
-            <p className="muted link-url">{item.url}</p>{!externalUrl(item.url) && <p className="field-error">Unsupported link scheme. This link cannot be opened here.</p>}<div className="button-row"><button className="text-action" onClick={() => { setEditingLink(item.id); setLabel(item.label); setUrl(item.url); }}>Edit link</button><button className="text-action danger" disabled={deleting} onClick={() => void removeLink(item.id)}>Delete link</button></div></>}</li>)}
+            <p className="muted link-url">{item.url}</p>{!externalUrl(item.url) && <p className="field-error">Unsupported link scheme. This link cannot be opened here.</p>}<div className="button-row"><button className="text-action" onClick={() => { setEditingLink(item.id); setLabel(item.label); setUrl(item.url); setShowForm(true); }}>Edit link</button><button className="text-action danger" disabled={deleting} onClick={() => void removeLink(item.id)}>Delete link</button></div></>}</li>)}
         </ol>
         <div className="history-pagination"><span className="muted">{data.count} {kind} · Page {page}</span><div className="button-row">
           <button className="secondary" disabled={!data.previous} onClick={() => setDestination(page - 1)}>Previous {kind}</button>
@@ -145,7 +147,8 @@ function HistorySection({ clientId, kind }: { clientId: string; kind: Kind }) {
         </div></div>
       </> : <p className="muted">{isNote ? 'No notes yet. Add the first update for your colleagues.' : 'No links yet. Add a brief, design, or repository URL.'}</p>}
     {!isNote && deleteError && <p role="alert" className="notice error">{deleteError}</p>}
-    <form className="history-form" noValidate onSubmit={submit}>
+    {success && !showForm && <p role="status" className="notice success">{success}</p>}
+    {showForm && <form className="history-form" noValidate onSubmit={submit}>
       {isNote ? <div className="field"><label htmlFor={`${id}-text`}>New note</label>
         <textarea id={`${id}-text`} name="text" rows={3} maxLength={10000} required value={text} onChange={event => setText(event.target.value)} disabled={pending}
           aria-invalid={!!errors.text} aria-describedby={errors.text ? `${id}-text-error` : undefined} />
@@ -165,10 +168,11 @@ function HistorySection({ clientId, kind }: { clientId: string; kind: Kind }) {
       {success && <p role="status" className="notice success">{success}</p>}
       {submitError && <p role="alert" className="notice error">{submitError}</p>}
       <div className="button-row"><button className="primary" disabled={pending}>{pending ? isNote ? 'Adding…' : 'Saving…' : isNote ? 'Add note' : editingLink ? 'Save link' : 'Add link'}</button>{editingLink && <button type="button" className="secondary" onClick={() => { setEditingLink(null); setLabel(''); setUrl(''); }}>Cancel edit</button>}</div>
-    </form>
+    </form>}
   </section>;
 }
 
-export default function ClientHistory({ clientId }: { clientId: string }) {
-  return <><HistorySection clientId={clientId} kind="notes" /><HistorySection clientId={clientId} kind="links" /></>;
+export default function ClientHistory({ clientId, kind, collapsibleForm = false }: { clientId: string; kind?: Kind; collapsibleForm?: boolean }) {
+  if (kind) return <HistorySection clientId={clientId} kind={kind} collapsibleForm={collapsibleForm} />;
+  return <><HistorySection clientId={clientId} kind="notes" collapsibleForm={collapsibleForm} /><HistorySection clientId={clientId} kind="links" collapsibleForm={collapsibleForm} /></>;
 }

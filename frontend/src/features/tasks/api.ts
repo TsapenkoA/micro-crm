@@ -10,6 +10,7 @@ export type TaskInput = { client: string; deal: string | null; title: string; as
 export type TaskFilters = { mine?: boolean; status?: 'open' | 'done'; due?: 'overdue' | 'upcoming'; search?: string; client?: string; deal?: string; page?: number; page_size?: number };
 
 export const tasks = {
+  detail: (id: string, signal?: AbortSignal) => request<Task>(`/tasks/${encodeURIComponent(id)}`, { signal }),
   list(filters: TaskFilters = {}, signal?: AbortSignal) {
     const query = new URLSearchParams();
     if (filters.mine) query.set('mine', '1');

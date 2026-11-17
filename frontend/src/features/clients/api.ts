@@ -19,7 +19,7 @@ export type ClientDeal = {
 };
 export type ClientDetail = Client & { deals: ClientDeal[]; contacts: ClientContact[]; bank_details?: BankDetails };
 export type ClientPage = { count: number; next: string | null; previous: string | null; results: Client[] };
-export type ClientNote = { id: string; client: string; author: { id: number; username: string }; text: string; created_at: string; can_delete: boolean };
+export type ClientNote = { id: string; client: string; deal: string | null; author: { id: number; username: string }; text: string; created_at: string; can_delete: boolean };
 export type ClientLink = { id: string; client: string; label: string; url: string; created_at: string };
 export type ClientContact = { id: string; client: string; name: string; role: string; email: string; phone: string; is_primary: boolean; created_at: string; updated_at: string };
 export type ClientContactInput = Pick<ClientContact, 'name' | 'role' | 'email' | 'phone' | 'is_primary'>;

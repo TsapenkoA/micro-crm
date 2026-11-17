@@ -10,7 +10,7 @@ const user = { id: 1, username: 'alex', email: 'alex@example.test', workspace: {
 const member = { id: 2, username: 'sam', name: 'Sam Parker', email: 'sam@example.test' };
 const task: Task = { id: 'task-1', client: 'client-1', client_name: 'Client', deal: null, deal_title: null, title: 'Send brief', assignee: 2, assignee_name: 'Sam Parker', due_at: '2026-12-01T12:00:00Z', status: 'open', completed_at: null, created_by: 1, created_at: '2026-11-12T12:00:00Z', updated_at: '2026-11-12T12:00:00Z' };
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); window.location.hash = ''; });
 
 function choices() {
   vi.spyOn(workspace, 'settings').mockResolvedValue({ id: 'workspace', name: 'Studio', can_manage_members: true, members: [{ id: 1, username: 'alex', name: '', email: user.email }, member] });
@@ -36,12 +36,26 @@ it('shows an empty task view and creates a task for a teammate', async () => {
   expect(list).toHaveBeenCalled();
 });
 
+it('shows counts for every task view', async () => {
+  choices();
+  vi.spyOn(tasks, 'list').mockImplementation(async filters => ({
+    count: filters?.due === 'overdue' ? 3 : filters?.due === 'upcoming' ? 4 : filters?.status === 'done' ? 5 : filters?.mine ? 2 : 6,
+    next: null, previous: null, results: [],
+  }));
+  render(<TasksPage user={user} />);
+  expect(await screen.findByRole('button', { name: 'My tasks 2' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Team 6' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Overdue 3' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Upcoming 4' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Done 5' })).toBeInTheDocument();
+});
+
 it('shows team tasks and marks one complete after a server response', async () => {
   choices();
   vi.spyOn(tasks, 'list').mockResolvedValue({ count: 1, next: null, previous: null, results: [task] });
   const update = vi.spyOn(tasks, 'update').mockResolvedValue({ ...task, status: 'done', completed_at: '2026-11-12T13:00:00Z' });
   render(<TasksPage user={user} />);
-  await userEvent.click(screen.getByRole('button', { name: 'Team' }));
+  await userEvent.click(screen.getByRole('button', { name: /^Team/ }));
   expect(await screen.findByText('Send brief')).toBeInTheDocument();
   expect(screen.getByText(/Sam Parker/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Complete' }));
@@ -58,4 +72,15 @@ it('filters tasks by client and deal and opens the editor from the list', async 
   await waitFor(() => expect(list).toHaveBeenCalledWith(expect.objectContaining({ search: 'brief', client: 'client-1' }), expect.any(AbortSignal)));
   await userEvent.click(screen.getByRole('button', { name: 'Edit Send brief' }));
   expect(screen.getByRole('heading', { name: 'Edit task' })).toBeInTheDocument();
+});
+
+it('opens a task by ID even when it is outside the first list page', async () => {
+  choices();
+  window.location.hash = '#/tasks?task=task-1';
+  vi.spyOn(tasks, 'list').mockResolvedValue({ count: 0, next: null, previous: null, results: [] });
+  const detail = vi.spyOn(tasks, 'detail').mockResolvedValue(task);
+  render(<TasksPage user={user} />);
+  expect(await screen.findByRole('heading', { name: 'Edit task' })).toBeInTheDocument();
+  expect(detail).toHaveBeenCalledWith('task-1', expect.any(AbortSignal));
+  window.location.hash = '';
 });

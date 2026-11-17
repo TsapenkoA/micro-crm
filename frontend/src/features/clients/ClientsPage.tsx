@@ -87,10 +87,10 @@ export default function ClientsPage({ createRequested = false, onCreateHandled, 
           {!search && <button className="primary" onClick={() => setPanel({ kind: 'create' })}>Add your first client</button>}
         </div>}
     </section>
-    {panel?.kind === 'detail' && <Dialog key={panel.id} title="Client details" drawer onClose={() => setPanel(null)}>
+    {panel?.kind === 'detail' && <Dialog key={panel.id} title="Client details" className="client-detail-dialog" onClose={() => setPanel(null)}>
       <ClientDetails id={panel.id} onEdit={client => setPanel({ kind: 'edit', client })} onDelete={client => setPanel({ kind: 'delete', client })} />
     </Dialog>}
-    {(panel?.kind === 'create' || panel?.kind === 'edit') && <Dialog key={panel.kind} title={panel.kind === 'create' ? 'New client' : 'Edit client'} onClose={() => setPanel(null)} busy={saving}>
+    {(panel?.kind === 'create' || panel?.kind === 'edit') && <Dialog key={panel.kind} title={panel.kind === 'create' ? 'New client' : 'Edit client'} className="client-editor-dialog" onClose={() => setPanel(null)} busy={saving}>
       <ClientForm initial={panel.kind === 'edit' ? panel.client : undefined} onCancel={() => setPanel(null)} onPending={setSaving}
         onSave={async values => {
           if (panel.kind === 'create') { await clients.create(values); setPage(1); saved('Client created.'); }

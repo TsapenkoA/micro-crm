@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { clients, type ClientAttachment, type HistoryPage } from './api';
 
-export default function ClientAttachments({ clientId }: { clientId: string }) {
+export default function ClientAttachments({ clientId, collapsibleForm = false }: { clientId: string; collapsibleForm?: boolean }) {
   const [data, setData] = useState<HistoryPage<ClientAttachment> | null>(null);
   const [page, setPage] = useState(1);
   const [revision, setRevision] = useState(0);
@@ -9,6 +9,7 @@ export default function ClientAttachments({ clientId }: { clientId: string }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [showForm, setShowForm] = useState(!collapsibleForm);
 
   useEffect(() => { setPage(1); }, [clientId]);
   useEffect(() => {
@@ -27,7 +28,7 @@ export default function ClientAttachments({ clientId }: { clientId: string }) {
     if (!file || busy) return;
     if (file.size > 5 * 1024 * 1024 || file.size === 0) { setError('Choose a file between 1 byte and 5 MB.'); return; }
     setBusy(true); setError('');
-    try { await clients.addAttachment(clientId, file); setFile(null); form.reset(); setPage(1); setRevision(value => value + 1); }
+    try { await clients.addAttachment(clientId, file); setFile(null); form.reset(); setPage(1); setRevision(value => value + 1); if (collapsibleForm) setShowForm(false); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to upload the file.'); }
     finally { setBusy(false); }
   }
@@ -52,9 +53,9 @@ export default function ClientAttachments({ clientId }: { clientId: string }) {
     finally { setBusy(false); }
   }
 
-  return <section aria-label="Client files"><h3>Files {data && <span className="client-deal-count">{data.count}</span>}</h3><p className="muted">PDF, PNG, JPEG or WebP · up to 5 MB per file.</p>
+  return <section aria-label="Client files"><div className="history-heading"><h3>Files {data && <span className="client-deal-count">{data.count}</span>}</h3>{collapsibleForm && <button className="text-action" onClick={() => setShowForm(value => !value)}>{showForm ? 'Cancel' : 'Add file'}</button>}</div><p className="muted">PDF, PNG, JPEG or WebP · up to 5 MB per file.</p>
     {loading ? <p role="status" className="muted">Loading files…</p> : data?.results.length ? <><ul className="client-file-list">{data.results.map(item => <li key={item.id}><button className="text-action" disabled={busy} onClick={() => void download(item)}>{item.name}</button><small className="muted">{Math.ceil(item.size / 1024)} KB</small><button className="text-action danger" disabled={busy} onClick={() => void remove(item)}>Delete</button></li>)}</ul><div className="history-pagination"><span className="muted">Page {page}</span><div className="button-row"><button className="secondary" disabled={!data.previous} onClick={() => setPage(value => value - 1)}>Previous</button><button className="secondary" disabled={!data.next} onClick={() => setPage(value => value + 1)}>Next</button></div></div></> : <p className="muted">No files attached yet.</p>}
-    <form className="history-form" onSubmit={upload}><div className="field"><label htmlFor="client-attachment">Add a file</label><input id="client-attachment" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" onChange={event => setFile(event.target.files?.[0] ?? null)} /></div><button className="primary" disabled={!file || busy}>{busy ? 'Uploading…' : 'Upload file'}</button></form>
+    {showForm && <form className="history-form" onSubmit={upload}><div className="field"><label htmlFor="client-attachment">Add a file</label><input id="client-attachment" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" onChange={event => setFile(event.target.files?.[0] ?? null)} /></div><button className="primary" disabled={!file || busy}>{busy ? 'Uploading…' : 'Upload file'}</button></form>}
     {error && <p role="alert" className="notice error">{error}</p>}
   </section>;
 }
