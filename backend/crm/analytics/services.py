@@ -33,7 +33,7 @@ def dashboard_data(workspace_id, currency, period):
     paid_records = list(deals.filter(status=Deal.Status.PAID).values("amount", "currency", "fx_rate_date"))
     payments = list(InvoicePayment.objects.filter(
         invoice__workspace_id=workspace_id, invoice__client__workspace_id=workspace_id,
-        received_on__gte=start.date(), received_on__lt=end.date(),
+        received_on__gte=start.date(), received_on__lt=end.date(), voided_at__isnull=True,
     ).values("amount", "invoice__currency", "received_on", "fx_rate_date"))
 
     needs_pipeline_rate = any(row["currency"] != currency for row in active_records)
@@ -87,9 +87,10 @@ def dashboard_data(workspace_id, currency, period):
     rows = [{"period": f"{year:04d}-{month:02d}", "revenue": None if (year, month) in missing_periods else money_string(amounts.get((year, month), Decimal("0")), currency)} for year, month in labels]
     revenue = None if revenue_missing else sum(amounts.values(), Decimal("0"))
     stages = list(deals.values("status").annotate(count=Count("id")).order_by("status"))
-    recent = list(active.select_related("client").order_by("deadline", "id")[:4].values("id", "title", "client__name", "client__company", "status", "deadline", "amount", "currency"))
+    recent = list(active.filter(deadline__isnull=False).select_related("client").order_by("deadline", "id")[:4].values("id", "title", "client__name", "client__company", "status", "deadline", "amount", "currency"))
     for deal in recent:
         deal["amount"] = f"{deal['amount']:.2f}"
+        deal["overdue"] = deal["deadline"] < timezone.now()
     return {
         "currency": currency,
         "period": period,

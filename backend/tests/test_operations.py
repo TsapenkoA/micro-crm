@@ -68,3 +68,17 @@ def test_operations_excludes_finished_financial_work(user, client_record):
     assert response.status_code == 200
     assert response.json()["today"]["count"] == 0
     assert response.json()["reminders"]["count"] == 0
+
+
+def test_operations_pages_keep_new_deadlines_reachable(user, client_record):
+    now = timezone.now()
+    for index in range(21):
+        Task.objects.create(workspace=client_record.workspace, client=client_record, created_by=user,
+                            assignee=user, title=f"Task {index}", due_at=now - timedelta(days=22 - index))
+    api = signed_in(user)
+    first = api.get("/api/v1/operations/overview?page=1").json()["today"]
+    second = api.get("/api/v1/operations/overview?page=2").json()["today"]
+    assert first["count"] == second["count"] == 21
+    assert len(first["results"]) == 20 and len(second["results"]) == 1
+    assert {item["id"] for item in first["results"]}.isdisjoint({item["id"] for item in second["results"]})
+    assert api.get("/api/v1/operations/overview?page=0").status_code == 400

@@ -63,8 +63,11 @@ class ClientDetail(ClientQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
     def perform_update(self, serializer):
         self.lock_membership()
         before = snapshot(serializer.instance)
+        bank_before = serializer.instance.bank_details.copy()
         client = serializer.save()
         log_activity(client, self.request.user, "updated", before)
+        if bank_before != client.bank_details:
+            log_activity(client, self.request.user, "payer_bank_updated")
 
     @transaction.atomic
     def perform_destroy(self, instance):
@@ -103,7 +106,9 @@ class ClientHistoryList(ClientQuerysetMixin, generics.ListCreateAPIView):
         values = {"client": self.get_client(lock=True)}
         if self.relation == "notes":
             values["author"] = self.request.user
-        serializer.save(**values)
+        record = serializer.save(**values)
+        log_activity(values["client"], self.request.user, "note_added" if self.relation == "notes" else "link_added",
+                     details={"link": record.label} if self.relation == "links" else None)
 
 
 class ClientNotes(ClientHistoryList):
@@ -141,10 +146,12 @@ class ClientLinkDetail(ClientQuerysetMixin, generics.RetrieveUpdateDestroyAPIVie
     def perform_update(self, serializer):
         self.lock_membership()
         serializer.save()
+        log_activity(serializer.instance.client, self.request.user, "link_updated", details={"link": serializer.instance.label})
 
     @transaction.atomic
     def perform_destroy(self, instance):
         self.lock_membership()
+        log_activity(instance.client, self.request.user, "link_deleted", details={"link": instance.label})
         instance.delete()
 
 
@@ -167,6 +174,7 @@ class ClientContacts(ClientQuerysetMixin, generics.ListCreateAPIView):
         if serializer.validated_data.get("is_primary"):
             client.contacts.filter(is_primary=True).update(is_primary=False)
         contact = serializer.save(client=client)
+        log_activity(client, self.request.user, "contact_added", details={"contact": contact.name})
         if contact.is_primary:
             client.name, client.email, client.phone = contact.name, contact.email, contact.phone
             client.save(update_fields=["name", "email", "phone", "updated_at"])
@@ -201,6 +209,7 @@ class ClientContactDetail(ClientQuerysetMixin, generics.RetrieveUpdateDestroyAPI
         if primary and not contact.is_primary:
             client.contacts.filter(is_primary=True).update(is_primary=False)
         contact = serializer.save()
+        log_activity(client, request.user, "contact_updated", details={"contact": contact.name})
         if contact.is_primary:
             client.name, client.email, client.phone = contact.name, contact.email, contact.phone
             client.save(update_fields=["name", "email", "phone", "updated_at"])
@@ -213,6 +222,7 @@ class ClientContactDetail(ClientQuerysetMixin, generics.RetrieveUpdateDestroyAPI
         contact = get_object_or_404(client.contacts.select_for_update(), pk=kwargs["contact_id"])
         if contact.is_primary:
             raise PrimaryContactInUse()
+        log_activity(client, request.user, "contact_deleted", details={"contact": contact.name})
         contact.delete()
         return Response(status=204)
 
@@ -277,6 +287,7 @@ class ClientAttachments(ClientQuerysetMixin, generics.ListCreateAPIView):
             client=client, uploaded_by=request.user, name=name,
             content_type=mime, size=len(content), content=content,
         )
+        log_activity(client, request.user, "attachment_added", details={"file": attachment.name})
         return Response(self.get_serializer(attachment).data, status=201)
 
 
@@ -299,7 +310,9 @@ class ClientAttachmentDetail(ClientQuerysetMixin, generics.GenericAPIView):
     @transaction.atomic
     def delete(self, request, *args, **kwargs):
         self.lock_membership()
-        self.get_attachment(lock=True).delete()
+        attachment = self.get_attachment(lock=True)
+        log_activity(attachment.client, request.user, "attachment_deleted", details={"file": attachment.name})
+        attachment.delete()
         return Response(status=204)
 
 
@@ -314,5 +327,6 @@ class ClientNoteDetail(ClientQuerysetMixin, generics.DestroyAPIView):
         note = get_object_or_404(client.notes.select_for_update(), pk=kwargs["note_id"])
         if note.author_id != request.user.pk:
             raise PermissionDenied("Only the author can delete this note.")
+        log_activity(client, request.user, "note_deleted")
         note.delete()
         return Response(status=204)

@@ -2,7 +2,7 @@ from decimal import Decimal
 from django.utils import timezone
 from rest_framework import serializers
 from crm.api.serializers import StrictModelSerializer, StrictSerializer, WorkspaceClientField
-from crm.models import Client, Deal, Invoice, InvoiceDelivery, InvoiceItem, InvoicePayment
+from crm.models import Client, Deal, Invoice, InvoiceDelivery, InvoiceDueDateCorrection, InvoiceItem, InvoicePayment
 from crm.services.calculations import CURRENCY_PLACES, money_string
 
 
@@ -61,6 +61,15 @@ class InvoiceCancelSerializer(StrictSerializer):
     reason = serializers.CharField(max_length=500, trim_whitespace=True)
 
 
+class InvoiceDueDateCorrectionInputSerializer(StrictSerializer):
+    due_date = serializers.DateField()
+    reason = serializers.CharField(max_length=500, trim_whitespace=True)
+
+
+class InvoicePaymentVoidSerializer(StrictSerializer):
+    reason = serializers.CharField(max_length=500, trim_whitespace=True)
+
+
 class InvoiceItemOutputSerializer(serializers.ModelSerializer):
     unit_price = serializers.SerializerMethodField()
     line_total = serializers.SerializerMethodField()
@@ -90,10 +99,11 @@ class InvoiceOutputSerializer(StrictModelSerializer):
     balance_due = serializers.SerializerMethodField()
     overdue = serializers.SerializerMethodField()
     deliveries = serializers.SerializerMethodField()
+    due_date_corrections = serializers.SerializerMethodField()
 
     class Meta:
         model = Invoice
-        fields = ["id", "invoice_number", "client", "deal", "created_by", "currency", "status", "issued_at", "due_date", "payment_terms", "paid_at", "cancelled_at", "cancellation_reason", "fx_rate_date", "seller_snapshot", "buyer_snapshot", "items", "subtotal", "tax_total", "total_amount", "payments", "paid_amount", "balance_due", "overdue", "deliveries", "created_at", "updated_at"]
+        fields = ["id", "invoice_number", "client", "deal", "created_by", "currency", "status", "issued_at", "due_date", "due_date_corrections", "payment_terms", "paid_at", "cancelled_at", "cancellation_reason", "fx_rate_date", "seller_snapshot", "buyer_snapshot", "items", "subtotal", "tax_total", "total_amount", "payments", "paid_amount", "balance_due", "overdue", "deliveries", "created_at", "updated_at"]
         read_only_fields = fields
 
     def get_items(self, invoice):
@@ -112,10 +122,10 @@ class InvoiceOutputSerializer(StrictModelSerializer):
         return InvoicePaymentOutputSerializer(invoice.payments.all(), many=True).data
 
     def get_paid_amount(self, invoice):
-        return money_string(sum((payment.amount for payment in invoice.payments.all()), Decimal("0")), invoice.currency)
+        return money_string(sum((payment.amount for payment in invoice.payments.all() if payment.voided_at is None), Decimal("0")), invoice.currency)
 
     def get_balance_due(self, invoice):
-        paid = sum((payment.amount for payment in invoice.payments.all()), Decimal("0"))
+        paid = sum((payment.amount for payment in invoice.payments.all() if payment.voided_at is None), Decimal("0"))
         return money_string(max(invoice.total_amount - paid, Decimal("0")), invoice.currency)
 
     def get_overdue(self, invoice):
@@ -124,14 +134,50 @@ class InvoiceOutputSerializer(StrictModelSerializer):
     def get_deliveries(self, invoice):
         return InvoiceDeliveryOutputSerializer(invoice.deliveries.all(), many=True).data
 
+    def get_due_date_corrections(self, invoice):
+        return InvoiceDueDateCorrectionOutputSerializer(invoice.due_date_corrections.all(), many=True).data
+
+
+class InvoiceListSerializer(StrictModelSerializer):
+    description = serializers.SerializerMethodField()
+    client_name = serializers.CharField(source="client.name", read_only=True)
+    client_company = serializers.CharField(source="client.company", read_only=True)
+    total_amount = serializers.SerializerMethodField()
+    overdue = serializers.SerializerMethodField()
+    needs_due_date = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Invoice
+        fields = ["id", "invoice_number", "client", "deal", "client_name", "client_company", "description", "currency", "status", "issued_at", "due_date", "total_amount", "overdue", "needs_due_date", "created_at"]
+        read_only_fields = fields
+
+    def get_description(self, invoice):
+        item = next(iter(invoice.items.all()), None)
+        return item.description if item else ""
+
+    def get_total_amount(self, invoice):
+        return money_string(invoice.total_amount, invoice.currency)
+
+    def get_overdue(self, invoice):
+        return invoice.status == Invoice.Status.SENT and invoice.due_date is not None and invoice.due_date < timezone.localdate()
+
+    def get_needs_due_date(self, invoice):
+        return invoice.status == Invoice.Status.SENT and invoice.due_date is None
+
 
 class InvoicePaymentOutputSerializer(serializers.ModelSerializer):
     class Meta:
         model = InvoicePayment
-        fields = ["id", "amount", "received_on", "reference", "is_legacy", "created_at"]
+        fields = ["id", "amount", "received_on", "reference", "is_legacy", "created_at", "voided_at", "voided_by", "void_reason"]
+
+
+class InvoiceDueDateCorrectionOutputSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InvoiceDueDateCorrection
+        fields = ["id", "previous_due_date", "due_date", "reason", "corrected_by", "created_at"]
 
 
 class InvoiceDeliveryOutputSerializer(serializers.ModelSerializer):
     class Meta:
         model = InvoiceDelivery
-        fields = ["id", "kind", "result", "recipient", "attempted_at"]
+        fields = ["id", "kind", "result", "recipient", "attempted_at", "resolved_at", "resolution_reason"]

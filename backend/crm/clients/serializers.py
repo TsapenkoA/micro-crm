@@ -93,8 +93,8 @@ class ClientNoteSerializer(StrictModelSerializer):
 
     class Meta:
         model = ClientNote
-        fields = ["id", "client", "author", "text", "created_at", "can_delete"]
-        read_only_fields = ["id", "client", "author", "created_at"]
+        fields = ["id", "client", "deal", "author", "text", "created_at", "can_delete"]
+        read_only_fields = ["id", "client", "deal", "author", "created_at"]
 
     def get_author(self, instance):
         return {"id": instance.author_id, "username": instance.author.username}

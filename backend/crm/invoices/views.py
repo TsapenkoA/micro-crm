@@ -15,10 +15,10 @@ from rest_framework import serializers
 from crm.api.pagination import ClientPagination
 from crm.api.permissions import IsWorkspaceMember, WorkspaceQuerysetMixin
 from crm.activity.services import log_activity, snapshot
-from crm.invoices.delivery import DeliveryConflict, reminder_blocker, reminder_copy, send_invoice_email
-from crm.invoices.serializers import InvoiceCancelSerializer, InvoiceOutputSerializer, InvoicePaymentInputSerializer, InvoiceStatusSerializer, InvoiceWriteSerializer
+from crm.invoices.delivery import DeliveryConflict, reminder_blocker, reminder_copy, prepare_invoice_email
+from crm.invoices.serializers import InvoiceCancelSerializer, InvoiceDueDateCorrectionInputSerializer, InvoiceListSerializer, InvoiceOutputSerializer, InvoicePaymentInputSerializer, InvoicePaymentVoidSerializer, InvoiceStatusSerializer, InvoiceWriteSerializer
 from crm.invoices.services import buyer_snapshot, invoice_number, issue_invoice, record_payment, recorded_total
-from crm.models import Client, Deal, Invoice, InvoiceDelivery, InvoiceItem, InvoicePayment, Workspace, WorkspaceMembership
+from crm.models import Client, Deal, Invoice, InvoiceDelivery, InvoiceDueDateCorrection, InvoiceItem, InvoicePayment, Workspace, WorkspaceMembership
 from crm.services.calculations import CURRENCY_PLACES, calculate_items, money_string
 from crm.services.pdf import render_invoice
 
@@ -28,7 +28,7 @@ class InvoiceQuerysetMixin(WorkspaceQuerysetMixin):
     permission_classes = [IsAuthenticated, IsWorkspaceMember]
 
     def get_queryset(self):
-        return super().get_queryset().filter(client__workspace_id=self.request.workspace_id).select_related("client", "deal").prefetch_related("items", "payments", "deliveries")
+        return super().get_queryset().filter(client__workspace_id=self.request.workspace_id).select_related("client", "deal").prefetch_related("items", "payments", "deliveries", "due_date_corrections")
 
     def lock_membership(self):
         membership = WorkspaceMembership.objects.select_for_update().filter(user=self.request.user, workspace_id=self.request.workspace_id).first()
@@ -62,7 +62,7 @@ class InvoiceSummary(InvoiceQuerysetMixin, generics.GenericAPIView):
         currency = request.query_params.get("currency", "USD")
         if currency not in CURRENCY_PLACES:
             raise ValidationError({"currency": "Unsupported invoice currency."})
-        paid = InvoicePayment.objects.filter(invoice_id=OuterRef("pk")).values("invoice_id").annotate(total=Sum("amount")).values("total")
+        paid = InvoicePayment.objects.filter(invoice_id=OuterRef("pk"), voided_at__isnull=True).values("invoice_id").annotate(total=Sum("amount")).values("total")
         zero = Value(Decimal("0"), output_field=DecimalField(max_digits=20, decimal_places=4))
         queryset = self.get_queryset().filter(currency=currency).annotate(
             paid_value=Coalesce(Subquery(paid), zero),
@@ -86,7 +86,7 @@ class InvoiceList(InvoiceQuerysetMixin, generics.ListCreateAPIView):
     search_fields = ["invoice_number", "client__name", "client__company"]
 
     def get_serializer_class(self):
-        return InvoiceWriteSerializer if self.request.method == "POST" else InvoiceOutputSerializer
+        return InvoiceWriteSerializer if self.request.method == "POST" else InvoiceListSerializer
 
     def filter_queryset(self, queryset):
         status_filter = self.request.query_params.get("status")
@@ -222,6 +222,55 @@ class InvoicePayments(InvoiceQuerysetMixin, generics.GenericAPIView):
         return Response(InvoiceOutputSerializer(invoice).data, status=201)
 
 
+class InvoicePaymentVoid(InvoiceQuerysetMixin, generics.GenericAPIView):
+    @transaction.atomic
+    def post(self, request, pk, payment_id):
+        self.lock_membership()
+        invoice = get_object_or_404(self.get_queryset().select_for_update(of=("self",)), pk=pk)
+        payment = get_object_or_404(InvoicePayment.objects.select_for_update(), pk=payment_id, invoice=invoice)
+        values = InvoicePaymentVoidSerializer(data=request.data)
+        values.is_valid(raise_exception=True)
+        if payment.voided_at is not None or payment.is_legacy or invoice.status not in (Invoice.Status.SENT, Invoice.Status.PAID):
+            raise ValidationError({"payment": "This payment cannot be reversed."})
+        before = snapshot(invoice)
+        payment.voided_at = timezone.now()
+        payment.voided_by = request.user
+        payment.void_reason = values.validated_data["reason"]
+        payment.save(update_fields=["voided_at", "voided_by", "void_reason"])
+        invoice._prefetched_objects_cache = {}
+        if invoice.status == Invoice.Status.PAID:
+            invoice.status = Invoice.Status.SENT
+            invoice.paid_at = None
+            invoice.fx_rate_date = None
+            invoice.save(update_fields=["status", "paid_at", "fx_rate_date", "updated_at"])
+        log_activity(invoice, request.user, "payment_reversed", before, {"payment_id": str(payment.pk)})
+        return Response(InvoiceOutputSerializer(invoice).data)
+
+
+class InvoiceDueDateCorrections(InvoiceQuerysetMixin, generics.GenericAPIView):
+    @transaction.atomic
+    def post(self, request, pk):
+        self.lock_membership()
+        invoice = get_object_or_404(self.get_queryset().select_for_update(of=("self",)), pk=pk)
+        values = InvoiceDueDateCorrectionInputSerializer(data=request.data)
+        values.is_valid(raise_exception=True)
+        due_date = values.validated_data["due_date"]
+        if invoice.status != Invoice.Status.SENT:
+            raise ValidationError({"status": "Only sent invoices can have their due date corrected."})
+        if due_date == invoice.due_date or (invoice.issued_at and due_date < timezone.localtime(invoice.issued_at).date()):
+            raise ValidationError({"due_date": "Choose a different date on or after the issue date."})
+        before = snapshot(invoice)
+        InvoiceDueDateCorrection.objects.create(
+            invoice=invoice, corrected_by=request.user, previous_due_date=invoice.due_date,
+            due_date=due_date, reason=values.validated_data["reason"],
+        )
+        invoice.due_date = due_date
+        invoice.save(update_fields=["due_date", "updated_at"])
+        log_activity(invoice, request.user, "due_date_corrected", before)
+        invoice._prefetched_objects_cache = {}
+        return Response(InvoiceOutputSerializer(invoice).data)
+
+
 class InvoiceCancel(InvoiceQuerysetMixin, generics.GenericAPIView):
     @transaction.atomic
     def post(self, request, pk):
@@ -230,7 +279,7 @@ class InvoiceCancel(InvoiceQuerysetMixin, generics.GenericAPIView):
         before = snapshot(invoice)
         serializer = InvoiceCancelSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        if invoice.status not in (Invoice.Status.DRAFT, Invoice.Status.SENT) or invoice.payments.exists():
+        if invoice.status not in (Invoice.Status.DRAFT, Invoice.Status.SENT) or invoice.payments.filter(voided_at__isnull=True).exists():
             raise ValidationError({"status": "Only an unpaid draft or sent invoice can be cancelled."})
         invoice.status = Invoice.Status.CANCELLED
         invoice.cancelled_at = timezone.now()
@@ -241,25 +290,22 @@ class InvoiceCancel(InvoiceQuerysetMixin, generics.GenericAPIView):
 
 
 class InvoiceSend(InvoiceQuerysetMixin, generics.GenericAPIView):
-    @transaction.atomic
     def post(self, request, pk):
-        self.lock_membership()
-        invoice = get_object_or_404(self.get_queryset().select_for_update(of=("self",)), pk=pk)
-        before = snapshot(invoice)
-        if invoice.status not in (Invoice.Status.DRAFT, Invoice.Status.SENT):
-            raise ValidationError({"status": "Only draft or sent invoices can be emailed."})
-        if invoice.deliveries.filter(kind=InvoiceDelivery.Kind.INVOICE, result=InvoiceDelivery.Result.ACCEPTED).exists():
-            raise DeliveryConflict()
-        if not invoice.items.exists():
-            raise ValidationError({"items": "At least one item is required before sending."})
-        issue_invoice(invoice)
-        delivery = send_invoice_email(invoice, request.user, InvoiceDelivery.Kind.INVOICE)
-        log_activity(invoice, request.user, "updated", before)
-        invoice._prefetched_objects_cache = {}
-        if delivery.result == InvoiceDelivery.Result.FAILED:
-            return Response({"error": {"code": 503, "details": "The mail server did not accept the invoice. You can retry."}}, status=503)
-        log_activity(invoice, request.user, "email_sent")
-        return Response(InvoiceOutputSerializer(invoice).data)
+        with transaction.atomic():
+            self.lock_membership()
+            invoice = get_object_or_404(self.get_queryset().select_for_update(of=("self",)), pk=pk)
+            if invoice.status not in (Invoice.Status.DRAFT, Invoice.Status.SENT):
+                raise ValidationError({"status": "Only draft or sent invoices can be emailed."})
+            if invoice.deliveries.filter(kind=InvoiceDelivery.Kind.INVOICE, result__in=[InvoiceDelivery.Result.ACCEPTED, InvoiceDelivery.Result.PENDING, InvoiceDelivery.Result.UNKNOWN]).exists():
+                raise DeliveryConflict()
+            if not invoice.items.exists():
+                raise ValidationError({"items": "At least one item is required before sending."})
+            before = snapshot(invoice)
+            issue_invoice(invoice)
+            message = prepare_invoice_email(invoice, InvoiceDelivery.Kind.INVOICE)
+            delivery = InvoiceDelivery.objects.create(invoice=invoice, requested_by=request.user, kind=InvoiceDelivery.Kind.INVOICE, recipient=message.to[0], result=InvoiceDelivery.Result.PENDING)
+            log_activity(invoice, request.user, "updated", before)
+        return complete_delivery(invoice, delivery, message, request.user, "email_sent")
 
 
 class InvoiceReminder(InvoiceQuerysetMixin, generics.GenericAPIView):
@@ -271,19 +317,36 @@ class InvoiceReminder(InvoiceQuerysetMixin, generics.GenericAPIView):
         blocker = reminder_blocker(invoice)
         return Response({"subject": subject, "body": body, "can_send": not blocker, "reason": blocker})
 
-    @transaction.atomic
     def post(self, request, pk):
-        self.lock_membership()
-        invoice = get_object_or_404(self.get_queryset().select_for_update(of=("self",)), pk=pk)
-        blocker = reminder_blocker(invoice)
-        if blocker:
-            raise ValidationError({"reminder": blocker})
-        delivery = send_invoice_email(invoice, request.user, InvoiceDelivery.Kind.REMINDER)
-        invoice._prefetched_objects_cache = {}
-        if delivery.result == InvoiceDelivery.Result.FAILED:
-            return Response({"error": {"code": 503, "details": "The mail server did not accept the reminder. You can retry."}}, status=503)
-        log_activity(invoice, request.user, "reminder_sent")
-        return Response(InvoiceOutputSerializer(invoice).data)
+        with transaction.atomic():
+            self.lock_membership()
+            invoice = get_object_or_404(self.get_queryset().select_for_update(of=("self",)), pk=pk)
+            blocker = reminder_blocker(invoice)
+            if blocker:
+                raise ValidationError({"reminder": blocker})
+            message = prepare_invoice_email(invoice, InvoiceDelivery.Kind.REMINDER)
+            delivery = InvoiceDelivery.objects.create(invoice=invoice, requested_by=request.user, kind=InvoiceDelivery.Kind.REMINDER, recipient=message.to[0], result=InvoiceDelivery.Result.PENDING)
+        return complete_delivery(invoice, delivery, message, request.user, "reminder_sent")
+
+
+def complete_delivery(invoice, delivery, message, actor, activity_action):
+    try:
+        accepted = message.send(fail_silently=False)
+    except Exception:
+        result = InvoiceDelivery.Result.UNKNOWN
+    else:
+        result = InvoiceDelivery.Result.ACCEPTED if accepted == 1 else InvoiceDelivery.Result.FAILED
+    with transaction.atomic():
+        delivery.result = result
+        delivery.save(update_fields=["result"])
+        if result == InvoiceDelivery.Result.ACCEPTED:
+            log_activity(invoice, actor, activity_action)
+    invoice._prefetched_objects_cache = {}
+    if result == InvoiceDelivery.Result.UNKNOWN:
+        return Response({"error": {"code": 503, "details": "The email outcome is unknown. Contact support before retrying."}}, status=503)
+    if result == InvoiceDelivery.Result.FAILED:
+        return Response({"error": {"code": 503, "details": "The mail server did not accept the email. You can retry."}}, status=503)
+    return Response(InvoiceOutputSerializer(invoice).data)
 
 
 class InvoicePDF(APIView):
@@ -297,4 +360,5 @@ class InvoicePDF(APIView):
         response = HttpResponse(render_invoice(invoice), content_type="application/pdf")
         filename = re.sub(r"[^A-Za-z0-9_-]", "_", invoice.invoice_number)[:50] or "invoice"
         response["Content-Disposition"] = f'attachment; filename="{filename}.pdf"'
+        response["Cache-Control"] = "private, no-store"
         return response

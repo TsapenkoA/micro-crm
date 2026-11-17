@@ -78,6 +78,9 @@ def render_invoice(invoice):
     content.extend([metadata, Spacer(1, 7 * mm)])
     if invoice.due_date:
         content.append(paragraph(f"Due: {calendar.month_abbr[invoice.due_date.month]} {invoice.due_date.day}, {invoice.due_date.year}"))
+    for correction in invoice.due_date_corrections.all():
+        previous = correction.previous_due_date.isoformat() if correction.previous_due_date else "not previously set"
+        content.append(paragraph(f"Due date correction ({correction.created_at.date().isoformat()}): {previous} to {correction.due_date.isoformat()}. Reason: {correction.reason}"))
     if invoice.payment_terms:
         content.append(paragraph(f"Payment terms: {invoice.payment_terms}"))
     if invoice.status == invoice.Status.CANCELLED:

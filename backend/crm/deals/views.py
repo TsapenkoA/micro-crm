@@ -10,8 +10,9 @@ from rest_framework.response import Response
 from crm.api.pagination import ClientPagination
 from crm.api.permissions import IsWorkspaceMember, WorkspaceQuerysetMixin
 from crm.activity.services import log_activity, snapshot
+from crm.clients.serializers import ClientNoteSerializer
 from crm.deals.serializers import DealDeleteSerializer, DealFilters, DealSerializer, DealStatusSerializer
-from crm.models import Client, Deal, WorkspaceMembership
+from crm.models import Client, ClientNote, Deal, WorkspaceMembership
 from crm.services.fx import rate_date_for
 
 
@@ -76,6 +77,28 @@ class DealList(DealQuerysetMixin, generics.ListCreateAPIView):
         rate_date = rate_date_for(serializer.validated_data["currency"], timezone.localtime(paid_at).date()) if paid_at else None
         deal = serializer.save(workspace_id=self.request.workspace_id, created_by=self.request.user, client=client, paid_at=paid_at, fx_rate_date=rate_date)
         log_activity(deal, self.request.user, "created")
+
+
+class DealNotes(DealQuerysetMixin, generics.ListCreateAPIView):
+    serializer_class = ClientNoteSerializer
+    pagination_class = ClientPagination
+
+    def get_deal(self, lock=False):
+        queryset = Deal.objects.filter(workspace_id=self.request.workspace_id, client__workspace_id=self.request.workspace_id)
+        if lock:
+            queryset = queryset.select_for_update()
+        return get_object_or_404(queryset, pk=self.kwargs["pk"])
+
+    def get_queryset(self):
+        deal = self.get_deal()
+        return ClientNote.objects.filter(deal=deal).select_related("author").order_by("-created_at", "-id")
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        self.lock_membership()
+        deal = self.get_deal(lock=True)
+        serializer.save(client=deal.client, deal=deal, author=self.request.user)
+        log_activity(deal, self.request.user, "note_added")
 
 
 class DealDetail(DealQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):

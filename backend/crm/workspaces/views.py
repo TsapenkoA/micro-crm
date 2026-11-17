@@ -9,7 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from crm.api.permissions import IsWorkspaceMember
-from crm.activity.services import log_activity, snapshot
+from crm.activity.services import log_activity, log_workspace_change, log_workspace_member, snapshot
 from crm.auth.security import AuthThrottle, recent_auth
 from crm.models import Client, Deal, Invoice, PreviewDataset, Task, Workspace, WorkspaceMembership
 from crm.workspaces.serializers import BankDetailsSerializer, SellerDetailsSerializer, WorkspaceNameSerializer
@@ -60,8 +60,11 @@ class WorkspaceBankDetails(APIView):
             raise PermissionDenied("Confirm your identity in Security before changing payment details.")
         serializer = BankDetailsSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        changed = workspace.bank_details != serializer.validated_data
         workspace.bank_details = serializer.validated_data
         workspace.save(update_fields=["bank_details", "updated_at"])
+        if changed:
+            log_workspace_change(workspace, request.user, "payment_details_updated")
         response = Response(BankDetailsSerializer(workspace.bank_details).data)
         response["Cache-Control"] = "no-store"
         return response
@@ -167,6 +170,7 @@ class WorkspaceMembers(APIView):
         membership.save(update_fields=["workspace"])
         source.owner = None
         source.save(update_fields=["owner", "updated_at"])
+        log_workspace_member(workspace, request.user, "member_added", user)
         return Response({"member": member_data(user)}, status=201)
 
 
@@ -197,6 +201,7 @@ class WorkspaceMemberDetail(APIView):
             log_activity(task, request.user, "updated", before)
         membership.delete()
         WorkspaceMembership.objects.create(user=employee, workspace=personal, reporting_currency=currency)
+        log_workspace_member(workspace, request.user, "member_removed", employee)
         for session in Session.objects.filter(expire_date__gt=timezone.now()).iterator():
             if str(session.get_decoded().get("_auth_user_id")) == str(user_id):
                 session.delete()

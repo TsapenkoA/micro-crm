@@ -23,7 +23,7 @@ def invoice_number(workspace_id):
 
 
 def recorded_total(invoice):
-    return sum((payment.amount for payment in invoice.payments.all()), Decimal("0"))
+    return sum((payment.amount for payment in invoice.payments.all() if payment.voided_at is None), Decimal("0"))
 
 
 def record_payment(invoice, user, amount, received_on, reference=""):

@@ -6,8 +6,10 @@ from threading import Barrier
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.core import mail
 from django.db import close_old_connections
+from django.db import transaction
 from django.test import override_settings
 from django.utils import timezone
 
@@ -161,6 +163,153 @@ def test_payment_validation_keeps_financial_totals_unchanged(authenticated_api, 
     assert InvoicePayment.objects.count() == 0
 
 
+def test_sent_invoice_due_date_correction_is_visible_in_history_pdf_and_operations(authenticated_api, client_record):
+    created = create(authenticated_api, client_record).json()
+    path = f"/api/v1/invoices/{created['id']}"
+    assert authenticated_api.patch(path + "/status", {"status": "sent"}, format="json").status_code == 200
+    Invoice.objects.filter(pk=created["id"]).update(due_date=None)
+    undated = authenticated_api.get("/api/v1/operations/overview").json()["undated_invoices"]
+    assert undated["count"] == 1 and undated["results"][0]["id"] == created["id"]
+    due = timezone.localdate() + timedelta(days=10)
+    corrected = authenticated_api.post(path + "/due-date-corrections", {"due_date": due.isoformat(), "reason": "Agreed payment date."}, format="json")
+    assert corrected.status_code == 200, corrected.json()
+    assert corrected.json()["due_date_corrections"][0]["previous_due_date"] is None
+    assert corrected.json()["due_date_corrections"][0]["reason"] == "Agreed payment date."
+    assert authenticated_api.get("/api/v1/operations/overview").json()["undated_invoices"]["count"] == 0
+    pdf = authenticated_api.get(path + "/pdf")
+    assert pdf["Cache-Control"] == "private, no-store"
+    assert "Due date correction" in "".join(page.extract_text() for page in PdfReader(BytesIO(pdf.content)).pages)
+    assert authenticated_api.post(path + "/due-date-corrections", {"due_date": due.isoformat(), "reason": "Again"}, format="json").status_code == 400
+
+
+def test_payment_reversal_keeps_history_and_reopens_paid_invoice(authenticated_api, client_record):
+    created = create(authenticated_api, client_record).json()
+    path = f"/api/v1/invoices/{created['id']}"
+    authenticated_api.patch(path + "/status", {"status": "sent"}, format="json")
+    paid = authenticated_api.post(path + "/payments", {"amount": "10.00"}, format="json").json()
+    assert authenticated_api.get("/api/v1/analytics/dashboard?currency=EUR").json()["revenue"] == "10.00"
+    payment_id = paid["payments"][0]["id"]
+    reversed_payment = authenticated_api.post(path + f"/payments/{payment_id}/void", {"reason": "Bank transfer was entered twice."}, format="json")
+    assert reversed_payment.status_code == 200, reversed_payment.json()
+    assert reversed_payment.json()["status"] == "sent" and reversed_payment.json()["balance_due"] == "10.00"
+    assert reversed_payment.json()["payments"][0]["void_reason"] == "Bank transfer was entered twice."
+    assert InvoicePayment.objects.filter(pk=payment_id, voided_at__isnull=False).exists()
+    assert authenticated_api.post(path + f"/payments/{payment_id}/void", {"reason": "Again"}, format="json").status_code == 400
+    assert authenticated_api.get("/api/v1/invoices/summary?currency=EUR").json()["paid"]["amount"] == "0.00"
+    assert authenticated_api.get("/api/v1/analytics/dashboard?currency=EUR").json()["revenue"] == "0.00"
+
+
+def test_partial_payment_reversal_preserves_remaining_receipt(authenticated_api, client_record):
+    created = create(authenticated_api, client_record).json()
+    path = f"/api/v1/invoices/{created['id']}"
+    authenticated_api.patch(path + "/status", {"status": "sent"}, format="json")
+    authenticated_api.post(path + "/payments", {"amount": "4.00"}, format="json")
+    paid = authenticated_api.post(path + "/payments", {"amount": "6.00"}, format="json").json()
+    result = authenticated_api.post(path + f"/payments/{paid['payments'][1]['id']}/void", {"reason": "Receipt amount corrected."}, format="json")
+    assert result.status_code == 200 and result.json()["paid_amount"] == "4.00"
+    assert result.json()["balance_due"] == "6.00" and result.json()["status"] == "sent"
+    assert authenticated_api.get("/api/v1/analytics/dashboard?currency=EUR").json()["revenue"] == "4.00"
+
+
+def test_corrections_require_workspace_access_and_csrf(authenticated_api, user, other_user, client_record):
+    created = create(authenticated_api, client_record).json()
+    path = f"/api/v1/invoices/{created['id']}"
+    authenticated_api.patch(path + "/status", {"status": "sent"}, format="json")
+    paid = authenticated_api.post(path + "/payments", {"amount": "1.00"}, format="json").json()
+    outsider = APIClient(enforce_csrf_checks=True)
+    outsider.force_login(other_user)
+    outsider.credentials(HTTP_X_CSRFTOKEN=outsider.get("/api/v1/auth/csrf").json()["csrfToken"])
+    assert outsider.post(path + "/due-date-corrections", {"due_date": timezone.localdate().isoformat(), "reason": "Different date"}, format="json").status_code == 404
+    assert outsider.post(path + f"/payments/{paid['payments'][0]['id']}/void", {"reason": "Wrong"}, format="json").status_code == 404
+    no_csrf = APIClient(enforce_csrf_checks=True)
+    no_csrf.force_login(user)
+    assert no_csrf.post(path + "/due-date-corrections", {"due_date": timezone.localdate().isoformat(), "reason": "Wrong"}, format="json").status_code == 403
+    assert no_csrf.post(path + f"/payments/{paid['payments'][0]['id']}/void", {"reason": "Wrong"}, format="json").status_code == 403
+
+
+def test_invoice_list_omits_private_snapshots_and_payment_details(authenticated_api, client_record):
+    created = create(authenticated_api, client_record).json()
+    rows = authenticated_api.get("/api/v1/invoices").json()["results"]
+    assert rows[0]["id"] == created["id"]
+    for field in ("seller_snapshot", "buyer_snapshot", "items", "payments", "deliveries", "payment_terms"):
+        assert field not in rows[0]
+    assert "seller_snapshot" in authenticated_api.get(f"/api/v1/invoices/{created['id']}").json()
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+def test_uncertain_email_attempt_is_recorded_and_blocks_resend(authenticated_api, client_record, monkeypatch):
+    created = create(authenticated_api, client_record).json()
+    path = f"/api/v1/invoices/{created['id']}"
+    def timeout(message, *args, **kwargs):
+        assert InvoiceDelivery.objects.get(invoice_id=created["id"]).result == "pending"
+        raise TimeoutError("The server connection timed out")
+    monkeypatch.setattr("crm.invoices.delivery.EmailMessage.send", timeout)
+    response = authenticated_api.post(path + "/send", {}, format="json")
+    assert response.status_code == 503
+    assert authenticated_api.get(path).json()["deliveries"][0]["result"] == "unknown"
+    assert authenticated_api.post(path + "/send", {}, format="json").status_code == 409
+    attempt_id = authenticated_api.get(path).json()["deliveries"][0]["id"]
+    with pytest.raises(CommandError):
+        call_command("resolve_invoice_delivery", attempt_id, outcome="failed", operator="alex", reason="Confirmed with provider")
+    get_user_model().objects.create_superuser(username="operator", email="operator@example.test", password="test-password-123")
+    call_command("resolve_invoice_delivery", attempt_id, outcome="failed", operator="operator", reason="Provider confirmed no acceptance")
+    resolved = authenticated_api.get(path).json()["deliveries"][0]
+    assert resolved["result"] == "failed" and resolved["resolution_reason"] == "Provider confirmed no acceptance"
+    monkeypatch.setattr("crm.invoices.delivery.EmailMessage.send", lambda *args, **kwargs: 1)
+    assert authenticated_api.post(path + "/send", {}, format="json").status_code == 200
+
+
+@pytest.mark.django_db(transaction=True)
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+def test_accepted_email_with_failed_final_database_write_cannot_be_resent(authenticated_api, client_record, monkeypatch):
+    created = create(authenticated_api, client_record).json()
+    path = f"/api/v1/invoices/{created['id']}"
+    original_save = InvoiceDelivery.save
+
+    def fail_final_write(instance, *args, **kwargs):
+        if instance.result == InvoiceDelivery.Result.ACCEPTED:
+            raise RuntimeError("Database unavailable after SMTP acceptance")
+        return original_save(instance, *args, **kwargs)
+
+    def accept(message, *args, **kwargs):
+        assert not transaction.get_connection().in_atomic_block
+        assert InvoiceDelivery.objects.get(invoice_id=created["id"]).result == "pending"
+        return 1
+
+    monkeypatch.setattr(InvoiceDelivery, "save", fail_final_write)
+    monkeypatch.setattr("crm.invoices.delivery.EmailMessage.send", accept)
+    with pytest.raises(RuntimeError, match="Database unavailable"):
+        authenticated_api.post(path + "/send", {}, format="json")
+    assert InvoiceDelivery.objects.get(invoice_id=created["id"]).result == "pending"
+    assert authenticated_api.post(path + "/send", {}, format="json").status_code == 409
+
+
+@pytest.mark.django_db(transaction=True)
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend", EMAIL_HOST="localhost", EMAIL_PORT=2525, EMAIL_HOST_USER="", EMAIL_HOST_PASSWORD="", EMAIL_USE_TLS=False)
+def test_smtp_adapter_sends_only_after_pending_attempt_commits(authenticated_api, client_record, monkeypatch):
+    created = create(authenticated_api, client_record).json()
+    path = f"/api/v1/invoices/{created['id']}"
+    sent = []
+
+    class FakeSMTP:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def sendmail(self, sender, recipients, message):
+            assert not transaction.get_connection().in_atomic_block
+            assert InvoiceDelivery.objects.get(invoice_id=created["id"]).result == "pending"
+            sent.append((sender, recipients, message))
+
+        def quit(self):
+            pass
+
+    monkeypatch.setattr("django.core.mail.backends.smtp.smtplib.SMTP", FakeSMTP)
+    response = authenticated_api.post(path + "/send", {}, format="json")
+    assert response.status_code == 200, response.json()
+    assert len(sent) == 1 and sent[0][1] == [client_record.email]
+    assert response.json()["deliveries"][0]["result"] == "accepted"
+
+
 def test_invoice_deal_link_is_optional_shared_and_independent(authenticated_api, user, client_record):
     deal = Deal.objects.create(workspace=client_record.workspace, created_by=user, client=client_record, title="Website", amount="500", currency="EUR")
     first = create(authenticated_api, client_record, deal=str(deal.pk))
@@ -240,6 +389,13 @@ def test_bank_details_are_workspace_scoped_and_frozen_in_invoices(authenticated_
 
     assert authenticated_api.put("/api/v1/workspace/bank-details", {"bank_name": "New Bank"}, format="json").status_code == 200
     assert authenticated_api.patch(f"/api/v1/clients/{client_record.pk}", {"bank_details": {}}, format="json").status_code == 200
+    bank_events = authenticated_api.get("/api/v1/activity").json()["results"]
+    assert [event["action"] for event in bank_events if "bank_updated" in event["action"] or event["action"] == "payment_details_updated"] == [
+        "payer_bank_updated", "payment_details_updated", "payer_bank_updated", "payment_details_updated",
+    ]
+    assert all(event["changes"] == {} for event in bank_events if "bank_updated" in event["action"] or event["action"] == "payment_details_updated")
+    assert "DE89370400440532013000" not in str(bank_events)
+    assert "021000021" not in str(bank_events)
     old = authenticated_api.get(f"/api/v1/invoices/{invoice_id}").json()
     assert old["seller_snapshot"]["bank_details"] == seller_bank
     assert old["buyer_snapshot"]["bank_details"] == buyer_bank

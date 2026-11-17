@@ -12,7 +12,7 @@ from django.db.models.query import QuerySet
 import pytest
 from rest_framework.test import APIClient
 
-from crm.models import Client, Deal, WorkspaceMembership
+from crm.models import Client, ClientNote, Deal, WorkspaceMembership
 
 pytestmark = pytest.mark.django_db
 
@@ -38,6 +38,29 @@ def deal(user, client_record):
 
 def payload(record, **changes):
     return {"title": "Website", "client": str(record.pk), "amount": "1234.56", "currency": "EUR", **changes}
+
+
+def test_deal_notes_are_shared_within_workspace_and_hidden_from_others(authenticated_api, user, other_user, colleague, deal):
+    path = f"/api/v1/deals/{deal.pk}/notes"
+    response = authenticated_api.post(path, {"text": "Agree the project scope."}, format="json")
+    assert response.status_code == 201
+    note = response.json()
+    assert note["author"]["id"] == user.pk
+    assert note["deal"] == str(deal.pk)
+    assert authenticated_api.post(path, {"text": "Forged", "author": other_user.pk}, format="json").status_code == 400
+    teammate = APIClient()
+    teammate.force_login(colleague)
+    assert teammate.get(path).json()["results"][0]["text"] == "Agree the project scope."
+    assert authenticated_api.get(f"/api/v1/clients/{deal.client_id}/notes").json()["results"][0]["id"] == note["id"]
+    outsider = APIClient()
+    outsider.force_login(other_user)
+    assert outsider.get(path).status_code == 404
+    assert outsider.post(path, {"text": "Foreign note"}, format="json").status_code == 404
+    assert APIClient().get(path).status_code == 403
+    assert ClientNote.objects.filter(deal=deal).count() == 1
+    activity = authenticated_api.get(f"/api/v1/activity?entity_type=deal&entity_id={deal.pk}").json()
+    assert activity["results"][0]["action"] == "note_added"
+    assert "Agree the project scope" not in str(activity)
 
 
 @pytest.mark.parametrize("currency", ["CLF", "UAH", "KWD"])
