@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from django.utils import timezone
@@ -50,7 +50,9 @@ def test_empty_dashboard_and_validation(api, user):
 def test_currency_workspace_and_revenue_source(api, user, other_user, client_record):
     FxRate.objects.create(date=timezone.localdate(), currency="USD", per_eur=Decimal("1.2"))
     foreign = Client.objects.create(workspace=other_user.workspace_membership.workspace, created_by=other_user, name="Foreign")
-    deal(user, client_record, "new_lead", "40.00")
+    overdue = deal(user, client_record, "new_lead", "40.00")
+    overdue.deadline = timezone.now() - timedelta(days=1)
+    overdue.save(update_fields=["deadline", "updated_at"])
     deal(user, client_record, "paid", "30.00")
     deal(user, client_record, "archived", "10.00", outcome="lost")
     deal(user, client_record, "archived", "10.00", outcome="cancelled")
@@ -63,6 +65,7 @@ def test_currency_workspace_and_revenue_source(api, user, other_user, client_rec
     assert (data["pipeline_value"], data["win_rate"], data["average_deal_size"], data["revenue"]) == ("158.80", "50.00", "30.00", "12.50")
     assert sum(Decimal(row["revenue"]) for row in data["revenue_rows"]) == Decimal("12.50")
     assert data["recent_deals"][0]["client__name"] == client_record.name
+    assert data["recent_deals"][0]["overdue"] is True
     eur = api.get(URL + "?currency=EUR").json()
     assert (eur["pipeline_value"], eur["revenue"], eur["average_deal_size"], eur["win_rate"]) == ("132.33", "10.42", "25.00", "50.00")
     assert eur["fx"]["source"] == "ECB" and eur["fx"]["pipeline_rate_date"] == timezone.localdate().isoformat()

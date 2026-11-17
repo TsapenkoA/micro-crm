@@ -2,6 +2,7 @@ from datetime import timedelta
 from io import StringIO
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -89,3 +90,39 @@ def test_activity_paginates_and_retains_deleted_record_label(user, client_record
     assert first["count"] == 21 and len(first["results"]) == 10 and first["next"]
     assert api.delete(f"/api/v1/clients/{response.json()['id']}").status_code == 204
     assert api.get("/api/v1/activity").json()["results"][0]["entity_label"] == "Client 20"
+
+
+def test_child_events_hide_content_and_filter_by_author_and_date(user, other_user, client_record):
+    owner = signed_in(user)
+    foreign = signed_in(other_user)
+    path = f"/api/v1/clients/{client_record.pk}"
+    assert owner.post(path + "/notes", {"text": "SECRET NOTE"}, format="json").status_code == 201
+    assert owner.post(path + "/links", {"label": "Project brief", "url": "https://example.com/private"}, format="json").status_code == 201
+    rows = owner.get("/api/v1/activity?entity_type=client").json()["results"]
+    assert [row["action"] for row in rows] == ["link_added", "note_added"]
+    assert all(row["entity_id"] == str(client_record.pk) for row in rows)
+    assert rows[0]["changes"] == {"link": "Project brief"}
+    assert "SECRET NOTE" not in str(rows) and "https://example.com/private" not in str(rows)
+    assert foreign.get("/api/v1/activity").json()["count"] == 0
+    assert owner.get(f"/api/v1/activity?actor={user.username}").json()["count"] == 2
+    assert owner.get("/api/v1/activity?actor=someone-else").json()["count"] == 0
+    assert owner.get("/api/v1/activity?date_from=2999-01-01").json()["count"] == 0
+    assert owner.get("/api/v1/activity?date_from=2026-11-20&date_to=2026-11-19").status_code == 400
+
+
+def test_client_file_and_bank_events_show_names_without_private_values(user, other_user, client_record):
+    owner = signed_in(user)
+    foreign = signed_in(other_user)
+    path = f"/api/v1/clients/{client_record.pk}"
+    content = b"%PDF-1.4\nPrivate project scope\n%%EOF"
+    upload = SimpleUploadedFile("project-brief.pdf", content, content_type="application/pdf")
+    assert owner.post(path + "/attachments", {"file": upload}, format="multipart").status_code == 201
+    assert owner.patch(path, {"bank_details": {"account_holder": "Client Ltd", "bank_name": "Secret Bank", "iban": "DE89370400440532013000"}}, format="json").status_code == 200
+    events = owner.get("/api/v1/activity?entity_type=client").json()["results"]
+    assert [event["action"] for event in events] == ["payer_bank_updated", "attachment_added"]
+    assert events[0]["changes"] == {}
+    assert events[1]["changes"] == {"file": "project-brief.pdf"}
+    assert "Secret Bank" not in str(events)
+    assert "DE89370400440532013000" not in str(events)
+    assert "Private project scope" not in str(events)
+    assert foreign.get("/api/v1/activity").json()["count"] == 0

@@ -180,6 +180,9 @@ def test_only_owner_can_add_an_existing_account_with_an_empty_personal_workspace
     response = api.post(path, {"username": other_user.username}, format="json", HTTP_X_CSRFTOKEN=token)
     assert response.status_code == 201
     assert response.json()["member"] == {"id": other_user.pk, "username": other_user.username, "name": "", "email": other_user.email}
+    event = api.get("/api/v1/activity?entity_type=workspace").json()["results"][0]
+    assert event["action"] == "member_added" and event["changes"]["member"] == other_user.username
+    assert "email" not in str(event)
     assert WorkspaceMembership.objects.get(user=other_user).workspace_id == target.pk
     source.refresh_from_db()
     assert source.owner_id is None
@@ -221,6 +224,7 @@ def test_owner_removes_member_without_moving_company_records(user, other_user):
     assert owner.delete("/api/v1/workspace/members", HTTP_X_CSRFTOKEN=token).status_code == 405
     assert owner.delete(url).status_code == 403
     assert owner.delete(url, HTTP_X_CSRFTOKEN=token).status_code == 204
+    assert owner.get("/api/v1/activity?entity_type=workspace").json()["results"][0]["action"] == "member_removed"
     assert employee.get("/api/v1/clients").status_code == 403
 
     membership = WorkspaceMembership.objects.get(user=other_user)
@@ -345,6 +349,8 @@ def test_migration_preserves_all_business_records_and_admin(legacy_database):
         actual.pop("workspace_id", None)
         if model == "client":
             assert actual.pop("bank_details") == {}
+        if model == "clientnote":
+            assert actual.pop("deal_id") is None
         if model in ("deal", "invoice"):
             assert actual.pop("fx_rate_date") is None
         if model == "invoice":

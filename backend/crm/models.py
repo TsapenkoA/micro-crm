@@ -190,6 +190,7 @@ class Client(ValidatedModel):
 
 class ClientNote(ValidatedModel):
     client = models.ForeignKey(Client, on_delete=models.PROTECT, related_name="notes")
+    deal = models.ForeignKey("deals.Deal", null=True, blank=True, on_delete=models.SET_NULL, related_name="notes")
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="client_notes")
     text = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
@@ -199,6 +200,8 @@ class ClientNote(ValidatedModel):
         ordering = ["created_at", "id"]
 
     def clean(self):
+        if self.deal_id and (self.deal.client_id != self.client_id or self.deal.workspace_id != self.client.workspace_id):
+            raise ValidationError({"deal": "Deal must belong to the same client and workspace."})
         if self._state.adding and self.client_id and self.author_id:
             if not WorkspaceMembership.objects.filter(user_id=self.author_id, workspace_id=self.client.workspace_id).exists():
                 raise ValidationError({"author": "Author must belong to the client's workspace."})
@@ -397,6 +400,9 @@ class InvoicePayment(ValidatedModel):
     reference = models.CharField(max_length=200, blank=True)
     fx_rate_date = models.DateField(null=True, blank=True)
     is_legacy = models.BooleanField(default=False)
+    voided_at = models.DateTimeField(null=True, blank=True)
+    voided_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="voided_invoice_payments")
+    void_reason = models.CharField(max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -415,8 +421,10 @@ class InvoiceDelivery(ValidatedModel):
         REMINDER = "reminder", "Reminder"
 
     class Result(models.TextChoices):
+        PENDING = "pending", "Pending"
         ACCEPTED = "accepted", "Accepted by mail server"
         FAILED = "failed", "Failed"
+        UNKNOWN = "unknown", "Outcome unknown"
 
     invoice = models.ForeignKey(Invoice, on_delete=models.PROTECT, related_name="deliveries")
     requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="invoice_deliveries")
@@ -424,10 +432,26 @@ class InvoiceDelivery(ValidatedModel):
     result = models.CharField(max_length=10, choices=Result.choices)
     recipient = models.EmailField()
     attempted_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="resolved_invoice_deliveries")
+    resolution_reason = models.CharField(max_length=500, blank=True)
 
     class Meta:
         app_label = "invoices"
         ordering = ["-attempted_at", "-id"]
+
+
+class InvoiceDueDateCorrection(ValidatedModel):
+    invoice = models.ForeignKey(Invoice, on_delete=models.PROTECT, related_name="due_date_corrections")
+    corrected_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="invoice_due_date_corrections")
+    previous_due_date = models.DateField(null=True, blank=True)
+    due_date = models.DateField()
+    reason = models.CharField(max_length=500)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = "invoices"
+        ordering = ["created_at", "id"]
 
 
 class InvoiceItem(ValidatedModel):

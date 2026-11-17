@@ -44,7 +44,7 @@ def test_cross_rates_and_historical_dashboard(api, user, other_user, client_reco
         rate(day, "PLN", pln)
         rate(day, "JPY", jpy)
     workspace = client_record.workspace
-    Deal.objects.create(workspace=workspace, created_by=user, client=client_record, title="Active", amount=Decimal("100"), currency="GBP")
+    Deal.objects.create(workspace=workspace, created_by=user, client=client_record, title="Active", amount=Decimal("100"), currency="GBP", deadline=timezone.now() + timedelta(days=1))
     Deal.objects.create(workspace=workspace, created_by=user, client=client_record, title="Paid", status="paid", amount=Decimal("100"), currency="PLN", paid_at=timezone.now(), fx_rate_date=yesterday)
     paid_invoice = Invoice.objects.create(workspace=workspace, created_by=user, client=client_record, invoice_number="GBP-1", status="paid", currency="GBP", total_amount=Decimal("100"), paid_at=timezone.now(), fx_rate_date=yesterday)
     InvoicePayment.objects.create(invoice=paid_invoice, recorded_by=user, amount=Decimal("100"), received_on=yesterday, fx_rate_date=yesterday)
@@ -95,7 +95,7 @@ def test_rate_import_is_idempotent_and_never_rewrites_history(monkeypatch):
     with pytest.raises(CommandError, match="stored rates differ"):
         call_command("sync_fx_rates", since=day.isoformat(), until=day.isoformat())
     assert FxRate.objects.get(currency="USD").per_eur == Decimal("1.20")
-    assert FxSyncRun.objects.latest("started_at").status == "failed"
+    assert FxSyncRun.objects.filter(status="failed").count() == 1
     stored = FxRate.objects.get(currency="USD")
     stored.per_eur = Decimal("1.40")
     with pytest.raises(DjangoValidationError, match="cannot be changed"):

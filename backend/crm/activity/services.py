@@ -44,3 +44,17 @@ def log_activity(instance, actor, action, before=None, details=None):
         entity_type=TYPES[type(instance)], entity_id=instance.pk,
         entity_label=label, action=action, changes=changes,
     )
+
+
+def log_workspace_change(workspace, actor, action, details=None):
+    return ActivityEvent.objects.create(
+        workspace=workspace, actor=actor,
+        actor_name=actor.get_full_name().strip() or actor.username,
+        entity_type="workspace", entity_id=workspace.pk,
+        entity_label=workspace.name, action=action,
+        changes=details or {},
+    )
+
+
+def log_workspace_member(workspace, actor, action, member):
+    return log_workspace_change(workspace, actor, action, {"member": member.get_full_name().strip() or member.username})

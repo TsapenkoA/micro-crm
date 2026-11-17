@@ -8,6 +8,7 @@ from django.utils import timezone
 from rest_framework.exceptions import APIException, ValidationError
 
 from crm.models import InvoiceDelivery
+from crm.invoices.services import recorded_total
 from crm.services.calculations import money_string
 from crm.services.pdf import render_invoice
 
@@ -19,7 +20,7 @@ class MailUnavailable(APIException):
 
 class DeliveryConflict(APIException):
     status_code = 409
-    default_detail = "This email was already accepted by the mail server."
+    default_detail = "A previous email was accepted or has an unresolved outcome. Check the attempt history before retrying."
 
 
 def recipient_for(invoice):
@@ -32,7 +33,7 @@ def recipient_for(invoice):
 
 
 def reminder_copy(invoice):
-    outstanding = invoice.total_amount - sum((payment.amount for payment in invoice.payments.all()), 0)
+    outstanding = invoice.total_amount - recorded_total(invoice)
     name = invoice.buyer_snapshot.get("name") or invoice.buyer_snapshot.get("company") or "there"
     subject = f"Payment reminder: {invoice.invoice_number}"
     body = (
@@ -50,15 +51,17 @@ def reminder_blocker(invoice):
         return "Only unpaid sent invoices can receive reminders."
     if invoice.due_date is None or invoice.due_date >= timezone.localdate():
         return "The invoice is not overdue."
-    if invoice.total_amount <= sum((payment.amount for payment in invoice.payments.all()), 0):
+    if invoice.total_amount <= recorded_total(invoice):
         return "The invoice has no outstanding balance."
+    if invoice.deliveries.filter(kind=InvoiceDelivery.Kind.REMINDER, result__in=[InvoiceDelivery.Result.PENDING, InvoiceDelivery.Result.UNKNOWN]).exists():
+        return "A reminder attempt is pending or has an unknown outcome. Contact support before retrying."
     latest = invoice.deliveries.filter(kind=InvoiceDelivery.Kind.REMINDER, result=InvoiceDelivery.Result.ACCEPTED).first()
     if latest and latest.attempted_at > timezone.now() - timedelta(days=7):
         return "A reminder was already sent within the last seven days."
     return ""
 
 
-def send_invoice_email(invoice, actor, kind):
+def prepare_invoice_email(invoice, kind):
     if settings.EMAIL_BACKEND not in {
         "django.core.mail.backends.smtp.EmailBackend",
         "django.core.mail.backends.locmem.EmailBackend",
@@ -78,12 +81,4 @@ def send_invoice_email(invoice, actor, kind):
         )
     message = EmailMessage(subject, body, settings.DEFAULT_FROM_EMAIL, [recipient])
     message.attach(f"{invoice.invoice_number}.pdf", render_invoice(invoice), "application/pdf")
-    try:
-        accepted = message.send(fail_silently=False)
-    except Exception:
-        accepted = 0
-    delivery = InvoiceDelivery.objects.create(
-        invoice=invoice, requested_by=actor, kind=kind, recipient=recipient,
-        result=InvoiceDelivery.Result.ACCEPTED if accepted == 1 else InvoiceDelivery.Result.FAILED,
-    )
-    return delivery
+    return message
