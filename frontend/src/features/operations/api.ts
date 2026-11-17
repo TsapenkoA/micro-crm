@@ -9,8 +9,8 @@ export type DueItem = {
   overdue: boolean;
 };
 export type DueList = { count: number; results: DueItem[] };
-export type OperationsOverview = { today: DueList; reminders: DueList };
+export type OperationsOverview = { today: DueList; reminders: DueList; undated_invoices: { count: number; results: { id: string; invoice_number: string; client_name: string }[] } };
 
 export const operations = {
-  overview: (signal?: AbortSignal) => request<OperationsOverview>('/operations/overview', { signal }),
+  overview: (signal?: AbortSignal, page = 1, undatedPage = 1) => request<OperationsOverview>(`/operations/overview?${new URLSearchParams({ page: String(page), undated_page: String(undatedPage) })}`, { signal }),
 };
