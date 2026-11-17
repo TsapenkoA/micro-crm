@@ -18,7 +18,7 @@ const data: DashboardData = {
   pipeline_value: '120.00', win_rate: '50.00', average_deal_size: '30.00', revenue: '75.25',
   revenue_rows: [{ period: '2026-12', revenue: '75.25' }],
   deal_counts: [{ status: 'new_lead', count: 1 }],
-  recent_deals: [{ id: 'one', title: 'Website', client__name: 'Client', client__company: 'Studio', status: 'new_lead', deadline: null, amount: '120.00', currency: 'GBP' }],
+  recent_deals: [{ id: 'one', title: 'Website', client__name: 'Client', client__company: 'Studio', status: 'new_lead', deadline: '2026-11-10T10:00:00Z', overdue: true, amount: '120.00', currency: 'GBP' }],
   fx: { source: 'ECB', pipeline_rate_date: '2026-12-01', average_rate_dates: ['2026-11-15'], revenue_rate_dates: ['2026-12-01'], missing: { pipeline: [], average_deal_size: [], revenue: [] } },
 };
 
@@ -29,6 +29,7 @@ it('renders server KPIs and requests new data when filters change', async () => 
   expect(await screen.findByText('$75.25')).toBeInTheDocument();
   expect(screen.getByText('50%')).toBeInTheDocument();
   expect(screen.getByText('Website')).toBeInTheDocument();
+  expect(screen.getByText('Overdue ·')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Website' })).toHaveAttribute('href', '#/deals?deal=one');
   expect(screen.getByText('120 GBP')).toBeInTheDocument();
   await userEvent.selectOptions(screen.getByLabelText('Dashboard currency'), 'EUR');

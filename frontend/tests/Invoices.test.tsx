@@ -4,12 +4,12 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { ApiError } from '../src/api/client';
 import InvoicesPage from '../src/features/invoices/InvoicesPage';
 import InvoiceForm from '../src/features/invoices/InvoiceForm';
-import { invoices, type Invoice } from '../src/features/invoices/api';
+import { invoices, type Invoice, type InvoiceListItem } from '../src/features/invoices/api';
 import { deals } from '../src/features/deals/api';
 
 vi.mock('../src/features/invoices/api', async importOriginal => {
   const actual = await importOriginal<typeof import('../src/features/invoices/api')>();
-  return { ...actual, invoices: { page: vi.fn(), summary: vi.fn(), list: vi.fn(), detail: vi.fn(), create: vi.fn(), update: vi.fn(), status: vi.fn(), payment: vi.fn(), cancel: vi.fn(), send: vi.fn(), reminderPreview: vi.fn(), remind: vi.fn(), pdf: vi.fn() } };
+  return { ...actual, invoices: { page: vi.fn(), summary: vi.fn(), list: vi.fn(), detail: vi.fn(), create: vi.fn(), update: vi.fn(), status: vi.fn(), payment: vi.fn(), voidPayment: vi.fn(), correctDueDate: vi.fn(), cancel: vi.fn(), send: vi.fn(), reminderPreview: vi.fn(), remind: vi.fn(), pdf: vi.fn() } };
 });
 vi.mock('../src/features/deals/api', async importOriginal => {
   const actual = await importOriginal<typeof import('../src/features/deals/api')>();
@@ -21,21 +21,31 @@ const record: Invoice = {
   id: 'invoice-1', invoice_number: 'INV-000001', client: client.id, deal: null, currency: 'USD', status: 'draft',
   seller_snapshot: { name: 'Workspace', email: 'seller@example.test' }, buyer_snapshot: { name: client.name, company: client.company, email: client.email },
   items: [{ id: 1, position: 0, description: 'Design service', quantity: '1.000', unit_price: '100.0000', tax_rate: '20.0000', line_total: '100.00', tax_amount: '20.00' }],
-  subtotal: '100.00', tax_total: '20.00', total_amount: '120.00', payments: [], paid_amount: '0.00', balance_due: '120.00', overdue: false, deliveries: [],
+  subtotal: '100.00', tax_total: '20.00', total_amount: '120.00', payments: [], paid_amount: '0.00', balance_due: '120.00', overdue: false, deliveries: [], due_date_corrections: [],
   issued_at: null, due_date: null, payment_terms: '', paid_at: null, cancelled_at: null, cancellation_reason: '', created_at: '2026-01-01',
 };
+const listItem = (invoice: Invoice): InvoiceListItem => ({
+  id: invoice.id, invoice_number: invoice.invoice_number, client: invoice.client, deal: invoice.deal,
+  client_name: invoice.buyer_snapshot.name || '', client_company: invoice.buyer_snapshot.company || '',
+  description: invoice.items[0]?.description || '', currency: invoice.currency, status: invoice.status,
+  issued_at: invoice.issued_at, due_date: invoice.due_date, total_amount: invoice.total_amount,
+  overdue: invoice.overdue, needs_due_date: invoice.status === 'sent' && !invoice.due_date, created_at: invoice.created_at,
+});
+let invoiceData: Invoice[] = [record];
 
 beforeEach(() => {
   vi.resetAllMocks();
+  invoiceData = [record];
   vi.mocked(deals.clients).mockResolvedValue([client]);
   vi.mocked(deals.list).mockResolvedValue({ results: [], totals: [] });
-  vi.mocked(invoices.list).mockResolvedValue([record]);
+  vi.mocked(invoices.list).mockResolvedValue([listItem(record)]);
+  vi.mocked(invoices.detail).mockResolvedValue(record);
   vi.mocked(invoices.page).mockImplementation(async (search, status, currency, page = 1, signal) => {
-    const rows = (await invoices.list(search, status, signal)).filter(invoice => invoice.currency === currency);
-    return { count: rows.length, results: rows.slice((page - 1) * 20, page * 20), next: page * 20 < rows.length ? 'next' : null, previous: page > 1 ? 'previous' : null };
+    const rows = invoiceData.filter(invoice => invoice.currency === currency);
+    return { count: rows.length, results: rows.slice((page - 1) * 20, page * 20).map(listItem), next: page * 20 < rows.length ? 'next' : null, previous: page > 1 ? 'previous' : null };
   });
   vi.mocked(invoices.summary).mockImplementation(async currency => {
-    const rows = (await invoices.list()).filter(invoice => invoice.currency === currency);
+    const rows = invoiceData.filter(invoice => invoice.currency === currency);
     const totals = { sent: { count: 0, amount: '0' }, paid: { count: 0, amount: '0' }, draft: { count: 0, amount: '0' }, overdue: { count: 0, amount: '0' } };
     for (const invoice of rows) {
       const status = invoice.overdue ? 'overdue' : invoice.status;
@@ -60,7 +70,7 @@ it('lists saved invoices and shows authoritative details', async () => {
 
 it('paginates invoice rows while keeping the workspace summary', async () => {
   vi.mocked(invoices.page).mockImplementation(async (_search, _status, _currency, page = 1) => ({
-    count: 21, results: [{ ...record, id: `invoice-${page}`, invoice_number: `INV-00000${page}` }],
+    count: 21, results: [{ ...listItem(record), id: `invoice-${page}`, invoice_number: `INV-00000${page}` }],
     next: page === 1 ? 'next' : null, previous: page > 1 ? 'previous' : null,
   }));
   vi.mocked(invoices.summary).mockResolvedValue({ currency: 'USD', sent: { count: 0, amount: '0.00' }, paid: { count: 0, amount: '0.00' }, draft: { count: 21, amount: '2520.00' }, overdue: { count: 0, amount: '0.00' } });
@@ -80,6 +90,7 @@ it('selects a client deal for a draft and links back to its details', async () =
   vi.mocked(invoices.create).mockResolvedValue({ ...record, deal: linkedDeal.id });
   render(<InvoicesPage workspaceName="Workspace" userEmail="seller@example.test" createRequested />);
   const dialog = await screen.findByRole('dialog');
+  await within(dialog).findByRole('option', { name: 'Website project' });
   await userEvent.selectOptions(within(dialog).getByLabelText('Deal (optional)'), linkedDeal.id);
   await userEvent.type(within(dialog).getByLabelText('Description'), 'Design');
   await userEvent.type(within(dialog).getByLabelText('Unit price'), '100');
@@ -91,7 +102,7 @@ it('selects a client deal for a draft and links back to its details', async () =
 });
 
 it('shows the saved bank snapshots in invoice details', async () => {
-  vi.mocked(invoices.list).mockResolvedValue([{ ...record, seller_snapshot: { ...record.seller_snapshot, bank_details: { iban: 'DE89370400440532013000' } }, buyer_snapshot: { ...record.buyer_snapshot, bank_details: { account_number: '12345678' } } }]);
+  vi.mocked(invoices.detail).mockResolvedValue({ ...record, seller_snapshot: { ...record.seller_snapshot, bank_details: { iban: 'DE89370400440532013000' } }, buyer_snapshot: { ...record.buyer_snapshot, bank_details: { account_number: '12345678' } } });
   render(<InvoicesPage workspaceName="Workspace" userEmail="seller@example.test" />);
   await userEvent.click(await screen.findByRole('button', { name: 'INV-000001' }));
   const dialog = await screen.findByRole('dialog');
@@ -144,7 +155,7 @@ it('preserves invoice details if PDF generation fails', async () => {
 it('shows currency-specific status totals and keeps search with the status buttons', async () => {
   const eur: Invoice = { ...record, id: 'invoice-2', invoice_number: 'INV-000002', currency: 'EUR', status: 'paid', total_amount: '200.00', paid_amount: '200.00', balance_due: '0.00' };
   const pln: Invoice = { ...record, id: 'invoice-3', invoice_number: 'INV-000003', currency: 'PLN', status: 'paid', total_amount: '125.50', paid_amount: '125.50', balance_due: '0.00' };
-  vi.mocked(invoices.list).mockResolvedValue([record, eur, pln]);
+  invoiceData = [record, eur, pln];
   render(<InvoicesPage workspaceName="Workspace" userEmail="seller@example.test" />);
   expect(await screen.findByText('$120')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'INV-000001' })).toBeInTheDocument();
@@ -166,8 +177,9 @@ it('shows currency-specific status totals and keeps search with the status butto
 
 it('records a partial payment and shows the remaining overdue balance', async () => {
   const overdue: Invoice = { ...record, status: 'sent', due_date: '2020-01-10', issued_at: '2020-01-01', overdue: true };
-  const updated: Invoice = { ...overdue, paid_amount: '40.00', balance_due: '80.00', payments: [{ id: 'payment-1', amount: '40.00', received_on: '2020-01-11', reference: 'Transfer', is_legacy: false, created_at: '2020-01-11' }] };
-  vi.mocked(invoices.list).mockResolvedValue([overdue]);
+  const updated: Invoice = { ...overdue, paid_amount: '40.00', balance_due: '80.00', payments: [{ id: 'payment-1', amount: '40.00', received_on: '2020-01-11', reference: 'Transfer', is_legacy: false, created_at: '2020-01-11', voided_at: null, voided_by: null, void_reason: '' }] };
+  invoiceData = [overdue];
+  vi.mocked(invoices.detail).mockResolvedValue(overdue);
   vi.mocked(invoices.payment).mockResolvedValue(updated);
   render(<InvoicesPage workspaceName="Workspace" userEmail="seller@example.test" />);
   await userEvent.click(await screen.findByRole('button', { name: 'INV-000001' }));
@@ -185,9 +197,10 @@ it('records a partial payment and shows the remaining overdue balance', async ()
 
 it('requires review before a reminder and confirms email delivery explicitly', async () => {
   const overdue: Invoice = { ...record, status: 'sent', due_date: '2020-01-10', overdue: true };
-  vi.mocked(invoices.list).mockResolvedValue([overdue]);
+  invoiceData = [overdue];
+  vi.mocked(invoices.detail).mockResolvedValue(overdue);
   vi.mocked(invoices.reminderPreview).mockResolvedValue({ subject: 'Payment reminder', body: 'Please pay the invoice.', can_send: true, reason: '' });
-  vi.mocked(invoices.remind).mockResolvedValue({ ...overdue, deliveries: [{ id: 'delivery-1', kind: 'reminder', result: 'accepted', recipient: client.email, attempted_at: '2026-11-12T12:00:00Z' }] });
+  vi.mocked(invoices.remind).mockResolvedValue({ ...overdue, deliveries: [{ id: 'delivery-1', kind: 'reminder', result: 'accepted', recipient: client.email, attempted_at: '2026-11-12T12:00:00Z', resolved_at: null, resolution_reason: '' }] });
   render(<InvoicesPage workspaceName="Workspace" userEmail="seller@example.test" />);
   await userEvent.click(await screen.findByRole('button', { name: 'INV-000001' }));
   const dialog = screen.getByRole('dialog');
@@ -197,4 +210,36 @@ it('requires review before a reminder and confirms email delivery explicitly', a
   await userEvent.click(within(dialog).getByRole('button', { name: 'Send reminder' }));
   await waitFor(() => expect(invoices.remind).toHaveBeenCalledWith('invoice-1'));
   expect(await within(dialog).findByText(/Accepted by mail server/)).toBeInTheDocument();
+});
+
+it('flags a sent invoice without a due date and records a visible correction', async () => {
+  const undated: Invoice = { ...record, status: 'sent', issued_at: '2026-01-01T00:00:00Z' };
+  invoiceData = [undated];
+  vi.mocked(invoices.detail).mockResolvedValue(undated);
+  vi.mocked(invoices.correctDueDate).mockResolvedValue({ ...undated, due_date: '2026-12-15', due_date_corrections: [{ id: 'correction-1', previous_due_date: null, due_date: '2026-12-15', reason: 'Agreed payment date', corrected_by: 1, created_at: '2026-11-16T12:00:00Z' }] });
+  render(<InvoicesPage workspaceName="Workspace" userEmail="seller@example.test" />);
+  expect(await screen.findByText('Needs due date')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'INV-000001' }));
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Correct due date' }));
+  await userEvent.type(within(dialog).getByLabelText('Due date'), '2026-12-15');
+  await userEvent.type(within(dialog).getByLabelText('Reason'), 'Agreed payment date');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Save correction' }));
+  expect(invoices.correctDueDate).toHaveBeenCalledWith('invoice-1', '2026-12-15', 'Agreed payment date');
+  expect(await within(dialog).findByText(/Agreed payment date/)).toBeInTheDocument();
+});
+
+it('reverses a recorded payment without removing its history', async () => {
+  const paid: Invoice = { ...record, status: 'paid', paid_at: '2026-01-02T00:00:00Z', paid_amount: '120.00', balance_due: '0.00', payments: [{ id: 'payment-1', amount: '120.00', received_on: '2026-01-02', reference: 'Transfer', is_legacy: false, created_at: '2026-01-02T00:00:00Z', voided_at: null, voided_by: null, void_reason: '' }] };
+  invoiceData = [paid];
+  vi.mocked(invoices.detail).mockResolvedValue(paid);
+  vi.mocked(invoices.voidPayment).mockResolvedValue({ ...paid, status: 'sent', paid_at: null, paid_amount: '0.00', balance_due: '120.00', payments: [{ ...paid.payments[0], voided_at: '2026-11-16T12:00:00Z', voided_by: 1, void_reason: 'Duplicate receipt' }] });
+  render(<InvoicesPage workspaceName="Workspace" userEmail="seller@example.test" />);
+  await userEvent.click(await screen.findByRole('button', { name: 'INV-000001' }));
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Reverse' }));
+  await userEvent.type(within(dialog).getByLabelText('Reason'), 'Duplicate receipt');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm reversal' }));
+  expect(invoices.voidPayment).toHaveBeenCalledWith('invoice-1', 'payment-1', 'Duplicate receipt');
+  expect(await within(dialog).findByText(/Reversed: Duplicate receipt/)).toBeInTheDocument();
 });
