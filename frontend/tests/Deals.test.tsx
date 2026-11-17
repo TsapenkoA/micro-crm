@@ -6,7 +6,9 @@ import DealForm from '../src/features/deals/DealForm';
 import { ApiError } from '../src/api/client';
 import { date, deals, money, type Deal } from '../src/features/deals/api';
 import type { Client } from '../src/features/clients/api';
-import { invoices, type Invoice } from '../src/features/invoices/api';
+import { invoices, type InvoiceListItem } from '../src/features/invoices/api';
+import { activity } from '../src/features/activity/api';
+import { tasks } from '../src/features/tasks/api';
 
 const drag = vi.hoisted(() => ({ end: null as null | ((event: { active: { id: string }; over: { id: string } }) => void) }));
 vi.mock('@dnd-kit/core', () => ({
@@ -18,8 +20,10 @@ vi.mock('@dnd-kit/core', () => ({
 }));
 vi.mock('../src/features/deals/api', async importOriginal => {
   const actual = await importOriginal<typeof import('../src/features/deals/api')>();
-  return { ...actual, deals: { page: vi.fn(), list: vi.fn(), clients: vi.fn(), detail: vi.fn(), create: vi.fn(), update: vi.fn(), status: vi.fn(), remove: vi.fn() } };
+  return { ...actual, deals: { page: vi.fn(), list: vi.fn(), clients: vi.fn(), detail: vi.fn(), notes: vi.fn(), addNote: vi.fn(), create: vi.fn(), update: vi.fn(), status: vi.fn(), remove: vi.fn() } };
 });
+vi.mock('../src/features/activity/api', () => ({ activity: { list: vi.fn() } }));
+vi.mock('../src/features/tasks/api', () => ({ tasks: { list: vi.fn() } }));
 vi.mock('../src/features/invoices/api', async importOriginal => {
   const actual = await importOriginal<typeof import('../src/features/invoices/api')>();
   return { ...actual, invoices: { ...actual.invoices, list: vi.fn() } };
@@ -39,14 +43,18 @@ beforeEach(() => {
   vi.mocked(deals.clients).mockResolvedValue([client]);
   vi.mocked(deals.detail).mockResolvedValue(deal);
   vi.mocked(invoices.list).mockResolvedValue([]);
+  vi.mocked(deals.notes).mockResolvedValue({ count: 0, results: [], next: null, previous: null });
+  vi.mocked(tasks.list).mockResolvedValue({ count: 0, results: [], next: null, previous: null });
+  vi.mocked(activity.list).mockResolvedValue({ count: 0, results: [], next: null, previous: null });
 });
 
 it('shows linked invoices on a deal and opens the invoice route', async () => {
-  const linked = { id: 'invoice-1', invoice_number: 'INV-000001', total_amount: '120.00', currency: 'EUR' } as Invoice;
+  const linked = { id: 'invoice-1', invoice_number: 'INV-000001', total_amount: '120.00', currency: 'EUR' } as InvoiceListItem;
   vi.mocked(invoices.list).mockResolvedValue([linked]);
   render(<DealsPage />);
   await userEvent.click(await screen.findByRole('button', { name: 'Open Website project' }));
-  const details = await screen.findByRole('complementary', { name: 'Deal details' });
+  const details = await screen.findByRole('dialog', { name: 'Deal details' });
+  await userEvent.click(within(details).getByRole('button', { name: /Invoices/ }));
   await userEvent.click(await within(details).findByRole('button', { name: 'INV-000001 · 120 EUR →' }));
   expect(invoices.list).toHaveBeenCalledWith('', '', expect.any(AbortSignal), deal.id);
   expect(window.location.hash).toBe('#/invoices?invoice=invoice-1');
@@ -85,22 +93,44 @@ it('loads another board page only on request and keeps server totals', async () 
   expect(deals.page).toHaveBeenLastCalledWith({ search: '', status: '', currency: '' }, 2, 'newest', expect.any(AbortSignal));
 });
 
-it('opens preview-style live details with English dates, real fields and client notes navigation', async () => {
+it('opens compact deal details over the unchanged Kanban and navigates its sections', async () => {
   render(<DealsPage />);
   const trigger = await screen.findByRole('button', { name: 'Open Website project' });
   await userEvent.click(trigger);
-  const details = await screen.findByRole('complementary', { name: 'Deal details' });
-  expect(within(details).getByText('DEAL DETAILS')).toBeInTheDocument();
+  const details = await screen.findByRole('dialog', { name: 'Deal details' });
+  expect(screen.getByRole('heading', { name: 'New Lead' })).toBeInTheDocument();
+  expect(document.querySelector('.live-deal-layout')).not.toHaveClass('with-detail');
   expect(within(details).getByRole('heading', { name: 'Website project' })).toBeInTheDocument();
+  expect(within(details).getByText('1,234.56 EUR')).toBeInTheDocument();
   expect(within(details).getByText('Dec 1, 2026')).toBeInTheDocument();
+  expect(within(details).getByText('Deadline')).toBeInTheDocument();
+  expect(within(details).getByRole('heading', { name: 'Activity' })).toBeInTheDocument();
+  expect(within(details).getByRole('button', { name: 'Edit deal' })).toBeInTheDocument();
+  expect(within(details).getByRole('button', { name: 'Delete deal' })).toBeInTheDocument();
   expect(within(details).queryByText('Created by')).not.toBeInTheDocument();
-  await userEvent.click(within(details).getByRole('button', { name: 'Notes' }));
-  expect(within(details).getByText('Notes are saved on the client record and shared with your company.')).toBeInTheDocument();
-  expect(within(details).getByRole('button', { name: 'Open client notes' })).toBeInTheDocument();
-  await userEvent.click(within(details).getByRole('button', { name: 'Close deal details' }));
-  expect(screen.queryByRole('complementary', { name: 'Deal details' })).not.toBeInTheDocument();
+  await userEvent.click(within(details).getByRole('button', { name: /^Notes/ }));
+  expect(within(details).getByText('Shared with your company and visible on the client record.')).toBeInTheDocument();
+  expect(within(details).getByRole('textbox', { name: 'New note' })).toBeInTheDocument();
+  await userEvent.click(within(details).getByRole('button', { name: 'Close' }));
+  expect(screen.queryByRole('dialog', { name: 'Deal details' })).not.toBeInTheDocument();
   expect(trigger).toHaveFocus();
   expect(date(deal.deadline)).toBe('Dec 1, 2026');
+});
+
+it('adds a deal note and refreshes its notes and activity', async () => {
+  const note = { id: 'note-1', client: client.id, text: 'Confirm the scope.', deal: deal.id, author: { id: 1, username: 'admin' }, created_at: '2026-11-01T12:00:00Z', can_delete: true };
+  vi.mocked(deals.addNote).mockResolvedValue(note);
+  vi.mocked(deals.notes).mockResolvedValueOnce({ count: 0, results: [], next: null, previous: null })
+    .mockResolvedValue({ count: 1, results: [note], next: null, previous: null });
+  render(<DealsPage />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Open Website project' }));
+  const details = await screen.findByRole('dialog', { name: 'Deal details' });
+  await userEvent.click(within(details).getByRole('button', { name: /^Notes/ }));
+  await userEvent.type(within(details).getByRole('textbox', { name: 'New note' }), note.text);
+  await userEvent.click(within(details).getByRole('button', { name: 'Add note' }));
+  await waitFor(() => expect(deals.addNote).toHaveBeenCalledWith(deal.id, note.text));
+  expect(await within(details).findByText(note.text)).toBeInTheDocument();
+  expect(activity.list).toHaveBeenCalledWith(1, 'deal', undefined, '', '', '', deal.id);
 });
 
 it('submits search explicitly, preserves filters across views and refreshes colleagues changes', async () => {

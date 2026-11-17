@@ -128,9 +128,13 @@ it('opens real details, traps focus and restores focus after Escape', async () =
   const dialog = screen.getByRole('dialog', { name: 'Client details' });
   expect(document.body.style.overflow).toBe('hidden');
   expect(await within(dialog).findByText('Brand project')).toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button', { name: /^Notes(?: \d+)?$/ }));
   expect(await within(dialog).findByText('No notes yet. Add the first update for your colleagues.')).toBeInTheDocument();
   expect(clients.detail).toHaveBeenCalledWith(record.id, expect.any(AbortSignal));
+  await userEvent.click(within(dialog).getByRole('button', { name: /^Links(?: \d+)?$/ }));
   await within(dialog).findByText('No links yet. Add a brief, design, or repository URL.');
+  await userEvent.click(within(dialog).getByRole('button', { name: /^Files(?: \d+)?$/ }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Add file' }));
   const lastControl = within(dialog).getByLabelText('Add a file');
   lastControl.focus();
   expect(lastControl).toHaveFocus();
@@ -142,6 +146,40 @@ it('opens real details, traps focus and restores focus after Escape', async () =
   expect(document.body.style.overflow).toBe('');
 });
 
+it('keeps the seven overview cards compact and opens note editing only on request', async () => {
+  vi.mocked(clients.list).mockResolvedValue(page([record]));
+  render(<ClientsPage />);
+  await userEvent.click(await screen.findByRole('button', { name: record.name }));
+  const dialog = screen.getByRole('dialog', { name: 'Client details' });
+  expect(dialog).not.toHaveClass('drawer');
+  for (const section of ['deals', 'invoices', 'contacts', 'tasks', 'notes', 'links', 'files']) {
+    expect(within(dialog).getByRole('region', { name: `${section} preview` })).toBeInTheDocument();
+  }
+  for (const section of ['Invoices', 'Notes', 'Links', 'Files']) {
+    expect(await within(dialog).findByRole('button', { name: `${section} 0` })).toBeInTheDocument();
+  }
+  expect(within(dialog).queryByText('View all →')).not.toBeInTheDocument();
+  expect(within(dialog).queryByRole('textbox', { name: 'New note' })).not.toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Open notes' }));
+  expect(within(dialog).getByRole('button', { name: /^Notes(?: \d+)?$/ })).toHaveAttribute('aria-current', 'page');
+  expect(within(dialog).queryByRole('textbox', { name: 'New note' })).not.toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Add note' }));
+  expect(within(dialog).getByRole('textbox', { name: 'New note' })).toBeInTheDocument();
+});
+
+it('expands payer bank details on request', async () => {
+  vi.mocked(clients.list).mockResolvedValue(page([record]));
+  vi.mocked(clients.detail).mockResolvedValue({ ...record, deals: [], contacts: [], bank_details: { bank_name: 'Example Bank' } });
+  render(<ClientsPage />);
+  await userEvent.click(await screen.findByRole('button', { name: record.name }));
+  const dialog = screen.getByRole('dialog', { name: 'Client details' });
+  const disclosure = within(dialog).getByText('Payer bank details').closest('details');
+  expect(disclosure).toHaveProperty('open', false);
+  await userEvent.click(within(dialog).getByText('Payer bank details'));
+  expect(disclosure).toHaveProperty('open', true);
+  expect(within(dialog).getByText('Example Bank')).toBeInTheDocument();
+});
+
 it('shows linked invoices and saves an additional primary contact', async () => {
   vi.mocked(clients.list).mockResolvedValue(page([record]));
   vi.mocked(clients.invoices).mockResolvedValue({ count: 1, next: null, previous: null, results: [{ id: 'invoice-1', invoice_number: 'INV-001', status: 'sent', currency: 'EUR', total_amount: '150.00', due_date: '2026-12-01', overdue: false }] });
@@ -150,6 +188,7 @@ it('shows linked invoices and saves an additional primary contact', async () => 
   await userEvent.click(await screen.findByRole('button', { name: record.name }));
   const dialog = screen.getByRole('dialog', { name: 'Client details' });
   expect(await within(dialog).findByRole('link', { name: 'INV-001' })).toHaveAttribute('href', '#/invoices?invoice=invoice-1');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Contacts 0' }));
   await userEvent.click(within(dialog).getByRole('button', { name: 'Add contact' }));
   await userEvent.type(within(dialog).getByRole('textbox', { name: 'Name' }), 'Billing person');
   await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Primary contact' }));
@@ -165,11 +204,14 @@ it('edits a saved link and uploads a client file', async () => {
   render(<ClientsPage />);
   await userEvent.click(await screen.findByRole('button', { name: record.name }));
   const dialog = screen.getByRole('dialog', { name: 'Client details' });
+  await userEvent.click(within(dialog).getByRole('button', { name: /^Links(?: \d+)?$/ }));
   await userEvent.click(await within(dialog).findByRole('button', { name: 'Edit link' }));
   await userEvent.clear(within(dialog).getByRole('textbox', { name: 'Link label' }));
   await userEvent.type(within(dialog).getByRole('textbox', { name: 'Link label' }), 'Updated brief');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Save link' }));
   await waitFor(() => expect(clients.updateLink).toHaveBeenCalledWith(record.id, 'link-1', 'Updated brief', 'https://example.com/brief'));
+  await userEvent.click(within(dialog).getByRole('button', { name: /^Files(?: \d+)?$/ }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Add file' }));
   const file = new File(['%PDF-1.4'], 'brief.pdf', { type: 'application/pdf' });
   await userEvent.upload(within(dialog).getByLabelText('Add a file'), file);
   await userEvent.click(within(dialog).getByRole('button', { name: 'Upload file' }));

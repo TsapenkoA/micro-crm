@@ -5,7 +5,7 @@ import { ApiError } from '../src/api/client';
 import ClientHistory from '../src/features/clients/ClientHistory';
 import { clients, type ClientLink, type ClientNote } from '../src/features/clients/api';
 
-const note: ClientNote = { id: 'note-1', client: 'client-1', author: { id: 1, username: 'alice' }, text: 'Kickoff completed', created_at: '2026-01-01T12:00:00Z', can_delete: true };
+const note: ClientNote = { id: 'note-1', client: 'client-1', deal: null, author: { id: 1, username: 'alice' }, text: 'Kickoff completed', created_at: '2026-01-01T12:00:00Z', can_delete: true };
 const link: ClientLink = { id: 'link-1', client: 'client-1', label: 'Project brief', url: 'https://docs.google.com/document/d/example', created_at: '2026-01-01T12:00:00Z' };
 const page = <T,>(results: T[] = []) => ({ count: results.length, results, next: null, previous: null });
 

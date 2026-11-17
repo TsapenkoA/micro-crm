@@ -1,5 +1,6 @@
 import { ApiError, request } from '../../api/client';
 import type { Client, ClientPage } from '../clients/api';
+import type { ClientNote, HistoryPage } from '../clients/api';
 
 export const stages = [
   { id: 'new_lead', label: 'New Lead', color: 'blue' },
@@ -48,6 +49,8 @@ export const deals = {
     return [...records.values()];
   },
   detail: (id: string, signal?: AbortSignal) => request<Deal>(`/deals/${encodeURIComponent(id)}`, { signal }),
+  notes: (id: string, page = 1, signal?: AbortSignal) => request<HistoryPage<ClientNote>>(`/deals/${encodeURIComponent(id)}/notes?page=${page}`, { signal }),
+  addNote: (id: string, text: string) => request<ClientNote>(`/deals/${encodeURIComponent(id)}/notes`, { method: 'POST', body: JSON.stringify({ text }) }),
   create: (values: DealInput) => request<Deal>('/deals', { method: 'POST', body: JSON.stringify(values) }),
   update: (deal: Deal, values: DealInput) => request<Deal>(`/deals/${encodeURIComponent(deal.id)}`, { method: 'PATCH', body: JSON.stringify({ ...values, version: deal.version }) }),
   status: (deal: Deal, status: Status, outcome: Outcome = 'none') => request<Deal>(`/deals/${encodeURIComponent(deal.id)}/status`, { method: 'PATCH', body: JSON.stringify({ status, outcome: status === 'archived' ? outcome : 'none', version: deal.version }) }),
@@ -66,4 +69,8 @@ export function money(amount: string, currency: string) {
 
 export function date(value: string | null) {
   return value ? new Date(value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'No deadline';
+}
+
+export function isOverdue(deal: Pick<Deal, 'deadline' | 'status'>) {
+  return Boolean(deal.deadline && ['new_lead', 'negotiation', 'in_progress'].includes(deal.status) && new Date(deal.deadline) < new Date());
 }
