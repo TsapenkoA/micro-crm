@@ -5,19 +5,21 @@ export const currencyPlaces = { USD: 2, EUR: 2, GBP: 2, PLN: 2, AUD: 2, CAD: 2, 
 export const invoiceCurrencies = ['USD', 'EUR', 'GBP', 'PLN', ...Object.keys(currencyPlaces).filter(currency => !['USD', 'EUR', 'GBP', 'PLN'].includes(currency)).sort()];
 export type InvoiceInput = { client: string; deal: string | null; currency: string; due_date: string | null; payment_terms: string; seller?: { name: string; email: string; phone: string; address: string; tax_id: string }; items: InvoiceItemInput[] };
 export type InvoiceItem = InvoiceItemInput & { id: number; position: number; line_total: string; tax_amount: string };
-export type InvoicePayment = { id: string; amount: string; received_on: string; reference: string; is_legacy: boolean; created_at: string };
-export type InvoiceDelivery = { id: string; kind: 'invoice' | 'reminder'; result: 'accepted' | 'failed'; recipient: string; attempted_at: string };
+export type InvoicePayment = { id: string; amount: string; received_on: string; reference: string; is_legacy: boolean; created_at: string; voided_at: string | null; voided_by: number | null; void_reason: string };
+export type InvoiceDelivery = { id: string; kind: 'invoice' | 'reminder'; result: 'pending' | 'accepted' | 'failed' | 'unknown'; recipient: string; attempted_at: string; resolved_at: string | null; resolution_reason: string };
+export type InvoiceDueDateCorrection = { id: string; previous_due_date: string | null; due_date: string; reason: string; corrected_by: number; created_at: string };
+export type InvoiceListItem = { id: string; invoice_number: string; client: string; deal: string | null; client_name: string; client_company: string; description: string; currency: string; status: Invoice['status']; issued_at: string | null; due_date: string | null; total_amount: string; overdue: boolean; needs_due_date: boolean; created_at: string };
 export type Invoice = {
   id: string; invoice_number: string; client: string; deal: string | null; currency: string; status: 'draft' | 'sent' | 'paid' | 'cancelled';
   seller_snapshot: { name?: string; email?: string; phone?: string; address?: string; tax_id?: string; bank_details?: BankDetails };
   buyer_snapshot: { name?: string; company?: string; email?: string; phone?: string; bank_details?: BankDetails };
   items: InvoiceItem[]; subtotal: string; tax_total: string; total_amount: string;
-  payments: InvoicePayment[]; paid_amount: string; balance_due: string; overdue: boolean; deliveries: InvoiceDelivery[];
+  payments: InvoicePayment[]; paid_amount: string; balance_due: string; overdue: boolean; deliveries: InvoiceDelivery[]; due_date_corrections: InvoiceDueDateCorrection[];
   issued_at: string | null; due_date: string | null; payment_terms: string; paid_at: string | null;
   cancelled_at: string | null; cancellation_reason: string; created_at: string;
 };
 export type ReminderPreview = { subject: string; body: string; can_send: boolean; reason: string };
-export type InvoicePage = { count: number; results: Invoice[]; next: string | null; previous: string | null };
+export type InvoicePage = { count: number; results: InvoiceListItem[]; next: string | null; previous: string | null };
 export type InvoiceSummary = { currency: string; sent: { count: number; amount: string }; paid: { count: number; amount: string }; draft: { count: number; amount: string }; overdue: { count: number; amount: string } };
 
 export const invoices = {
@@ -32,7 +34,7 @@ export const invoices = {
     return request<InvoiceSummary>(`/invoices/summary?${new URLSearchParams({ currency })}`, { signal });
   },
   async list(search = '', status = '', signal?: AbortSignal, deal = '') {
-    const rows: Invoice[] = [];
+    const rows: InvoiceListItem[] = [];
     let page = 1;
     let next: string | null;
     do {
@@ -52,6 +54,8 @@ export const invoices = {
   update: (id: string, data: InvoiceInput) => request<Invoice>(`/invoices/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),
   status: (id: string, status: 'sent' | 'paid') => request<Invoice>(`/invoices/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   payment: (id: string, amount: string, received_on: string, reference: string) => request<Invoice>(`/invoices/${encodeURIComponent(id)}/payments`, { method: 'POST', body: JSON.stringify({ amount, received_on, reference }) }),
+  voidPayment: (id: string, paymentId: string, reason: string) => request<Invoice>(`/invoices/${encodeURIComponent(id)}/payments/${paymentId}/void`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  correctDueDate: (id: string, due_date: string, reason: string) => request<Invoice>(`/invoices/${encodeURIComponent(id)}/due-date-corrections`, { method: 'POST', body: JSON.stringify({ due_date, reason }) }),
   cancel: (id: string, reason: string) => request<Invoice>(`/invoices/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   send: (id: string) => request<Invoice>(`/invoices/${encodeURIComponent(id)}/send`, { method: 'POST', body: '{}' }),
   reminderPreview: (id: string) => request<ReminderPreview>(`/invoices/${encodeURIComponent(id)}/reminder`),
