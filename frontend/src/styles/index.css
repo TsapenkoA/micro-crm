@@ -2,6 +2,11 @@
 
 :root {
   color-scheme: light;
+  --deal-blue: #5685cc;
+  --deal-amber: #b78024;
+  --deal-purple: #8e68cd;
+  --deal-green: #328369;
+  --deal-gray: #78818f;
   --surface-page: #f7f8fa;
   --surface: #ffffff;
   --surface-raised: #f2f4f7;
@@ -46,6 +51,11 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --deal-blue: #83a9ee;
+  --deal-amber: #dbb268;
+  --deal-purple: #b09aee;
+  --deal-green: #73c5a6;
+  --deal-gray: #a0a7b3;
   --surface-page: #141619;
   --surface: #1c1f24;
   --surface-raised: #24272e;
@@ -403,9 +413,8 @@ dialog.client-detail-dialog .dialog-header button { min-width: 28px; min-height:
 .client-detail-contact a { font-weight: 550; }
 .client-detail-actions .danger { border-color: color-mix(in srgb, var(--danger) 22%, var(--border)); }
 .client-contact-avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 12px; background: var(--surface-raised); border: 1px solid var(--border); font-weight: 600; }
-.client-preview-status { position: absolute; right: 0; top: 50%; transform: translateY(-50%); padding: 5px 10px; border-radius: 10px; background: var(--surface-raised); font-size: 12px; }
-.client-preview-status.status-paid { color: #12642c; background: #e5f3e9; }
-.client-overview-invoices .client-overview-item { padding-right: 72px; }
+.client-preview-status { position: absolute; right: 0; top: 50%; transform: translateY(-50%); padding: 0; font-size: 12px; }
+.client-overview-invoices .client-overview-item { padding-right: 90px; }
 .client-preview-action { position: absolute; right: 0; top: 8px; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--surface-raised); }
 .client-overview-links .client-overview-item, .client-overview-files .client-overview-item { padding-right: 35px; }
 .client-overview-notes .client-overview-note { -webkit-line-clamp: 3; line-height: 1.5; }
@@ -418,3 +427,11 @@ dialog.client-detail-dialog .dialog-header button { min-width: 28px; min-height:
   .client-overview-contacts .client-overview-item { grid-template-columns: minmax(0, 1fr); }
   .client-contact-avatar { display: none; }
 }
+
+.deal-blue { --stage-color: var(--deal-blue); }
+.deal-amber { --stage-color: var(--deal-amber); }
+.deal-purple { --stage-color: var(--deal-purple); }
+.deal-green { --stage-color: var(--deal-green); }
+.deal-gray { --stage-color: var(--deal-gray); }
+.deal-badge { display: inline-flex; align-items: center; gap: 5px; color: var(--stage-color); background: color-mix(in srgb, var(--stage-color) 8%, transparent); border: 1px solid color-mix(in srgb, var(--stage-color) 20%, transparent); border-radius: 4px; padding: 2px 5px; font-size: 10.5px; white-space: nowrap; }
+.deal-badge i { height: 4px; width: 4px; border-radius: 50%; background: currentColor; }

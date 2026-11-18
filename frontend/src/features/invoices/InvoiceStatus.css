@@ -1,0 +1,6 @@
+.invoice-state { --invoice-tone: var(--text-muted); display: inline-flex; align-items: center; justify-self: start; gap: 6px; padding: 4px 9px; border: 1px solid color-mix(in srgb, var(--invoice-tone) 22%, var(--border)); border-radius: 8px; background: color-mix(in srgb, var(--invoice-tone) 9%, var(--surface)); color: var(--invoice-tone); font-size: 12px; line-height: 1.4; white-space: nowrap; }
+.invoice-state i { width: 6px; height: 6px; flex: none; border-radius: 50%; background: currentColor; }
+.invoice-state-sent { --invoice-tone: var(--deal-blue); }
+.invoice-state-paid { --invoice-tone: var(--success); }
+.invoice-state-overdue { --invoice-tone: var(--danger); }
+.invoice-state-cancelled { --invoice-tone: var(--deal-purple); }
