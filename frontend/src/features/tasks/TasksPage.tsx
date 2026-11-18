@@ -1,3 +1,4 @@
+import DateInput from '../../components/DateInput';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { workspace, type WorkspaceSettings, type User } from '../../api/client';
 import ActionIcon from '../../components/ActionIcon';
@@ -5,6 +6,7 @@ import { deals, type Deal } from '../deals/api';
 import type { Client } from '../clients/api';
 import { tasks, type Task, type TaskFilters, type TaskInput, type TaskPage } from './api';
 import './tasks.css';
+import TaskActions from './TaskActions';
 
 type View = 'mine' | 'team' | 'overdue' | 'upcoming' | 'done';
 const views: { id: View; label: string; filters: TaskFilters }[] = [
@@ -131,6 +133,20 @@ export default function TasksPage({ user, search = '', onCountChanged }: { user:
     finally { setBusy(false); }
   }
 
+  async function remove(task: Task) {
+    if (busy || !window.confirm(`Delete task "${task.title}"? This cannot be undone.`)) return;
+    setBusy(true); setError(''); setMessage('');
+    try {
+      await tasks.remove(task.id);
+      if (editor !== 'new' && editor?.id === task.id) setEditor(null);
+      if (data?.results.length === 1 && page > 1) setPage(value => value - 1);
+      setRevision(value => value + 1);
+      onCountChanged?.();
+      setMessage('Task deleted.');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to delete the task.'); }
+    finally { setBusy(false); }
+  }
+
   const currentClient = selectedClient || clients[0]?.id || '';
   return <section className="tasks-page" aria-label="Workspace tasks">
     <div className="tasks-toolbar"><div className="tasks-tabs" role="group" aria-label="Task filters">{views.map(item => <button key={item.id} aria-pressed={view === item.id} onClick={() => { setView(item.id); setPage(1); setEditor(null); }}>{item.label}{counts[item.id] !== undefined && <> <span className="tasks-tab-count">{counts[item.id]}</span></>}</button>)}</div><div className="tasks-toolbar-actions"><label className="tasks-filter"><span>Clients</span><select aria-label="Filter tasks by client" value={clientFilter} onChange={event => { setClientFilter(event.target.value); setDealFilter(''); setPage(1); }}><option value="">All clients</option>{clients.map(client => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label><label className="tasks-filter"><span>Deals</span><select aria-label="Filter tasks by deal" value={dealFilter} onChange={event => { setDealFilter(event.target.value); setPage(1); }}><option value="">All deals</option>{dealsList.filter(deal => !clientFilter || deal.client === clientFilter).map(deal => <option key={deal.id} value={deal.id}>{deal.title}</option>)}</select></label><button className="primary tasks-new" disabled={choicesLoading || !clients.length || !members.length} onClick={() => { setFormError(''); setSelectedClient(''); setLinkedDeal(''); setEditor('new'); }}><ActionIcon name="add" />New task</button></div></div>
@@ -142,7 +158,7 @@ export default function TasksPage({ user, search = '', onCountChanged }: { user:
       <input type="checkbox" aria-label={`${task.status === 'open' ? 'Complete' : 'Reopen'} ${task.title}`} checked={task.status === 'done'} disabled={busy} onChange={() => void setStatus(task)} />
       <div className="task-summary"><button className="task-title" onClick={() => { setFormError(''); setEditor(task); }}>{task.title}</button><small><a href={link(task)}>{task.deal_title || task.client_name}</a> · {task.assignee_name || 'Unassigned'}</small></div>
       <time className={task.status === 'open' && new Date(task.due_at) < new Date() ? 'is-overdue' : ''} dateTime={task.due_at}><span aria-hidden="true">▣</span>{dueLabel(task.due_at)}</time>
-      <div className="task-row-actions"><button className="secondary" disabled={busy} onClick={() => void setStatus(task)}><ActionIcon name={task.status === 'open' ? 'check' : 'refresh'} />{task.status === 'open' ? 'Complete' : 'Reopen'}</button><button className="task-more" aria-label={`Edit ${task.title}`} disabled={busy} onClick={() => { setFormError(''); setEditor(task); }}>⋯</button></div>
+      <div className="task-row-actions"><button className="secondary" disabled={busy} onClick={() => void setStatus(task)}><ActionIcon name={task.status === 'open' ? 'check' : 'refresh'} />{task.status === 'open' ? 'Complete' : 'Reopen'}</button><TaskActions task={task} disabled={busy} onEdit={() => { setFormError(''); setEditor(task); }} onDelete={() => void remove(task)} /></div>
     </li>)}</ul> : <p className="tasks-empty">{view === 'overdue' ? 'No overdue tasks.' : view === 'done' ? 'No completed tasks yet.' : 'No tasks in this view.'}</p>)}
       {data && <footer className="pagination"><span>{data.count} tasks</span><div className="button-row"><button className="secondary" aria-label="Previous page" disabled={!data.previous} onClick={() => setPage(value => value - 1)}>‹</button><span className="tasks-page-number">{page}</span><button className="secondary" aria-label="Next page" disabled={!data.next} onClick={() => setPage(value => value + 1)}>›</button></div></footer>}
     </div>
@@ -151,7 +167,7 @@ export default function TasksPage({ user, search = '', onCountChanged }: { user:
       {editor === 'new' && <><label className="field">Client<select name="client" value={currentClient} required disabled={busy} onChange={event => setSelectedClient(event.target.value)}>{clients.map(client => <option key={client.id} value={client.id}>{client.name}{client.company ? ` · ${client.company}` : ''}</option>)}</select></label>
         <label className="field">Deal (optional)<select key={currentClient} name="deal" defaultValue={linkedDeal} disabled={busy}><option value="">No deal</option>{dealsList.filter(deal => deal.client === currentClient).map(deal => <option key={deal.id} value={deal.id}>{deal.title}</option>)}</select></label></>}
       <label className="field">Assignee<select name="assignee" defaultValue={editor === 'new' ? user.id : editor.assignee ?? ''} required disabled={busy}><option value="" disabled>Choose a member</option>{members.map(member => <option key={member.id} value={member.id}>{member.name || member.username}</option>)}</select></label>
-      <label className="field">Due date<input name="due_at" type="datetime-local" defaultValue={editor === 'new' ? '' : localDateTime(editor.due_at)} required disabled={busy} /></label>
+      <label className="field">Due date<DateInput name="due_at" time defaultValue={editor === 'new' ? '' : localDateTime(editor.due_at)} required disabled={busy} /></label>
       {formError && <p role="alert" className="notice error">{formError}</p>}
       <div className="button-row"><button type="button" className="secondary" disabled={busy} onClick={() => setEditor(null)}>Cancel</button><button className="primary" disabled={busy}>{busy ? 'Saving…' : editor === 'new' ? 'Create task' : 'Save'}</button></div>
     </form></div> : <div className="panel tasks-editor tasks-editor-empty"><h2>Task details</h2><p className="muted">Select a task to edit it, or create a new one.</p></div>}</div>
