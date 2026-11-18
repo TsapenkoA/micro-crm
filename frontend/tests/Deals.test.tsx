@@ -49,7 +49,7 @@ beforeEach(() => {
 });
 
 it('shows linked invoices on a deal and opens the invoice route', async () => {
-  const linked = { id: 'invoice-1', invoice_number: 'INV-000001', total_amount: '120.00', currency: 'EUR' } as InvoiceListItem;
+  const linked = { id: 'invoice-1', invoice_number: 'INV-000001', total_amount: '120.00', currency: 'EUR', status: 'sent', overdue: false } as InvoiceListItem;
   vi.mocked(invoices.list).mockResolvedValue([linked]);
   render(<DealsPage />);
   await userEvent.click(await screen.findByRole('button', { name: 'Open Website project' }));
