@@ -12,7 +12,7 @@ function externalUrl(value: string): string | undefined {
   } catch { return undefined; }
 }
 
-function HistorySection({ clientId, kind, collapsibleForm }: { clientId: string; kind: Kind; collapsibleForm: boolean }) {
+function HistorySection({ clientId, kind, collapsibleForm, onChanged }: { clientId: string; kind: Kind; collapsibleForm: boolean; onChanged?: () => void }) {
   const [data, setData] = useState<HistoryPage<HistoryItem> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -83,6 +83,7 @@ function HistorySection({ clientId, kind, collapsibleForm }: { clientId: string;
       if (collapsibleForm) setShowForm(false);
       setDestination('latest');
       setRevision(value => value + 1);
+      onChanged?.();
     } catch (cause) {
       const invalid: Record<string, string> = {};
       if (cause instanceof ApiError && cause.status === 400 && cause.details && typeof cause.details === 'object') {
@@ -108,6 +109,7 @@ function HistorySection({ clientId, kind, collapsibleForm }: { clientId: string;
       setSuccess('Note deleted.');
       setDestination('latest');
       setRevision(value => value + 1);
+      onChanged?.();
     } catch (cause) {
       setDeleteError(cause instanceof ApiError && cause.status === 403 ? 'Only the author can delete this note.'
         : cause instanceof Error ? cause.message : 'Unable to delete the note.');
@@ -117,7 +119,7 @@ function HistorySection({ clientId, kind, collapsibleForm }: { clientId: string;
   async function removeLink(linkId: string) {
     if (!window.confirm('Delete this link?')) return;
     setDeleting(true); setDeleteError('');
-    try { await clients.removeLink(clientId, linkId); setSuccess('Link deleted.'); setRevision(value => value + 1); }
+    try { await clients.removeLink(clientId, linkId); setSuccess('Link deleted.'); setRevision(value => value + 1); onChanged?.(); }
     catch (cause) { setDeleteError(cause instanceof Error ? cause.message : 'Unable to delete the link.'); }
     finally { setDeleting(false); }
   }
@@ -172,7 +174,7 @@ function HistorySection({ clientId, kind, collapsibleForm }: { clientId: string;
   </section>;
 }
 
-export default function ClientHistory({ clientId, kind, collapsibleForm = false }: { clientId: string; kind?: Kind; collapsibleForm?: boolean }) {
-  if (kind) return <HistorySection clientId={clientId} kind={kind} collapsibleForm={collapsibleForm} />;
-  return <><HistorySection clientId={clientId} kind="notes" collapsibleForm={collapsibleForm} /><HistorySection clientId={clientId} kind="links" collapsibleForm={collapsibleForm} /></>;
+export default function ClientHistory({ clientId, kind, collapsibleForm = false, onChanged }: { clientId: string; kind?: Kind; collapsibleForm?: boolean; onChanged?: () => void }) {
+  if (kind) return <HistorySection clientId={clientId} kind={kind} collapsibleForm={collapsibleForm} onChanged={onChanged} />;
+  return <><HistorySection clientId={clientId} kind="notes" collapsibleForm={collapsibleForm} onChanged={onChanged} /><HistorySection clientId={clientId} kind="links" collapsibleForm={collapsibleForm} onChanged={onChanged} /></>;
 }

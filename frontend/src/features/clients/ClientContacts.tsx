@@ -30,7 +30,7 @@ export default function ClientContacts({ clientId, onPrimaryChanged }: { clientI
       if (editing === 'new') await clients.addContact(clientId, form);
       else await clients.updateContact(clientId, editing, form);
       setEditing(null); setForm(empty); setRevision(value => value + 1);
-      if (form.is_primary) onPrimaryChanged();
+      onPrimaryChanged();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to save the contact.'); }
     finally { setBusy(false); }
   }
@@ -38,7 +38,7 @@ export default function ClientContacts({ clientId, onPrimaryChanged }: { clientI
   async function remove(contact: ClientContact) {
     if (!window.confirm(`Delete ${contact.name}?`)) return;
     setBusy(true); setError('');
-    try { await clients.removeContact(clientId, contact.id); setRevision(value => value + 1); }
+    try { await clients.removeContact(clientId, contact.id); setRevision(value => value + 1); onPrimaryChanged(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to delete the contact.'); }
     finally { setBusy(false); }
   }
