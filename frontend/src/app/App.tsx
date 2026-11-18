@@ -109,6 +109,10 @@ function Application() {
     }
   }, [loading, user, path]);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [page, path]);
+
   function navigate(next: Page) {
     setPage(next);
     window.location.hash = `/${next.toLowerCase()}`;

@@ -12,6 +12,7 @@ if (!HTMLDialogElement.prototype.showModal) {
 }
 
 beforeEach(() => {
+  window.scrollTo = vi.fn();
   window.history.replaceState(null, '', '/');
   localStorage.clear();
   delete document.documentElement.dataset.theme;

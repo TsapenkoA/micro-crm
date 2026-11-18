@@ -109,3 +109,15 @@ it('follows system theme changes and preserves an explicit preference', async ()
   expect(screen.getByLabelText('Theme')).toHaveValue('dark');
   expect(media.removeEventListener).toHaveBeenCalled();
 });
+
+it('resets page scroll on navigation and browser history changes', async () => {
+  vi.spyOn(auth, 'me').mockResolvedValue({ user: { id: 1, username: 'alex', email: '' } });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'Dashboard', level: 1 });
+  vi.mocked(window.scrollTo).mockClear();
+  await userEvent.click(screen.getByRole('button', { name: 'Settings' }));
+  expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'instant' });
+  vi.mocked(window.scrollTo).mockClear();
+  await act(async () => { window.location.hash = '/clients'; window.dispatchEvent(new HashChangeEvent('hashchange')); });
+  expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'instant' });
+});
