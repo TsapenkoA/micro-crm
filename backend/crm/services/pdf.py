@@ -1,5 +1,6 @@
 import calendar
 import html
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 
@@ -30,7 +31,7 @@ def font_paths():
 def pdf_date(value):
     if value is None:
         return "Not issued"
-    local = timezone.localtime(value)
+    local = timezone.localtime(value) if isinstance(value, datetime) else value
     return f"{calendar.month_abbr[local.month]} {local.day}, {local.year}"
 
 
@@ -79,8 +80,8 @@ def render_invoice(invoice):
     if invoice.due_date:
         content.append(paragraph(f"Due: {calendar.month_abbr[invoice.due_date.month]} {invoice.due_date.day}, {invoice.due_date.year}"))
     for correction in invoice.due_date_corrections.all():
-        previous = correction.previous_due_date.isoformat() if correction.previous_due_date else "not previously set"
-        content.append(paragraph(f"Due date correction ({correction.created_at.date().isoformat()}): {previous} to {correction.due_date.isoformat()}. Reason: {correction.reason}"))
+        previous = pdf_date(correction.previous_due_date) if correction.previous_due_date else "not previously set"
+        content.append(paragraph(f"Due date correction ({pdf_date(correction.created_at)}): {previous} to {pdf_date(correction.due_date)}. Reason: {correction.reason}"))
     if invoice.payment_terms:
         content.append(paragraph(f"Payment terms: {invoice.payment_terms}"))
     if invoice.status == invoice.Status.CANCELLED:
