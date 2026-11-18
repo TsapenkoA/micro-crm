@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { clients, type ClientAttachment, type HistoryPage } from './api';
 
-export default function ClientAttachments({ clientId, collapsibleForm = false }: { clientId: string; collapsibleForm?: boolean }) {
+export default function ClientAttachments({ clientId, collapsibleForm = false, onChanged }: { clientId: string; collapsibleForm?: boolean; onChanged?: () => void }) {
   const [data, setData] = useState<HistoryPage<ClientAttachment> | null>(null);
   const [page, setPage] = useState(1);
   const [revision, setRevision] = useState(0);
@@ -28,7 +28,7 @@ export default function ClientAttachments({ clientId, collapsibleForm = false }:
     if (!file || busy) return;
     if (file.size > 5 * 1024 * 1024 || file.size === 0) { setError('Choose a file between 1 byte and 5 MB.'); return; }
     setBusy(true); setError('');
-    try { await clients.addAttachment(clientId, file); setFile(null); form.reset(); setPage(1); setRevision(value => value + 1); if (collapsibleForm) setShowForm(false); }
+    try { await clients.addAttachment(clientId, file); setFile(null); form.reset(); setPage(1); setRevision(value => value + 1); if (collapsibleForm) setShowForm(false); onChanged?.(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to upload the file.'); }
     finally { setBusy(false); }
   }
@@ -48,7 +48,7 @@ export default function ClientAttachments({ clientId, collapsibleForm = false }:
   async function remove(item: ClientAttachment) {
     if (!window.confirm(`Delete ${item.name}?`)) return;
     setBusy(true); setError('');
-    try { await clients.removeAttachment(clientId, item.id); setRevision(value => value + 1); }
+    try { await clients.removeAttachment(clientId, item.id); setRevision(value => value + 1); onChanged?.(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to delete the file.'); }
     finally { setBusy(false); }
   }

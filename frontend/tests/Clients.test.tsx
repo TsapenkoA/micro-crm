@@ -260,3 +260,26 @@ it('shows a colleague’s newly created client after a fresh request and clears 
     }
   }
 });
+
+it('refreshes note counts and overview after adding and deleting without closing details', async () => {
+  vi.mocked(clients.list).mockResolvedValue(page([record]));
+  const note = { id: 'note-new', client: record.id, deal: null, author: { id: 1, username: 'alex' }, text: 'Updated requirements', created_at: '2026-11-18T12:00:00Z', can_delete: true };
+  let saved = false;
+  vi.mocked(clients.notes).mockImplementation(async () => ({ count: saved ? 1 : 0, results: saved ? [note] : [], next: null, previous: null }));
+  vi.spyOn(clients, 'addNote').mockImplementation(async () => { saved = true; return note; });
+  vi.spyOn(clients, 'removeNote').mockImplementation(async () => { saved = false; });
+  render(<ClientsPage />);
+  await userEvent.click(await screen.findByRole('button', { name: record.name }));
+  const dialog = screen.getByRole('dialog', { name: 'Client details' });
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Notes 0' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Add note' }));
+  await userEvent.type(within(dialog).getByLabelText('New note'), note.text);
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Add note' }));
+  expect(await within(dialog).findByRole('button', { name: 'Notes 1' })).toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Overview' }));
+  expect(within(dialog).getByRole('region', { name: 'notes preview' })).toHaveTextContent(note.text);
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Notes 1' }));
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Delete note' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm deletion' }));
+  expect(await within(dialog).findByRole('button', { name: 'Notes 0' })).toBeInTheDocument();
+});

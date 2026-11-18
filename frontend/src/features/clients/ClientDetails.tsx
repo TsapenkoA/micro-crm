@@ -30,7 +30,9 @@ export default function ClientDetails({ id, onEdit, onDelete }: {
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('overview');
-  const { preview, failed } = useClientPreview(id);
+  const [previewRevision, setPreviewRevision] = useState(0);
+  const refreshPreview = () => setPreviewRevision(value => value + 1);
+  const { preview, failed } = useClientPreview(id, previewRevision);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -50,7 +52,7 @@ export default function ClientDetails({ id, onEdit, onDelete }: {
   const relatedDeals = <section aria-label="Client deals"><div className="history-heading"><h3>Deals <span className="client-deal-count">{client.deals.length}</span></h3><a className="text-action" href="#/deals">View all deals →</a></div>
     {client.deals.length ? <ul className="deal-list">{client.deals.map(deal => { const stage = stages.find(item => item.id === deal.status); return <li key={deal.id} className="client-related-deal"><a href={`#/deals?deal=${encodeURIComponent(deal.id)}`}>{deal.title}</a><span className={`deal-badge deal-${stage?.color ?? 'gray'}`}><i />{stage?.label ?? deal.status.replaceAll('_', ' ')}</span><p className="muted">{money(deal.amount, deal.currency)} · {deal.deadline ? `Due ${date(deal.deadline)}` : 'No deadline'}</p></li>; })}</ul> : <p className="muted">No related deals.</p>}
   </section>;
-  const relatedContacts = <ClientContacts clientId={client.id} onPrimaryChanged={() => setRevision(value => value + 1)} />;
+  const relatedContacts = <ClientContacts clientId={client.id} onPrimaryChanged={() => { setRevision(value => value + 1); refreshPreview(); }} />;
 
   return <div className="client-details">
     <aside className="client-detail-profile">
@@ -78,11 +80,11 @@ export default function ClientDetails({ id, onEdit, onDelete }: {
         {tab === 'overview' && <ClientOverview client={client} preview={preview} failed={failed} onSelect={setTab} />}
         {tab === 'contacts' && <div className="client-detail-card">{relatedContacts}</div>}
         {tab === 'deals' && <div className="client-detail-card">{relatedDeals}</div>}
-        {tab === 'tasks' && <div className="client-detail-card"><RelatedTasks clientId={client.id} /></div>}
+        {tab === 'tasks' && <div className="client-detail-card"><RelatedTasks clientId={client.id} onChanged={refreshPreview} /></div>}
         {tab === 'invoices' && <div className="client-detail-card"><ClientInvoices clientId={client.id} /></div>}
-        {tab === 'notes' && <div className="client-detail-card"><ClientHistory clientId={client.id} kind="notes" collapsibleForm /></div>}
-        {tab === 'links' && <div className="client-detail-card"><ClientHistory clientId={client.id} kind="links" collapsibleForm /></div>}
-        {tab === 'files' && <div className="client-detail-card"><ClientAttachments clientId={client.id} collapsibleForm /></div>}
+        {tab === 'notes' && <div className="client-detail-card"><ClientHistory clientId={client.id} kind="notes" onChanged={refreshPreview} collapsibleForm /></div>}
+        {tab === 'links' && <div className="client-detail-card"><ClientHistory clientId={client.id} kind="links" onChanged={refreshPreview} collapsibleForm /></div>}
+        {tab === 'files' && <div className="client-detail-card"><ClientAttachments clientId={client.id} onChanged={refreshPreview} collapsibleForm /></div>}
       </div>
     </div>
   </div>;
