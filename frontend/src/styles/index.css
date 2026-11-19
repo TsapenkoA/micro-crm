@@ -219,8 +219,8 @@
   .text-action.danger { color: var(--danger); }
   .clients-panel { overflow: hidden; }
   .client-table { table-layout: fixed; }
-  .client-table th:first-child { width: 25%; }
-  .client-table th:last-child { width: 60px; }
+  .client-table thead th:first-child { width: 25%; }
+  .client-table thead th:last-child { width: 60px; }
   .clients-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 16px; }
   .client-search { display: flex; align-items: center; flex: 1; gap: 8px; max-width: 440px; margin-left: auto; }
   .client-search-field { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--text-muted); }
@@ -341,6 +341,9 @@
   .client-contact-list small { color: var(--text-muted); }
   .client-primary-choice { display: inline-flex; align-items: center; gap: 8px; font-size: 12.9px; }
   .client-file-list .text-action { overflow-wrap: anywhere; text-align: left; }
+  .client-file-control { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+  .client-file-control input[type="file"] { position: absolute; width: 1px; height: 1px; padding: 0; opacity: 0; pointer-events: none; }
+  .client-file-control > span { min-width: 0; overflow-wrap: anywhere; color: var(--text-muted); font-size: var(--font-xs); }
   .history-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space); margin-bottom: var(--space-4); }
   .history-heading h3 { font-weight: 600; }
   .client-details .history-heading { margin-bottom: 10px; }
@@ -389,6 +392,8 @@
     .client-table thead { display: none; }
     .client-table tr { border-top: 1px solid var(--border); padding: var(--space-4); }
     .client-table th, .client-table td { padding: var(--space-2) 0; border: 0; width: auto; }
+    .client-table .client-identity { width: 100%; min-width: 0; }
+    .client-table .client-identity > span:last-child { min-width: 0; }
     .client-table td[data-label]::before { content: attr(data-label) ": "; color: var(--text-muted); }
     .pagination { padding: var(--space-4); flex-wrap: wrap; }
     .quick-actions { gap: var(--space); }

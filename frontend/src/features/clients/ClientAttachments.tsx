@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { clients, type ClientAttachment, type HistoryPage } from './api';
 
 export default function ClientAttachments({ clientId, collapsibleForm = false, onChanged }: { clientId: string; collapsibleForm?: boolean; onChanged?: () => void }) {
@@ -10,6 +10,7 @@ export default function ClientAttachments({ clientId, collapsibleForm = false, o
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(!collapsibleForm);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { setPage(1); }, [clientId]);
   useEffect(() => {
@@ -55,7 +56,7 @@ export default function ClientAttachments({ clientId, collapsibleForm = false, o
 
   return <section aria-label="Client files"><div className="history-heading"><h3>Files {data && <span className="client-deal-count">{data.count}</span>}</h3>{collapsibleForm && <button className="text-action" onClick={() => setShowForm(value => !value)}>{showForm ? 'Cancel' : 'Add file'}</button>}</div><p className="muted">PDF, PNG, JPEG or WebP · up to 5 MB per file.</p>
     {loading ? <p role="status" className="muted">Loading files…</p> : data?.results.length ? <><ul className="client-file-list">{data.results.map(item => <li key={item.id}><button className="text-action" disabled={busy} onClick={() => void download(item)}>{item.name}</button><small className="muted">{Math.ceil(item.size / 1024)} KB</small><button className="text-action danger" disabled={busy} onClick={() => void remove(item)}>Delete</button></li>)}</ul><div className="history-pagination"><span className="muted">Page {page}</span><div className="button-row"><button className="secondary" disabled={!data.previous} onClick={() => setPage(value => value - 1)}>Previous</button><button className="secondary" disabled={!data.next} onClick={() => setPage(value => value + 1)}>Next</button></div></div></> : <p className="muted">No files attached yet.</p>}
-    {showForm && <form className="history-form" onSubmit={upload}><div className="field"><label htmlFor="client-attachment">Add a file</label><input id="client-attachment" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" onChange={event => setFile(event.target.files?.[0] ?? null)} /></div><button className="primary" disabled={!file || busy}>{busy ? 'Uploading…' : 'Upload file'}</button></form>}
+    {showForm && <form className="history-form" onSubmit={upload}><div className="field"><label htmlFor="client-attachment">Add a file</label><div className="client-file-control"><input ref={inputRef} id="client-attachment" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" tabIndex={-1} disabled={busy} onChange={event => { setFile(event.target.files?.[0] ?? null); setError(''); }} /><button type="button" className="secondary" disabled={busy} onClick={() => inputRef.current?.click()}>Choose file</button><span aria-live="polite">{file?.name ?? 'No file selected'}</span></div></div><button className="primary" disabled={!file || busy}>{busy ? 'Uploading…' : 'Upload file'}</button></form>}
     {error && <p role="alert" className="notice error">{error}</p>}
   </section>;
 }
