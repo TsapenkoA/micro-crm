@@ -135,7 +135,7 @@ it('opens real details, traps focus and restores focus after Escape', async () =
   await within(dialog).findByText('No links yet. Add a brief, design, or repository URL.');
   await userEvent.click(within(dialog).getByRole('button', { name: /^Files(?: \d+)?$/ }));
   await userEvent.click(within(dialog).getByRole('button', { name: 'Add file' }));
-  const lastControl = within(dialog).getByLabelText('Add a file');
+  const lastControl = within(dialog).getByRole('button', { name: 'Choose file' });
   lastControl.focus();
   expect(lastControl).toHaveFocus();
   await userEvent.tab();
@@ -213,7 +213,10 @@ it('edits a saved link and uploads a client file', async () => {
   await userEvent.click(within(dialog).getByRole('button', { name: /^Files(?: \d+)?$/ }));
   await userEvent.click(within(dialog).getByRole('button', { name: 'Add file' }));
   const file = new File(['%PDF-1.4'], 'brief.pdf', { type: 'application/pdf' });
+  expect(within(dialog).getByRole('button', { name: 'Choose file' })).toBeEnabled();
+  expect(within(dialog).getByText('No file selected')).toBeInTheDocument();
   await userEvent.upload(within(dialog).getByLabelText('Add a file'), file);
+  expect(within(dialog).getByText('brief.pdf')).toBeInTheDocument();
   await userEvent.click(within(dialog).getByRole('button', { name: 'Upload file' }));
   await waitFor(() => expect(clients.addAttachment).toHaveBeenCalledWith(record.id, file));
 });
