@@ -121,8 +121,8 @@
   .application-workspace .workspace-main { padding: 24px; }
 }
 @media (max-width: 767px) {
-  .application-workspace.tasks-workspace, .application-workspace.tasks-workspace.sidebar-collapsed { display: block; }
-  .application-workspace.tasks-workspace .task-topbar { display: grid; grid-template-columns: 1fr auto; grid-template-rows: 46px 42px 42px; gap: 4px; padding: 6px 14px 10px; }
+  .application-workspace.tasks-workspace, .application-workspace.tasks-workspace.sidebar-collapsed { --mobile-topbar-height: 154px; display: block; padding-top: var(--mobile-topbar-height); }
+  .application-workspace.tasks-workspace .task-topbar { position: fixed; inset: 0 0 auto; height: var(--mobile-topbar-height); display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 46px 42px 42px; gap: 4px; padding: 6px 14px 10px; }
   .application-workspace .task-topbar .workspace-brand { padding: 0; font-size: 21.1px; }
   .application-workspace.sidebar-collapsed .task-topbar .workspace-brand > span:last-child { display: inline; }
   .application-workspace .task-topbar .workspace-brand-mark { width: 34px; height: 34px; }
