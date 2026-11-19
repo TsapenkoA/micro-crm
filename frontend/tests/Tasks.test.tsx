@@ -70,8 +70,63 @@ it('filters tasks by client and deal and opens the editor from the list', async 
   await screen.findByRole('button', { name: 'Send brief' });
   await userEvent.selectOptions(screen.getByLabelText('Filter tasks by client'), 'client-1');
   await waitFor(() => expect(list).toHaveBeenCalledWith(expect.objectContaining({ search: 'brief', client: 'client-1' }), expect.any(AbortSignal)));
-  await userEvent.click(screen.getByRole('button', { name: 'Edit Send brief' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Actions for Send brief' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Edit task' }));
   expect(screen.getByRole('heading', { name: 'Edit task' })).toBeInTheDocument();
+});
+
+it('completes and reopens a task using the row action', async () => {
+  choices();
+  let current = task;
+  vi.spyOn(tasks, 'list').mockImplementation(async () => ({ count: 1, next: null, previous: null, results: [current] }));
+  const update = vi.spyOn(tasks, 'update').mockImplementation(async (_id, changes) => {
+    current = { ...current, ...changes };
+    return current;
+  });
+  render(<TasksPage user={user} />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Complete' }));
+  expect(await screen.findByText('Task completed.')).toBeInTheDocument();
+  await userEvent.click(await screen.findByRole('button', { name: 'Reopen' }));
+  expect(await screen.findByText('Task reopened.')).toBeInTheDocument();
+  expect(update).toHaveBeenLastCalledWith(task.id, { status: 'open' });
+});
+
+it('confirms deletion and refreshes tasks and counters after success', async () => {
+  choices();
+  let deleted = false;
+  vi.spyOn(tasks, 'list').mockImplementation(async () => ({ count: deleted ? 0 : 1, next: null, previous: null, results: deleted ? [] : [task] }));
+  const remove = vi.spyOn(tasks, 'remove').mockImplementation(async () => { deleted = true; });
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  const onCountChanged = vi.fn();
+  render(<TasksPage user={user} onCountChanged={onCountChanged} />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Actions for Send brief' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Delete task' }));
+  expect(remove).not.toHaveBeenCalled();
+  confirm.mockReturnValue(true);
+  await userEvent.click(screen.getByRole('button', { name: 'Actions for Send brief' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Delete task' }));
+  expect(await screen.findByText('Task deleted.')).toBeInTheDocument();
+  expect(await screen.findByText('No tasks in this view.')).toBeInTheDocument();
+  expect(remove).toHaveBeenCalledWith(task.id);
+  expect(onCountChanged).toHaveBeenCalledOnce();
+  expect(screen.getByRole('button', { name: 'My tasks 0' })).toBeInTheDocument();
+});
+
+it('closes task actions with Escape and preserves the task when deletion fails', async () => {
+  choices();
+  vi.spyOn(tasks, 'list').mockResolvedValue({ count: 1, next: null, previous: null, results: [task] });
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  vi.spyOn(tasks, 'remove').mockRejectedValue(new Error('Unable to delete the task.'));
+  render(<TasksPage user={user} />);
+  const trigger = await screen.findByRole('button', { name: 'Actions for Send brief' });
+  await userEvent.click(trigger);
+  await userEvent.keyboard('{Escape}');
+  expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  expect(trigger).toHaveFocus();
+  await userEvent.click(trigger);
+  await userEvent.click(screen.getByRole('button', { name: 'Delete task' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Unable to delete the task.');
+  expect(screen.getByRole('button', { name: 'Send brief' })).toBeInTheDocument();
 });
 
 it('opens a task by ID even when it is outside the first list page', async () => {
@@ -83,4 +138,24 @@ it('opens a task by ID even when it is outside the first list page', async () =>
   expect(await screen.findByRole('heading', { name: 'Edit task' })).toBeInTheDocument();
   expect(detail).toHaveBeenCalledWith('task-1', expect.any(AbortSignal));
   window.location.hash = '';
+});
+
+it('brings the linked task editor into view on a narrow screen', async () => {
+  choices();
+  window.location.hash = '#/tasks?task=task-1';
+  vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: true } as MediaQueryList);
+  vi.spyOn(tasks, 'list').mockResolvedValue({ count: 0, next: null, previous: null, results: [] });
+  vi.spyOn(tasks, 'detail').mockResolvedValue(task);
+  const scroll = vi.fn();
+  const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView');
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scroll });
+  try {
+    render(<TasksPage user={user} />);
+    expect(await screen.findByRole('heading', { name: 'Edit task' })).toBeInTheDocument();
+    await waitFor(() => expect(scroll).toHaveBeenCalledWith({ block: 'start' }));
+    expect(screen.getByLabelText('Title')).toHaveValue(task.title);
+  } finally {
+    if (original) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', original);
+    else Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
+  }
 });

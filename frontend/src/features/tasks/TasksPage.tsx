@@ -45,6 +45,13 @@ export default function TasksPage({ user, search = '', onCountChanged }: { user:
   const [dealFilter, setDealFilter] = useState('');
   const [counts, setCounts] = useState<Partial<Record<View, number>>>({});
   const selectedInitially = useRef(false);
+  const editorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (editor && window.matchMedia('(max-width: 1100px)').matches) {
+      editorRef.current?.scrollIntoView({ block: 'start' });
+    }
+  }, [editor]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -162,7 +169,7 @@ export default function TasksPage({ user, search = '', onCountChanged }: { user:
     </li>)}</ul> : <p className="tasks-empty">{view === 'overdue' ? 'No overdue tasks.' : view === 'done' ? 'No completed tasks yet.' : 'No tasks in this view.'}</p>)}
       {data && <footer className="pagination"><span>{data.count} tasks</span><div className="button-row"><button className="secondary" aria-label="Previous page" disabled={!data.previous} onClick={() => setPage(value => value - 1)}>‹</button><span className="tasks-page-number">{page}</span><button className="secondary" aria-label="Next page" disabled={!data.next} onClick={() => setPage(value => value + 1)}>›</button></div></footer>}
     </div>
-    {editor ? <div className="panel tasks-editor"><h2>{editor === 'new' ? 'New task' : 'Edit task'}</h2><form className="auth-form" onSubmit={save} key={editor === 'new' ? 'new' : editor.id}>
+    {editor ? <div ref={editorRef} className="panel tasks-editor"><h2>{editor === 'new' ? 'New task' : 'Edit task'}</h2><form className="auth-form" onSubmit={save} key={editor === 'new' ? 'new' : editor.id}>
       <label className="field">Title<input name="title" defaultValue={editor === 'new' ? '' : editor.title} maxLength={250} required disabled={busy} autoFocus /></label>
       {editor === 'new' && <><label className="field">Client<select name="client" value={currentClient} required disabled={busy} onChange={event => setSelectedClient(event.target.value)}>{clients.map(client => <option key={client.id} value={client.id}>{client.name}{client.company ? ` · ${client.company}` : ''}</option>)}</select></label>
         <label className="field">Deal (optional)<select key={currentClient} name="deal" defaultValue={linkedDeal} disabled={busy}><option value="">No deal</option>{dealsList.filter(deal => deal.client === currentClient).map(deal => <option key={deal.id} value={deal.id}>{deal.title}</option>)}</select></label></>}
