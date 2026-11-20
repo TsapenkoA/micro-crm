@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it, vi } from 'vitest';
 import App from '../src/app/App';
 import { auth, workspace } from '../src/api/client';
-import LoginForm from '../src/features/auth/LoginForm';
 import ThemeSelect from '../src/components/ThemeSelect';
 
 afterEach(() => { vi.restoreAllMocks(); localStorage.removeItem('sidebar-collapsed'); });

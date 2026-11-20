@@ -7,7 +7,7 @@ from django.core.management import call_command
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from crm.models import ActivityEvent, Client, Deal
+from crm.models import ActivityEvent
 
 
 pytestmark = pytest.mark.django_db
@@ -126,3 +126,8 @@ def test_client_file_and_bank_events_show_names_without_private_values(user, oth
     assert "DE89370400440532013000" not in str(events)
     assert "Private project scope" not in str(events)
     assert foreign.get("/api/v1/activity").json()["count"] == 0
+
+
+@pytest.fixture(autouse=True)
+def clean_file_scanner(monkeypatch):
+    monkeypatch.setattr("crm.clients.views.scan_upload", lambda content: None)

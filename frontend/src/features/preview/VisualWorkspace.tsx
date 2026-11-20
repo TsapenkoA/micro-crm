@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import NavIcon from '../../components/NavIcon';
 import { ApiError, workspace } from '../../api/client';
-import { money, shortDate, stages, type PreviewClient, type PreviewContent, type PreviewDeal, type PreviewInvoice, type Stage } from './data';
+import { type PreviewClient, type PreviewContent, type PreviewDeal, type PreviewInvoice } from './data';
 import { pages, currentPage, Icon, UserAvatar, type Page, type Editor, type PreviewTheme, type PreviewProfile } from './PreviewParts';
 import DealsPreview from './PreviewDeals';
 import DashboardPreview from './PreviewDashboard';

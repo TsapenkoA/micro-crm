@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Dialog from '../../components/Dialog';
-import { money, shortDate, type PreviewClient, type PreviewContent, type PreviewInvoice } from './data';
+import { money, type PreviewClient, type PreviewContent, type PreviewInvoice } from './data';
 import { Badge, Empty, Icon, type PreviewProfile } from './PreviewParts';
 import { InvoicePaper } from './PreviewEditor';
 
