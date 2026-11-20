@@ -24,11 +24,14 @@ CREATE DATABASE test_micro_crm OWNER micro_crm;
 
 Skip existing roles/databases. If PGDATABASE differs, use test_<PGDATABASE> for the test database.
 
+Create a protected directory outside the repository for a local recovery key (the example below uses `C:\secure`; choose your own path). Each developer generates their own key and uses their own local database. Never copy a teammate's `.env` or commit keys, database archives or customer files. For an existing database, follow the backup and rehearsal steps in [backend/SECURITY.md](backend/SECURITY.md) before applying encryption migrations.
+
 Start the backend:
 
 ```powershell
 cd backend
 uv sync --locked
+uv run python manage.py initialize_data_key --recovery-file C:\secure\microflow-data.key
 uv run python manage.py migrate
 uv run python manage.py createsuperuser
 uv run python manage.py runserver 127.0.0.1:8000
@@ -46,10 +49,10 @@ Open http://127.0.0.1:5173. Register at /sign-up or use the optional local admin
 
 ## First use
 
-1. Sign in or register and verify your email to create a personal workspace. Assign a colleague through the backend management command when company data should be shared.
+1. Sign in or register and verify your email to create a personal workspace. Send a join request from Settings > Workspace when company data should be shared. Trusted administrators can still use the backend management command.
 2. Open Clients and create a customer. Its details contain a primary and additional contacts, related invoices, shared notes, editable links and private files.
 3. Open Deals and create a deal for that client. Move it through the board or edit its status in the details panel. In Tasks, assign a next step to a teammate with a due time. Check My tasks, Team, Overdue and Upcoming; the Dashboard also shows your next open tasks.
-4. In Settings, update your profile photo or workspace name and review members. The workspace owner can add an existing account with an empty personal workspace and save both the seller profile and payment details after a recent identity check. Add a client's payer bank details in the client form. Open Invoices, create a draft with line items, a due date and optional deal for the same client. New drafts copy the saved seller profile; older invoices keep their original details. Issue without email or explicitly email the PDF when SMTP is configured. Review overdue invoices, preview and confirm reminders, and record confirmed partial or full payments. Linked invoices and deals open from each other's details; their statuses remain independent.
+4. In Settings, update your profile photo or workspace name and review members. The workspace owner can send a join request to an existing account; its owner must accept in Settings > Workspace while their personal workspace is empty. The workspace owner can also save both the seller profile and payment details after a recent identity check. Add a client's payer bank details in the client form. Open Invoices, create a draft with line items, a due date and optional deal for the same client. New drafts copy the saved seller profile; older invoices keep their original details. Issue without email or explicitly email the PDF when SMTP is configured. Review overdue invoices, preview and confirm reminders, and record confirmed partial or full payments. Linked invoices and deals open from each other's details; their statuses remain independent.
 5. Open Dashboard to inspect deal metrics and revenue from recorded invoice payments. Choose USD, EUR, GBP, PLN, AUD, CAD, CHF or JPY as your personal reporting currency; supported original currencies are converted using stored ECB reference rates. The original amounts remain unchanged.
 6. Open Operations to review assigned tasks and upcoming or overdue invoice and deal deadlines. Complete a task there or review the text before manually sending an overdue invoice reminder. Open Activity to see who created, changed or deleted a client, deal, task or invoice. The journal starts when the activity migration is applied; earlier actions cannot be reconstructed.
 
@@ -78,3 +81,9 @@ npm.cmd run build
 ```
 
 Backend tests require PostgreSQL and the precreated test database. They reuse that database and never use the application database. Back up existing application data before applying migrations.
+
+## Security prerequisites
+
+See [backend/SECURITY.md](backend/SECURITY.md) for workspace consent, CSP, key recovery and the limits of field-level encryption. Set `FILE_SCAN_HOST` and `FILE_SCAN_PORT` for a trusted private ClamAV service before using client file uploads/downloads. Without it, those operations return a controlled 503; tests use a scanner stub only where explicitly declared. Other CRM features do not require the scanner. Storage encryption for the complete PostgreSQL database and backups remains a hosting requirement.
+
+On Windows x64, use `./scripts/start-file-scanner.ps1 -Setup` once and restart Django. Run `./scripts/start-file-scanner.ps1` after restarting Windows. The portable scanner and updater run locally; the script verifies clean/EICAR detection before configuring the application. No binaries, signatures or secrets are committed. See the security instructions for other operating systems and recovery-key handling.
