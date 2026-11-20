@@ -9,7 +9,7 @@ export type Client = ClientInput & {
   updated_at: string;
   deal_count?: number;
 };
-export type ClientDeal = {
+type ClientDeal = {
   id: string;
   title: string;
   status: string;

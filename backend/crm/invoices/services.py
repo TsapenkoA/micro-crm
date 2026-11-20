@@ -5,7 +5,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 from crm.models import Invoice
 from crm.models import InvoicePayment
-from crm.services.calculations import money_string, round_money
+from crm.services.calculations import round_money
 from crm.services.fx import rate_date_for
 
 

@@ -4,6 +4,7 @@ from rest_framework import serializers
 from crm.api.serializers import StrictModelSerializer, StrictSerializer, WorkspaceClientField
 from crm.models import Client, Deal, Invoice, InvoiceDelivery, InvoiceDueDateCorrection, InvoiceItem, InvoicePayment
 from crm.services.calculations import CURRENCY_PLACES, money_string
+from crm.invoices.services import recorded_total
 
 
 class SellerSerializer(StrictSerializer):
@@ -122,10 +123,10 @@ class InvoiceOutputSerializer(StrictModelSerializer):
         return InvoicePaymentOutputSerializer(invoice.payments.all(), many=True).data
 
     def get_paid_amount(self, invoice):
-        return money_string(sum((payment.amount for payment in invoice.payments.all() if payment.voided_at is None), Decimal("0")), invoice.currency)
+        return money_string(recorded_total(invoice), invoice.currency)
 
     def get_balance_due(self, invoice):
-        paid = sum((payment.amount for payment in invoice.payments.all() if payment.voided_at is None), Decimal("0"))
+        paid = recorded_total(invoice)
         return money_string(max(invoice.total_amount - paid, Decimal("0")), invoice.currency)
 
     def get_overdue(self, invoice):

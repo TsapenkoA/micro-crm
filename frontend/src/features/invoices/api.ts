@@ -4,10 +4,10 @@ export type InvoiceItemInput = { description: string; quantity: string; unit_pri
 export const currencyPlaces = { USD: 2, EUR: 2, GBP: 2, PLN: 2, AUD: 2, CAD: 2, CHF: 2, JPY: 0 } as const;
 export const invoiceCurrencies = ['USD', 'EUR', 'GBP', 'PLN', ...Object.keys(currencyPlaces).filter(currency => !['USD', 'EUR', 'GBP', 'PLN'].includes(currency)).sort()];
 export type InvoiceInput = { client: string; deal: string | null; currency: string; due_date: string | null; payment_terms: string; seller?: { name: string; email: string; phone: string; address: string; tax_id: string }; items: InvoiceItemInput[] };
-export type InvoiceItem = InvoiceItemInput & { id: number; position: number; line_total: string; tax_amount: string };
-export type InvoicePayment = { id: string; amount: string; received_on: string; reference: string; is_legacy: boolean; created_at: string; voided_at: string | null; voided_by: number | null; void_reason: string };
-export type InvoiceDelivery = { id: string; kind: 'invoice' | 'reminder'; result: 'pending' | 'accepted' | 'failed' | 'unknown'; recipient: string; attempted_at: string; resolved_at: string | null; resolution_reason: string };
-export type InvoiceDueDateCorrection = { id: string; previous_due_date: string | null; due_date: string; reason: string; corrected_by: number; created_at: string };
+type InvoiceItem = InvoiceItemInput & { id: number; position: number; line_total: string; tax_amount: string };
+type InvoicePayment = { id: string; amount: string; received_on: string; reference: string; is_legacy: boolean; created_at: string; voided_at: string | null; voided_by: number | null; void_reason: string };
+type InvoiceDelivery = { id: string; kind: 'invoice' | 'reminder'; result: 'pending' | 'accepted' | 'failed' | 'unknown'; recipient: string; attempted_at: string; resolved_at: string | null; resolution_reason: string };
+type InvoiceDueDateCorrection = { id: string; previous_due_date: string | null; due_date: string; reason: string; corrected_by: number; created_at: string };
 export type InvoiceListItem = { id: string; invoice_number: string; client: string; deal: string | null; client_name: string; client_company: string; description: string; currency: string; status: Invoice['status']; issued_at: string | null; due_date: string | null; total_amount: string; overdue: boolean; needs_due_date: boolean; created_at: string };
 export type Invoice = {
   id: string; invoice_number: string; client: string; deal: string | null; currency: string; status: 'draft' | 'sent' | 'paid' | 'cancelled';
@@ -19,7 +19,7 @@ export type Invoice = {
   cancelled_at: string | null; cancellation_reason: string; created_at: string;
 };
 export type ReminderPreview = { subject: string; body: string; can_send: boolean; reason: string };
-export type InvoicePage = { count: number; results: InvoiceListItem[]; next: string | null; previous: string | null };
+type InvoicePage = { count: number; results: InvoiceListItem[]; next: string | null; previous: string | null };
 export type InvoiceSummary = { currency: string; sent: { count: number; amount: string }; paid: { count: number; amount: string }; draft: { count: number; amount: string }; overdue: { count: number; amount: string } };
 
 export const invoices = {
