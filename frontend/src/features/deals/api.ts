@@ -11,11 +11,11 @@ export const stages = [
 ] as const;
 export type Status = typeof stages[number]['id'];
 export type Outcome = 'none' | 'lost' | 'cancelled';
-export type DealInput = { title: string; client: string; status: Status; amount: string; currency: string; deadline: string | null; outcome: Outcome };
+export type DealInput = { title: string; description?: string; client: string; status: Status; amount: string; currency: string; deadline: string | null; outcome: Outcome };
 export type Deal = DealInput & { id: string; version: number; paid_at: string | null; created_at: string; updated_at: string };
 export type Total = { status: Status; currency: string; count: number; amount: string };
-export type DealPage = { count: number; results: Deal[]; next: string | null; previous: string | null; totals: Total[] };
-export type Filters = { search: string; status: string; currency: string };
+type DealPage = { count: number; results: Deal[]; next: string | null; previous: string | null; totals: Total[] };
+type Filters = { search: string; status: string; currency: string };
 
 export const deals = {
   page(filters: Filters, page = 1, ordering = 'newest', signal?: AbortSignal) {

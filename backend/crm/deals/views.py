@@ -3,7 +3,7 @@ from django.db.models import Count, F, Sum
 from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework import filters, generics, status
+from rest_framework import filters, generics
 from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -107,6 +107,7 @@ class DealDetail(DealQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
         self.lock_membership()
         instance = self.get_object()
         before = snapshot(instance)
+        previous_description = instance.description
         serializer = self.get_serializer(instance, data=request.data, partial=kwargs.pop("partial", False))
         serializer.is_valid(raise_exception=True)
         values = dict(serializer.validated_data)
@@ -136,6 +137,8 @@ class DealDetail(DealQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
             raise ValidationError({"client": "Remove linked invoices before changing this deal's client."})
         instance.refresh_from_db()
         log_activity(instance, request.user, "updated", before)
+        if instance.description != previous_description:
+            log_activity(instance, request.user, "description_updated")
         return Response(DealSerializer(instance, context=self.get_serializer_context()).data)
 
     @transaction.atomic
