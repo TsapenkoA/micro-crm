@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from crm.models import Client, Deal, Task, WorkspaceMembership
+from crm.models import Client, Deal, Task
 
 
 class TaskSerializer(serializers.ModelSerializer):

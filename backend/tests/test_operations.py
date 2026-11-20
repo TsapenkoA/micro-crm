@@ -82,3 +82,7 @@ def test_operations_pages_keep_new_deadlines_reachable(user, client_record):
     assert len(first["results"]) == 20 and len(second["results"]) == 1
     assert {item["id"] for item in first["results"]}.isdisjoint({item["id"] for item in second["results"]})
     assert api.get("/api/v1/operations/overview?page=0").status_code == 400
+
+    empty = api.get("/api/v1/operations/overview", {"page": "9" * 30, "undated_page": "9" * 30}).json()
+    assert empty["today"]["count"] == 21 and empty["today"]["results"] == []
+    assert empty["undated_invoices"]["results"] == []

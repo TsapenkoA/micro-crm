@@ -4,11 +4,11 @@ import { workspace, type WorkspaceSettings, type User } from '../../api/client';
 import ActionIcon from '../../components/ActionIcon';
 import { deals, type Deal } from '../deals/api';
 import type { Client } from '../clients/api';
-import { tasks, type Task, type TaskFilters, type TaskInput, type TaskPage } from './api';
+import { tasks, type Task, type TaskFilters, type TaskCounts, type TaskInput, type TaskPage } from './api';
 import './tasks.css';
 import TaskActions from './TaskActions';
 
-type View = 'mine' | 'team' | 'overdue' | 'upcoming' | 'done';
+type View = keyof TaskCounts;
 const views: { id: View; label: string; filters: TaskFilters }[] = [
   { id: 'mine', label: 'My tasks', filters: { mine: true, status: 'open' } },
   { id: 'team', label: 'Team', filters: { status: 'open' } },
@@ -38,6 +38,8 @@ export default function TasksPage({ user, search = '', onCountChanged }: { user:
   const [dealsList, setDealsList] = useState<Deal[]>([]);
   const [members, setMembers] = useState<WorkspaceSettings['members']>([]);
   const [choicesLoading, setChoicesLoading] = useState(true);
+  const [choicesError, setChoicesError] = useState('');
+  const [choicesRevision, setChoicesRevision] = useState(0);
   const [formError, setFormError] = useState('');
   const [selectedClient, setSelectedClient] = useState('');
   const [linkedDeal, setLinkedDeal] = useState('');
@@ -86,27 +88,26 @@ export default function TasksPage({ user, search = '', onCountChanged }: { user:
   useEffect(() => {
     const controller = new AbortController();
     setCounts({});
-    Promise.all(views.map(async item => ({
-      id: item.id,
-      count: (await tasks.list({ ...item.filters, search, client: clientFilter, deal: dealFilter, page_size: 1 }, controller.signal)).count,
-    }))).then(results => {
-      if (!controller.signal.aborted) setCounts(Object.fromEntries(results.map(item => [item.id, item.count])));
+    tasks.counts({ search, client: clientFilter, deal: dealFilter }, controller.signal).then(result => {
+      if (!controller.signal.aborted) setCounts(result);
     }).catch(() => { if (!controller.signal.aborted) setCounts({}); });
     return () => controller.abort();
   }, [revision, search, clientFilter, dealFilter]);
 
   useEffect(() => {
     const controller = new AbortController();
+    setChoicesLoading(true); setChoicesError('');
     Promise.all([workspace.settings(), deals.clients(controller.signal), deals.list({ search: '', status: '', currency: '' }, controller.signal)])
       .then(([settings, clientRows, dealRows]) => { if (!controller.signal.aborted) { setMembers(settings.members); setClients(clientRows); setDealsList(dealRows.results); } })
-      .catch(() => { if (!controller.signal.aborted) setFormError('Unable to load task choices. Refresh to retry.'); })
+      .catch(() => { if (!controller.signal.aborted) setChoicesError('Unable to load task choices. Retry to load workspace members and clients.'); })
       .finally(() => { if (!controller.signal.aborted) setChoicesLoading(false); });
     return () => controller.abort();
-  }, []);
+  }, [choicesRevision]);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editor || busy) return;
+    if (choicesLoading || choicesError || !members.length) return;
     const form = new FormData(event.currentTarget);
     const title = String(form.get('title') ?? '').trim();
     const due = String(form.get('due_at') ?? '');
@@ -156,9 +157,35 @@ export default function TasksPage({ user, search = '', onCountChanged }: { user:
 
   const currentClient = selectedClient || clients[0]?.id || '';
   return <section className="tasks-page" aria-label="Workspace tasks">
-    <div className="tasks-toolbar"><div className="tasks-tabs" role="group" aria-label="Task filters">{views.map(item => <button key={item.id} aria-pressed={view === item.id} onClick={() => { setView(item.id); setPage(1); setEditor(null); }}>{item.label}{counts[item.id] !== undefined && <> <span className="tasks-tab-count">{counts[item.id]}</span></>}</button>)}</div><div className="tasks-toolbar-actions"><label className="tasks-filter"><span>Clients</span><select aria-label="Filter tasks by client" value={clientFilter} onChange={event => { setClientFilter(event.target.value); setDealFilter(''); setPage(1); }}><option value="">All clients</option>{clients.map(client => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label><label className="tasks-filter"><span>Deals</span><select aria-label="Filter tasks by deal" value={dealFilter} onChange={event => { setDealFilter(event.target.value); setPage(1); }}><option value="">All deals</option>{dealsList.filter(deal => !clientFilter || deal.client === clientFilter).map(deal => <option key={deal.id} value={deal.id}>{deal.title}</option>)}</select></label><button className="primary tasks-new" disabled={choicesLoading || !clients.length || !members.length} onClick={() => { setFormError(''); setSelectedClient(''); setLinkedDeal(''); setEditor('new'); }}><ActionIcon name="add" />New task</button></div></div>
+    <div className="tasks-toolbar">
+      <div className="tasks-tabs" role="group" aria-label="Task filters">
+        {views.map(item => <button key={item.id} aria-pressed={view === item.id} onClick={() => { setView(item.id); setPage(1); setEditor(null); }}>
+          {item.label}{counts[item.id] !== undefined && <> <span className="tasks-tab-count">{counts[item.id]}</span></>}
+        </button>)}
+      </div>
+      <div className="tasks-toolbar-actions">
+        <label className="tasks-filter">
+          <span>Clients</span>
+          <select aria-label="Filter tasks by client" value={clientFilter} onChange={event => { setClientFilter(event.target.value); setDealFilter(''); setPage(1); }}>
+            <option value="">All clients</option>
+            {clients.map(client => <option key={client.id} value={client.id}>{client.name}</option>)}
+          </select>
+        </label>
+        <label className="tasks-filter">
+          <span>Deals</span>
+          <select aria-label="Filter tasks by deal" value={dealFilter} onChange={event => { setDealFilter(event.target.value); setPage(1); }}>
+            <option value="">All deals</option>
+            {dealsList.filter(deal => !clientFilter || deal.client === clientFilter).map(deal => <option key={deal.id} value={deal.id}>{deal.title}</option>)}
+          </select>
+        </label>
+        <button className="primary tasks-new" disabled={choicesLoading || !clients.length || !members.length} onClick={() => { setFormError(''); setSelectedClient(''); setLinkedDeal(''); setEditor('new'); }}>
+          <ActionIcon name="add" />New task
+        </button>
+      </div>
+    </div>
     {!choicesLoading && !clients.length && !formError && <p className="muted">Create a client before adding a task.</p>}
     {!editor && formError && <p role="alert" className="notice error">{formError}</p>}
+    {choicesError && <div role="alert" className="notice error">{choicesError} <button className="secondary" onClick={() => setChoicesRevision(value => value + 1)}>Retry task choices</button></div>}
     {error && <div className="notice error" role="alert">{error} <button className="secondary" onClick={() => setRevision(value => value + 1)}>Retry</button></div>}
     {message && <p className="notice success" role="status">{message}</p>}
     <div className="tasks-content"><div className="panel tasks-list">{loading ? <p role="status" className="tasks-empty">Loading tasks…</p> : data && (data.results.length ? <ul>{data.results.map(task => <li key={task.id} className={editor !== 'new' && editor?.id === task.id ? 'is-selected' : ''}>
@@ -173,10 +200,10 @@ export default function TasksPage({ user, search = '', onCountChanged }: { user:
       <label className="field">Title<input name="title" defaultValue={editor === 'new' ? '' : editor.title} maxLength={250} required disabled={busy} autoFocus /></label>
       {editor === 'new' && <><label className="field">Client<select name="client" value={currentClient} required disabled={busy} onChange={event => setSelectedClient(event.target.value)}>{clients.map(client => <option key={client.id} value={client.id}>{client.name}{client.company ? ` · ${client.company}` : ''}</option>)}</select></label>
         <label className="field">Deal (optional)<select key={currentClient} name="deal" defaultValue={linkedDeal} disabled={busy}><option value="">No deal</option>{dealsList.filter(deal => deal.client === currentClient).map(deal => <option key={deal.id} value={deal.id}>{deal.title}</option>)}</select></label></>}
-      <label className="field">Assignee<select name="assignee" defaultValue={editor === 'new' ? user.id : editor.assignee ?? ''} required disabled={busy}><option value="" disabled>Choose a member</option>{members.map(member => <option key={member.id} value={member.id}>{member.name || member.username}</option>)}</select></label>
+      <label className="field">Assignee<select key={members.map(member => member.id).join(',')} name="assignee" defaultValue={editor === 'new' ? user.id : editor.assignee ?? ''} required disabled={busy || choicesLoading || !!choicesError}><option value="" disabled>{choicesLoading ? 'Loading members...' : 'Choose a member'}</option>{members.map(member => <option key={member.id} value={member.id}>{member.name || member.username}</option>)}</select></label>
       <label className="field">Due date<DateInput name="due_at" time defaultValue={editor === 'new' ? '' : localDateTime(editor.due_at)} required disabled={busy} /></label>
       {formError && <p role="alert" className="notice error">{formError}</p>}
-      <div className="button-row"><button type="button" className="secondary" disabled={busy} onClick={() => setEditor(null)}>Cancel</button><button className="primary" disabled={busy}>{busy ? 'Saving…' : editor === 'new' ? 'Create task' : 'Save'}</button></div>
+      <div className="button-row"><button type="button" className="secondary" disabled={busy} onClick={() => setEditor(null)}>Cancel</button><button className="primary" disabled={busy || choicesLoading || !!choicesError || !members.length}>{busy ? 'Saving…' : editor === 'new' ? 'Create task' : 'Save'}</button></div>
     </form></div> : <div className="panel tasks-editor tasks-editor-empty"><h2>Task details</h2><p className="muted">Select a task to edit it, or create a new one.</p></div>}</div>
   </section>;
 }

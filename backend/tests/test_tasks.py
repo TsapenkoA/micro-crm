@@ -97,3 +97,24 @@ def test_removing_member_unassigns_their_tasks_without_losing_them(user, client_
     assert WorkspaceMembership.objects.get(user=colleague).workspace_id != company.pk
     assert api.get(f"/api/v1/tasks/{task.pk}").json()["assignee_name"] is None
     assert api.patch(f"/api/v1/tasks/{task.pk}", {"assignee": user.pk}, format="json", HTTP_X_CSRFTOKEN=token).status_code == 200
+
+
+def test_task_counts_share_filters_and_exclude_other_workspaces(api, user, other_user, client_record):
+    now = timezone.now()
+    for assignee, status, due in ((user, "open", now - timedelta(days=1)), (user, "done", now), (None, "open", now + timedelta(days=1))):
+        Task.objects.create(workspace=client_record.workspace, client=client_record, created_by=user,
+                            assignee=assignee, title="Review brief", status=status, due_at=due)
+    foreign = Client.objects.create(workspace=other_user.workspace_membership.workspace, created_by=other_user, name="Foreign")
+    Task.objects.create(workspace=foreign.workspace, client=foreign, created_by=other_user, assignee=other_user,
+                        title="Review brief", due_at=now)
+    path = "/api/v1/tasks/counts"
+    assert api.get(path).status_code == 403
+    api.force_login(user)
+    assert api.get(path, {"search": "brief", "client": str(client_record.pk)}).json() == {
+        "mine": 1, "team": 2, "overdue": 1, "upcoming": 1, "done": 1,
+    }
+    assert not any(api.get(path, {"search": "missing"}).json().values())
+    assert not any(api.get(path, {"client": str(foreign.pk)}).json().values())
+    assert api.get(path, {"client": "invalid"}).status_code == 400
+    api.credentials(HTTP_X_CSRFTOKEN=api.get("/api/v1/auth/csrf").json()["csrfToken"])
+    assert api.post(path).status_code == 405

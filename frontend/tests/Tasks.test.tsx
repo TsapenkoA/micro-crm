@@ -13,6 +13,7 @@ const task: Task = { id: 'task-1', client: 'client-1', client_name: 'Client', de
 afterEach(() => { vi.restoreAllMocks(); window.location.hash = ''; });
 
 function choices() {
+  vi.spyOn(tasks, 'counts').mockResolvedValue({ mine: 0, team: 0, overdue: 0, upcoming: 0, done: 0 });
   vi.spyOn(workspace, 'settings').mockResolvedValue({ id: 'workspace', name: 'Studio', can_manage_members: true, members: [{ id: 1, username: 'alex', name: '', email: user.email }, member] });
   vi.spyOn(deals, 'clients').mockResolvedValue([{ id: 'client-1', name: 'Client', company: 'Studio', email: '', phone: '', bank_details: {}, workspace: 'workspace', created_by: 1, created_at: '', updated_at: '' }]);
   vi.spyOn(deals, 'list').mockResolvedValue({ results: [], totals: [] });
@@ -38,16 +39,16 @@ it('shows an empty task view and creates a task for a teammate', async () => {
 
 it('shows counts for every task view', async () => {
   choices();
-  vi.spyOn(tasks, 'list').mockImplementation(async filters => ({
-    count: filters?.due === 'overdue' ? 3 : filters?.due === 'upcoming' ? 4 : filters?.status === 'done' ? 5 : filters?.mine ? 2 : 6,
-    next: null, previous: null, results: [],
-  }));
+  vi.spyOn(tasks, 'list').mockResolvedValue({ count: 0, next: null, previous: null, results: [] });
+  vi.mocked(tasks.counts).mockResolvedValue({ mine: 2, team: 6, overdue: 3, upcoming: 4, done: 5 });
   render(<TasksPage user={user} />);
   expect(await screen.findByRole('button', { name: 'My tasks 2' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Team 6' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Overdue 3' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Upcoming 4' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Done 5' })).toBeInTheDocument();
+  expect(tasks.counts).toHaveBeenCalledOnce();
+  expect(tasks.list).toHaveBeenCalledOnce();
 });
 
 it('shows team tasks and marks one complete after a server response', async () => {
@@ -94,6 +95,7 @@ it('completes and reopens a task using the row action', async () => {
 it('confirms deletion and refreshes tasks and counters after success', async () => {
   choices();
   let deleted = false;
+  vi.mocked(tasks.counts).mockImplementation(async () => ({ mine: deleted ? 0 : 1, team: deleted ? 0 : 1, overdue: 0, upcoming: 0, done: 0 }));
   vi.spyOn(tasks, 'list').mockImplementation(async () => ({ count: deleted ? 0 : 1, next: null, previous: null, results: deleted ? [] : [task] }));
   const remove = vi.spyOn(tasks, 'remove').mockImplementation(async () => { deleted = true; });
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
@@ -158,4 +160,24 @@ it('brings the linked task editor into view on a narrow screen', async () => {
     if (original) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', original);
     else Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
   }
+});
+
+
+it('retries failed choices without losing edits and restores the assigned member', async () => {
+  vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: false } as MediaQueryList);
+  choices();
+  vi.mocked(workspace.settings).mockRejectedValueOnce(new Error('Unavailable'));
+  vi.spyOn(tasks, 'list').mockResolvedValue({ count: 1, next: null, previous: null, results: [task] });
+  const update = vi.spyOn(tasks, 'update').mockResolvedValue(task);
+  render(<TasksPage user={user} />);
+  await screen.findByRole('button', { name: 'Retry task choices' });
+  const title = await screen.findByLabelText('Title');
+  await userEvent.clear(title);
+  await userEvent.type(title, 'Keep this unsaved title');
+  expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  await userEvent.click(screen.getByRole('button', { name: 'Retry task choices' }));
+  await waitFor(() => expect(screen.getByLabelText('Assignee')).toHaveValue('2'));
+  expect(title).toHaveValue('Keep this unsaved title');
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(update).toHaveBeenCalledWith(task.id, expect.objectContaining({ title: 'Keep this unsaved title', assignee: 2 })));
 });
