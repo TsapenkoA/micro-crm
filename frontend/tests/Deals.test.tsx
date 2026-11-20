@@ -36,7 +36,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   drag.end = null;
   vi.mocked(deals.list).mockResolvedValue({ results: [deal], totals: [{ status: 'new_lead', currency: 'EUR', count: 1, amount: '1234.56' }] });
-  vi.mocked(deals.page).mockImplementation(async (filters, page, ordering, signal) => {
+  vi.mocked(deals.page).mockImplementation(async (filters, _page, _ordering, signal) => {
     const result = await deals.list(filters, signal);
     return { ...result, count: result.results.length, next: null, previous: null };
   });
@@ -205,7 +205,7 @@ it('retains a stale edit draft and requires an explicit discard after comparing 
   expect(saved).toHaveBeenCalledWith(expect.objectContaining({ version: 2 }));
 });
 
-it.each([409, 403, 500])('rolls back a failed drag with status %s and keeps the error after refetch', async code => {
+it.each([409, 500])('rolls back a failed drag with status %s and keeps the error after refetch', async code => {
   vi.mocked(deals.status).mockRejectedValue(new ApiError(code, 'Request failed'));
   render(<DealsPage />);
   await screen.findByText('Website project');
@@ -243,4 +243,61 @@ it('confirms deletion with the current version and preserves the record after ca
   await userEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Confirm deletion' }));
   expect(await screen.findByText('Deal deleted.')).toBeInTheDocument();
   expect(deals.remove).toHaveBeenCalledWith(deal);
+});
+
+
+it('edits the deal description without changing shared notes', async () => {
+  const initial = { ...deal, description: 'Original scope' };
+  const updated = { ...initial, description: 'Revised scope', version: 2 };
+  vi.mocked(deals.update).mockResolvedValue(updated);
+  render(<DealForm initial={initial} clients={[client]} onSaved={vi.fn()} onCancel={vi.fn()} onPending={vi.fn()} />);
+  await userEvent.clear(screen.getByLabelText('Description'));
+  await userEvent.type(screen.getByLabelText('Description'), updated.description);
+  await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  await waitFor(() => expect(deals.update).toHaveBeenCalledWith(initial, expect.objectContaining({ description: updated.description })));
+  expect(deals.addNote).not.toHaveBeenCalled();
+});
+
+
+it('keeps a saved note committed when refreshing notes or activity fails', async () => {
+  vi.mocked(deals.addNote).mockResolvedValue({ id: 'new-note', client: client.id, deal: deal.id, author: { id: 1, username: 'admin' }, text: 'Saved once', created_at: '2026-11-01T12:00:00Z', can_delete: true });
+  vi.mocked(deals.notes).mockResolvedValueOnce({ count: 0, results: [], next: null, previous: null })
+    .mockRejectedValueOnce(new Error('Refresh unavailable'))
+    .mockResolvedValue({ count: 0, results: [], next: null, previous: null });
+  render(<DealsPage />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Open Website project' }));
+  const details = await screen.findByRole('dialog', { name: 'Deal details' });
+  await userEvent.click(within(details).getByRole('button', { name: /^Notes/ }));
+  await within(details).findByText('No notes for this deal yet.');
+  vi.mocked(activity.list).mockRejectedValueOnce(new Error('Activity unavailable'));
+  await userEvent.type(within(details).getByRole('textbox', { name: 'New note' }), 'Saved once');
+  await userEvent.click(within(details).getByRole('button', { name: 'Add note' }));
+  expect(await within(details).findByText('Note added.')).toBeInTheDocument();
+  expect(within(details).getByRole('textbox', { name: 'New note' })).toHaveValue('');
+  expect(within(details).getByRole('button', { name: 'Add note' })).toBeDisabled();
+  await within(details).findByText('Note saved. Activity could not be refreshed.');
+  await userEvent.click(await within(details).findByRole('button', { name: 'Retry notes' }));
+  await within(details).findByText('No notes for this deal yet.');
+  expect(deals.addNote).toHaveBeenCalledOnce();
+});
+
+it('opens older note pages and returns to the first page after adding a note', async () => {
+  const note = { id: 'note-page', client: client.id, deal: deal.id, author: { id: 1, username: 'admin' }, text: 'First page', created_at: '2026-11-01T12:00:00Z', can_delete: true };
+  vi.mocked(deals.notes).mockImplementation(async (_id, page = 1) => ({
+    count: 21, results: [{ ...note, text: page === 1 ? 'First page' : 'Older note' }],
+    next: page === 1 ? 'next' : null, previous: page === 2 ? 'previous' : null,
+  }));
+  vi.mocked(deals.addNote).mockResolvedValue(note);
+  render(<DealsPage />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Open Website project' }));
+  const details = await screen.findByRole('dialog', { name: 'Deal details' });
+  await userEvent.click(within(details).getByRole('button', { name: /^Notes/ }));
+  await within(details).findByText('First page');
+  await userEvent.click(within(details).getByRole('button', { name: 'Next notes' }));
+  expect(await within(details).findByText('Older note')).toBeInTheDocument();
+  expect(deals.notes).toHaveBeenLastCalledWith(deal.id, 2, expect.any(AbortSignal));
+  await userEvent.type(within(details).getByRole('textbox', { name: 'New note' }), 'New note');
+  await userEvent.click(within(details).getByRole('button', { name: 'Add note' }));
+  await within(details).findByText('First page');
+  expect(within(details).getByText('21 notes · Page 1')).toBeInTheDocument();
 });

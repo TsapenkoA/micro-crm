@@ -43,7 +43,7 @@ class DealSerializer(StrictModelSerializer):
 
     class Meta:
         model = Deal
-        fields = ["id", "title", "client", "status", "amount", "currency", "deadline", "version", "outcome", "paid_at", "fx_rate_date", "created_at", "updated_at"]
+        fields = ["id", "title", "description", "client", "status", "amount", "currency", "deadline", "version", "outcome", "paid_at", "fx_rate_date", "created_at", "updated_at"]
         read_only_fields = ["id", "paid_at", "fx_rate_date", "created_at", "updated_at"]
         validators = []
 

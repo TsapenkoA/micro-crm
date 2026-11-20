@@ -11,7 +11,7 @@ function localDate(value: string | null) {
 }
 
 export default function DealForm({ initial, clients, onSaved, onCancel, onPending }: { initial?: Deal; clients: Client[]; onSaved: (deal: Deal) => void; onCancel: () => void; onPending: (pending: boolean) => void }) {
-  const [values, setValues] = useState({ title: initial?.title ?? '', client: initial?.client ?? '', amount: initial?.amount.replace(/\.00$/, '') ?? '', currency: initial?.currency ?? 'USD', status: initial?.status ?? 'new_lead' as Status, outcome: initial?.outcome ?? 'none' as Outcome, deadline: localDate(initial?.deadline ?? null) });
+  const [values, setValues] = useState({ title: initial?.title ?? '', description: initial?.description ?? '', client: initial?.client ?? '', amount: initial?.amount.replace(/\.00$/, '') ?? '', currency: initial?.currency ?? 'USD', status: initial?.status ?? 'new_lead' as Status, outcome: initial?.outcome ?? 'none' as Outcome, deadline: localDate(initial?.deadline ?? null) });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -49,8 +49,8 @@ export default function DealForm({ initial, clients, onSaved, onCancel, onPendin
     catch (cause) { setError(errorMessage(cause)); }
     finally { setReloading(false); }
   }
-  const labels = { title: 'Deal title', client: 'Client', amount: 'Amount', currency: 'Currency', status: 'Status', outcome: 'Archive outcome', deadline: 'Deadline (local time)' };
-  const input = (name: keyof typeof values) => ({ name, value: values[name], onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => field(name, event.target.value), 'aria-label': labels[name], 'aria-invalid': Boolean(errors[name]), 'aria-describedby': errors[name] ? `deal-error-${name}` : undefined });
+  const labels = { title: 'Deal title', description: 'Description', client: 'Client', amount: 'Amount', currency: 'Currency', status: 'Status', outcome: 'Archive outcome', deadline: 'Deadline (local time)' };
+  const input = (name: keyof typeof values) => ({ name, value: values[name], onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => field(name, event.target.value), 'aria-label': labels[name], 'aria-invalid': Boolean(errors[name]), 'aria-describedby': errors[name] ? `deal-error-${name}` : undefined });
   const problem = (name: string) => errors[name] && <span className="field-error" id={`deal-error-${name}`}>{errors[name]}</span>;
   return <form className="client-form live-deal-form" onSubmit={submit} noValidate>
     <p className="muted">Shared with your company. Changes are saved to your workspace.</p>
@@ -58,6 +58,7 @@ export default function DealForm({ initial, clients, onSaved, onCancel, onPendin
     {conflict && <div className="deal-conflict"><p>Your unsaved values are kept below. Load the latest record to compare before discarding your draft.</p><button className="secondary" type="button" disabled={reloading} onClick={reload}>{reloading ? 'Loading…' : 'Reload current'}</button>{latest && <div><strong>Latest server record · version {latest.version}</strong><p>{latest.title} · {latest.amount} {latest.currency} · {latest.status.replaceAll('_', ' ')}</p><button className="secondary" type="button" onClick={() => onSaved(latest)}>Discard draft and open latest</button></div>}</div>}
     {!clients.length && <p role="alert">Create a client before adding a deal.</p>}
     <label className="field">Deal title<input {...input('title')} maxLength={250} required data-autofocus />{problem('title')}</label>
+    <label className="field">Description<textarea {...input('description')} maxLength={10000} rows={4} placeholder="Describe the scope and next steps" disabled={saving} />{problem('description')}</label>
     <label className="field">Client<select {...input('client')} required><option value="">Select a client</option>{clients.map(client => <option key={client.id} value={client.id}>{client.name}{client.company ? ` · ${client.company}` : ''}</option>)}</select>{problem('client')}</label>
     <div className="deal-form-row"><label className="field">Amount<input {...input('amount')} inputMode="decimal" required placeholder="0.00" />{problem('amount')}</label><label className="field">Currency<input {...input('currency')} maxLength={3} required list="deal-currencies" /><datalist id="deal-currencies"><option>USD</option><option>EUR</option><option>GBP</option><option>PLN</option><option>AUD</option><option>CAD</option><option>CHF</option><option>JPY</option></datalist>{problem('currency')}</label></div>
     <div className="deal-form-row"><label className="field">Status<select {...input('status')}>{stages.map(stage => <option key={stage.id} value={stage.id}>{stage.label}</option>)}</select>{problem('status')}</label><div className="field"><span>Deadline (local time)</span><DeadlinePicker value={values.deadline} onChange={value => field('deadline', value)} disabled={saving} invalid={Boolean(errors.deadline)} describedBy={errors.deadline ? 'deal-error-deadline' : undefined} />{problem('deadline')}</div></div>

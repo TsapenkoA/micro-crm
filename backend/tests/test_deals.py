@@ -18,13 +18,6 @@ pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
-def authenticated_api(api, user):
-    api.force_login(user)
-    api.credentials(HTTP_X_CSRFTOKEN=api.get("/api/v1/auth/csrf").json()["csrfToken"])
-    return api
-
-
-@pytest.fixture
 def colleague(user):
     employee = get_user_model().objects.create_user(username="colleague", password="colleague-password")
     call_command("assign_workspace", employee.username, str(user.workspace_membership.workspace_id))
@@ -73,7 +66,7 @@ def test_create_detail_and_persistence(authenticated_api, user, client_record):
     response = authenticated_api.post("/api/v1/deals", payload(client_record, deadline="2026-12-01T15:00:00+03:00"), format="json")
     assert response.status_code == 201
     data = response.json()
-    assert set(data) == {"id", "title", "client", "status", "amount", "currency", "deadline", "version", "outcome", "paid_at", "fx_rate_date", "created_at", "updated_at"}
+    assert set(data) == {"id", "title", "description", "client", "status", "amount", "currency", "deadline", "version", "outcome", "paid_at", "fx_rate_date", "created_at", "updated_at"}
     assert data["amount"] == "1234.56"
     assert data["deadline"] == "2026-12-01T12:00:00Z"
     assert data["status"] == "new_lead" and data["outcome"] == "none"
@@ -120,10 +113,13 @@ def test_invalid_fields(authenticated_api, client_record, changes):
     assert not Deal.objects.exists()
 
 
-@pytest.mark.parametrize("field", ["workspace", "workspace_id", "created_by", "created_by_id", "owner", "id", "paid_at", "created_at", "updated_at", "unexpected"])
-def test_ownership_and_server_fields_rejected(authenticated_api, client_record, deal, field):
-    assert authenticated_api.post("/api/v1/deals", payload(client_record, **{field: "forged"}), format="json").status_code == 400
-    assert authenticated_api.patch(f"/api/v1/deals/{deal.pk}", {field: "forged", "version": 1}, format="json").status_code == 400
+def test_ownership_and_server_fields_rejected(authenticated_api, client_record, deal):
+    fields = dict.fromkeys(["workspace", "workspace_id", "created_by", "created_by_id", "owner", "id", "paid_at", "created_at", "updated_at", "unexpected"], "forged")
+    created = authenticated_api.post("/api/v1/deals", payload(client_record, **fields), format="json")
+    updated = authenticated_api.patch(f"/api/v1/deals/{deal.pk}", {**fields, "version": 1}, format="json")
+    for response in (created, updated):
+        assert response.status_code == 400
+        assert set(fields) == set(response.json()["error"]["details"])
     deal.refresh_from_db()
     assert deal.version == 1
 
@@ -307,3 +303,30 @@ def test_two_concurrent_patches_use_atomic_compare_and_swap(user, colleague, cli
     assert len(queries) == 2
     assert all('"version" = 1' in query for query in queries)
     assert Deal.objects.count() == 1
+
+
+def test_description_updates_independently_of_notes_and_is_workspace_scoped(authenticated_api, user, other_user, deal):
+    note = ClientNote.objects.create(client=deal.client, deal=deal, author=user, text="Existing note stays unchanged")
+    path = f"/api/v1/deals/{deal.pk}"
+    response = authenticated_api.patch(path, {"description": "Updated scope\nSecond line", "version": deal.version}, format="json")
+    assert response.status_code == 200
+    assert authenticated_api.get(path).json()["description"] == "Updated scope\nSecond line"
+    note.refresh_from_db()
+    assert note.text == "Existing note stays unchanged"
+    outsider = APIClient(enforce_csrf_checks=True)
+    outsider.force_login(other_user)
+    token = outsider.get("/api/v1/auth/csrf").json()["csrfToken"]
+    assert outsider.patch(path, {"description": "Foreign change", "version": response.json()["version"]}, format="json", HTTP_X_CSRFTOKEN=token).status_code == 404
+    assert authenticated_api.patch(path, {"description": "x" * 10001, "version": response.json()["version"]}, format="json").status_code == 400
+
+
+def test_description_migration_preserves_the_text_previously_displayed(user, deal):
+    from django.apps import apps
+    from importlib import import_module
+    first = ClientNote.objects.create(client=deal.client, deal=deal, author=user, text="Earlier note")
+    latest = ClientNote.objects.create(client=deal.client, deal=deal, author=user, text="Currently displayed description")
+    migration = import_module("crm.migrations.deals.0005_deal_description")
+    migration.preserve_displayed_descriptions(apps, type("SchemaEditor", (), {"connection": connection})())
+    deal.refresh_from_db()
+    assert deal.description == latest.text
+    assert ClientNote.objects.filter(pk__in=[first.pk, latest.pk]).count() == 2
