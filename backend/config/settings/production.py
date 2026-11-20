@@ -1,6 +1,9 @@
 from django.core.exceptions import ImproperlyConfigured
 
 from .base import *
+from crm.fields import encryption
+
+encryption()
 
 DEBUG = False
 SESSION_COOKIE_SECURE = True

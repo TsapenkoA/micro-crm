@@ -25,6 +25,7 @@ MIGRATION_MODULES = {
     for label in ("accounts", "clients", "deals", "invoices", "tasks", "activity")
 }
 MIDDLEWARE = [
+    "crm.api.middleware.PrivateResponseMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -111,3 +112,6 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() == "true"
 EMAIL_TIMEOUT = 10
 FX_ALERT_EMAIL = os.getenv("FX_ALERT_EMAIL", "")
 BACKUP_DIRECTORY = os.getenv("BACKUP_DIRECTORY", "")
+FILE_SCAN_HOST = os.getenv("FILE_SCAN_HOST", "")
+FILE_SCAN_PORT = int(os.getenv("FILE_SCAN_PORT", "3310"))
+DATA_ENCRYPTION_KEYS = [key.strip() for key in os.getenv("DATA_ENCRYPTION_KEYS", "").split(",") if key.strip()]
