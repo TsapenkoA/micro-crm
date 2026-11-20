@@ -1,8 +1,9 @@
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework import generics
 from rest_framework import serializers
+from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from crm.api.pagination import ClientPagination
@@ -83,3 +84,17 @@ class TaskDetail(TaskQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
         self.lock_membership()
         log_activity(instance, self.request.user, "deleted")
         instance.delete()
+
+
+class TaskCounts(TaskList):
+    http_method_names = ["get", "head", "options"]
+
+    def get(self, request, *args, **kwargs):
+        now = timezone.now()
+        return Response(self.get_queryset().aggregate(
+            mine=Count("id", filter=Q(status=Task.Status.OPEN, assignee=request.user)),
+            team=Count("id", filter=Q(status=Task.Status.OPEN)),
+            overdue=Count("id", filter=Q(status=Task.Status.OPEN, due_at__lt=now)),
+            upcoming=Count("id", filter=Q(status=Task.Status.OPEN, due_at__gte=now)),
+            done=Count("id", filter=Q(status=Task.Status.DONE)),
+        ))

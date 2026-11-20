@@ -6,6 +6,7 @@ from crm.auth import verification as verification_views
 from crm.auth import email_change as email_change_views
 from crm.auth.avatar import AvatarView
 from crm.workspaces import views as workspace_views
+from crm.workspaces.join_requests import WorkspaceJoinDecision
 from crm.workspaces.operations import operations_status
 from crm.clients import views as client_views
 from crm.deals import views as deal_views
@@ -28,6 +29,7 @@ urlpatterns = [
     path("api/v1/workspace/operations", operations_status),
     path("api/v1/workspace/settings", workspace_views.WorkspaceSettings.as_view()),
     path("api/v1/workspace/members", workspace_views.WorkspaceMembers.as_view()),
+    path("api/v1/workspace/join-requests/<uuid:pk>", WorkspaceJoinDecision.as_view()),
     path("api/v1/workspace/members/<int:user_id>", workspace_views.WorkspaceMemberDetail.as_view()),
     path("api/v1/workspace/bank-details", workspace_views.WorkspaceBankDetails.as_view()),
     path("api/v1/workspace/seller-details", workspace_views.WorkspaceSellerDetails.as_view()),
@@ -64,6 +66,7 @@ urlpatterns = [
     path("api/v1/deals/<uuid:pk>/notes", deal_views.DealNotes.as_view()),
     path("api/v1/deals/<uuid:pk>/status", deal_views.DealStatus.as_view()),
     path("api/v1/tasks", task_views.TaskList.as_view()),
+    path("api/v1/tasks/counts", task_views.TaskCounts.as_view()),
     path("api/v1/tasks/<uuid:pk>", task_views.TaskDetail.as_view()),
     path("api/v1/activity", activity_views.ActivityList.as_view()),
     path("api/v1/operations/overview", OperationsOverview.as_view()),

@@ -4,7 +4,6 @@ from io import BytesIO, StringIO
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.core import mail
@@ -548,7 +547,7 @@ def test_profile_avatar_is_private_validated_and_removable(api, user, other_user
     image_response = api.get(path)
     assert image_response.status_code == 200
     assert image_response["Content-Type"] == "image/jpeg"
-    assert image_response["Cache-Control"] == "private, no-store"
+    assert image_response["Cache-Control"] == "private, no-store, max-age=0"
     with Image.open(BytesIO(image_response.content)) as stored:
         assert stored.size == (20, 20)
     invalid = SimpleUploadedFile("bad.png", b"<script>alert(1)</script>", content_type="image/png")

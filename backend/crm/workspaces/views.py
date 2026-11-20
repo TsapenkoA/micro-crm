@@ -1,4 +1,7 @@
+from datetime import timedelta
+
 from django.db import transaction
+from django.db.models import F
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
 from django.shortcuts import get_object_or_404
@@ -11,7 +14,7 @@ from rest_framework.views import APIView
 from crm.api.permissions import IsWorkspaceMember
 from crm.activity.services import log_activity, log_workspace_change, log_workspace_member, snapshot
 from crm.auth.security import AuthThrottle, recent_auth
-from crm.models import Client, Deal, Invoice, PreviewDataset, Task, Workspace, WorkspaceMembership
+from crm.models import Client, Deal, Invoice, PreviewDataset, Task, Workspace, WorkspaceMembership, WorkspaceJoinRequest
 from crm.workspaces.serializers import BankDetailsSerializer, SellerDetailsSerializer, WorkspaceNameSerializer
 
 
@@ -112,6 +115,10 @@ class WorkspaceSettings(APIView):
             "name": workspace.name,
             "can_manage_members": workspace.owner_id == request.user.pk,
             "members": [member_data(member.user) for member in members],
+            "join_requests": [
+                {"id": str(item.pk), "workspace_name": item.workspace.name, "expires_at": item.expires_at}
+                for item in WorkspaceJoinRequest.objects.filter(user=request.user, expires_at__gt=timezone.now(), workspace__owner_id=F("requested_by_id")).select_related("workspace")
+            ],
         })
 
     @transaction.atomic
@@ -161,17 +168,16 @@ class WorkspaceMembers(APIView):
         if membership is None:
             raise MembershipConflict()
         if membership.workspace_id == workspace.pk:
-            return Response({"member": member_data(user)})
+            raise ValidationError({"username": "This account already belongs to your workspace."})
         source = Workspace.objects.select_for_update().get(pk=membership.workspace_id)
         if (source.owner_id != user.pk or source.memberships.count() != 1
                 or source.clients.exists() or source.deals.exists() or source.invoices.exists()):
             raise MembershipConflict()
-        membership.workspace = workspace
-        membership.save(update_fields=["workspace"])
-        source.owner = None
-        source.save(update_fields=["owner", "updated_at"])
-        log_workspace_member(workspace, request.user, "member_added", user)
-        return Response({"member": member_data(user)}, status=201)
+        invitation, _ = WorkspaceJoinRequest.objects.update_or_create(
+            workspace=workspace, user=user,
+            defaults={"requested_by": request.user, "expires_at": timezone.now() + timedelta(days=7)},
+        )
+        return Response({"request": {"id": str(invitation.pk), "username": user.username, "expires_at": invitation.expires_at}}, status=202)
 
 
 class WorkspaceMemberDetail(APIView):
