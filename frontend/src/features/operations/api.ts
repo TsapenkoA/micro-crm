@@ -8,7 +8,7 @@ export type DueItem = {
   due_at: string;
   overdue: boolean;
 };
-export type DueList = { count: number; results: DueItem[] };
+type DueList = { count: number; results: DueItem[] };
 export type OperationsOverview = { today: DueList; reminders: DueList; undated_invoices: { count: number; results: { id: string; invoice_number: string; client_name: string }[] } };
 
 export const operations = {

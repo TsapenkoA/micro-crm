@@ -1,24 +1,38 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
+from django.db.models import Case, CharField, DateTimeField, F, Value, When
+from django.db.models.functions import Cast, TruncDate
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from crm.api.pagination import ClientPagination
 from crm.api.permissions import IsWorkspaceMember
 from crm.models import Deal, Invoice, Task
 
 
-def due_item(kind, record, due, title, subtitle, now, today):
-    return {
-        "kind": kind,
-        "id": str(record.pk),
-        "title": title,
-        "subtitle": subtitle,
-        "due_at": due.isoformat(),
-        "overdue": due < now if isinstance(due, datetime) else due < today,
-    }
+def due_rows(queryset, kind, due_field, title, subtitle, now, today):
+    return queryset.order_by().annotate(
+        kind=Value(kind, output_field=CharField()),
+        title_value=F(title),
+        subtitle=F(subtitle) if isinstance(subtitle, str) else subtitle,
+        due_time=Cast(due_field, DateTimeField()),
+        due_day=F(due_field) if kind == "invoice" else TruncDate(due_field),
+        overdue=Case(When(**{f"{due_field}__lt": today if kind == "invoice" else now}, then=Value(True)), default=Value(False)),
+    ).values("id", "kind", "title_value", "subtitle", "due_time", "due_day", "overdue")
+
+
+def due_page(queryset, offset, page_size, count):
+    if offset >= count:
+        return []
+    rows = queryset.order_by("-overdue", "due_day", "kind", "id")[offset:offset + page_size]
+    return [{
+        "kind": row["kind"], "id": str(row["id"]), "title": row["title_value"],
+        "subtitle": row["subtitle"], "overdue": row["overdue"],
+        "due_at": row["due_day"].isoformat() if row["kind"] == "invoice" else row["due_time"].isoformat(),
+    } for row in rows]
 
 
 class OperationsOverview(APIView):
@@ -32,8 +46,9 @@ class OperationsOverview(APIView):
             raise ValidationError({"page": "Enter a positive page number."}) from exc
         if page < 1 or undated_page < 1:
             raise ValidationError({"page": "Enter a positive page number."})
-        offset = (page - 1) * 20
-        undated_offset = (undated_page - 1) * 20
+        page_size = ClientPagination.page_size
+        offset = (page - 1) * page_size
+        undated_offset = (undated_page - 1) * page_size
         now = timezone.now()
         today = timezone.localdate()
         task_cutoff = now + timedelta(days=7)
@@ -56,19 +71,19 @@ class OperationsOverview(APIView):
             status=Invoice.Status.SENT, due_date__isnull=True,
         ).select_related("client").order_by("created_at", "id")
 
-        task_items = [due_item("task", task, task.due_at, task.title,
-                               task.deal.title if task.deal else task.client.name, now, today) for task in tasks]
-        deal_items = [due_item("deal", deal, deal.deadline, deal.title, deal.client.name, now, today) for deal in deals]
-        invoice_items = [due_item("invoice", invoice, invoice.due_date, invoice.invoice_number,
-                                  invoice.client.name, now, today) for invoice in invoices]
-        by_due = lambda item: (not item["overdue"], item["due_at"][:10], item["kind"], item["id"])
-        reminders = sorted(deal_items + invoice_items, key=by_due)
-        today_items = sorted(task_items + reminders, key=by_due)
+        task_subtitle = Case(When(deal__isnull=True, then=F("client__name")), default=F("deal__title"))
+        task_rows = due_rows(tasks, "task", "due_at", "title", task_subtitle, now, today)
+        deal_rows = due_rows(deals, "deal", "deadline", "title", "client__name", now, today)
+        invoice_rows = due_rows(invoices, "invoice", "due_date", "invoice_number", "client__name", now, today)
+        reminders = deal_rows.union(invoice_rows, all=True)
+        today_rows = task_rows.union(deal_rows, invoice_rows, all=True)
+        today_count, reminder_count, undated_count = today_rows.count(), reminders.count(), undated.count()
+        undated_rows = undated[undated_offset:undated_offset + page_size] if undated_offset < undated_count else []
         return Response({
-            "today": {"count": len(today_items), "results": today_items[offset:offset + 20]},
-            "reminders": {"count": len(reminders), "results": reminders[offset:offset + 20]},
-            "undated_invoices": {"count": undated.count(), "results": [
+            "today": {"count": today_count, "results": due_page(today_rows, offset, page_size, today_count)},
+            "reminders": {"count": reminder_count, "results": due_page(reminders, offset, page_size, reminder_count)},
+            "undated_invoices": {"count": undated_count, "results": [
                 {"id": str(invoice.pk), "invoice_number": invoice.invoice_number, "client_name": invoice.client.name}
-                for invoice in undated[undated_offset:undated_offset + 20]
+                for invoice in undated_rows
             ]},
         })

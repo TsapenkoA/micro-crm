@@ -2,9 +2,11 @@ from datetime import timedelta
 from decimal import Decimal
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
-from crm.models import Client, Deal, Invoice, InvoicePayment
+from crm.models import Client, Deal, Invoice, InvoiceDelivery, InvoiceDueDateCorrection, InvoicePayment
 
 
 pytestmark = pytest.mark.django_db
@@ -38,7 +40,10 @@ def test_invoice_summary_uses_all_pages_and_excludes_other_workspaces(api, user,
     Invoice.objects.create(workspace=foreign.workspace, client=foreign, created_by=other_user,
                            invoice_number="FOREIGN", currency="USD", total_amount=Decimal("999"))
     api.force_login(user)
-    page = api.get("/api/v1/invoices", {"page_size": 1}).json()
+    with CaptureQueriesContext(connection) as captured:
+        page = api.get("/api/v1/invoices", {"page_size": 1}).json()
+    for model in (InvoicePayment, InvoiceDelivery, InvoiceDueDateCorrection):
+        assert not any(model._meta.db_table in query["sql"] for query in captured.captured_queries)
     summary = api.get("/api/v1/invoices/summary", {"currency": "USD"}).json()
     assert page["count"] == 3 and len(page["results"]) == 1
     assert summary == {"currency": "USD", "sent": {"count": 2, "amount": "160.00"},

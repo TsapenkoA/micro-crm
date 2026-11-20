@@ -5,11 +5,17 @@ export type Task = {
   title: string; assignee: number | null; assignee_name: string | null; due_at: string;
   status: 'open' | 'done'; completed_at: string | null; created_by: number; created_at: string; updated_at: string;
 };
+export type TaskCounts = Record<'mine' | 'team' | 'overdue' | 'upcoming' | 'done', number>;
 export type TaskPage = { count: number; next: string | null; previous: string | null; results: Task[] };
 export type TaskInput = { client: string; deal: string | null; title: string; assignee: number; due_at: string };
 export type TaskFilters = { mine?: boolean; status?: 'open' | 'done'; due?: 'overdue' | 'upcoming'; search?: string; client?: string; deal?: string; page?: number; page_size?: number };
 
 export const tasks = {
+  counts(filters: Pick<TaskFilters, 'search' | 'client' | 'deal'> = {}, signal?: AbortSignal) {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
+    return request<TaskCounts>(`/tasks/counts?${query}`, { signal });
+  },
   detail: (id: string, signal?: AbortSignal) => request<Task>(`/tasks/${encodeURIComponent(id)}`, { signal }),
   list(filters: TaskFilters = {}, signal?: AbortSignal) {
     const query = new URLSearchParams();
