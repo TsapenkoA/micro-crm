@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { money, shortDate, stages, type PreviewClient, type PreviewContent, type PreviewDeal, type Stage } from './data';
-import { Avatar, Badge, Empty, Icon, UserAvatar, type PreviewProfile } from './PreviewParts';
+import { Avatar, Badge, Empty, Icon, type PreviewProfile } from './PreviewParts';
 
 export default function DealsPreview({ deals, clients, profile, content, defaultCurrency, onEdit, onStatus }: { deals: PreviewDeal[]; clients: PreviewClient[]; profile: PreviewProfile; content: PreviewContent; defaultCurrency: string; onEdit: (deal: PreviewDeal) => void; onStatus: (id: string, status: Stage) => void }) {
   const [view, setView] = useState('board');

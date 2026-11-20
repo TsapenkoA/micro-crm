@@ -1,5 +1,4 @@
 import { useState, type FormEvent } from 'react';
-import { type PreviewContent } from './data';
 import { Icon, UserAvatar, type PreviewProfile, type PreviewTheme } from './PreviewParts';
 
 function PreviewThemeSelect({ theme, onChange }: { theme: PreviewTheme; onChange: (theme: PreviewTheme) => void }) {
