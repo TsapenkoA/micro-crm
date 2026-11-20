@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator, URLValidator
 from django.db import models
 from django.db.models import Q
+from crm.fields import EncryptedJSONField, EncryptedBinaryField
 
 
 currency_validator = RegexValidator(r"^[A-Z]{3}$", "Use a three-letter uppercase ISO currency code.")
@@ -41,8 +42,8 @@ def validate_workspace(instance):
 class Workspace(ValidatedModel):
     name = models.CharField(max_length=200)
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="owned_workspaces")
-    bank_details = models.JSONField(default=dict, blank=True)
-    seller_details = models.JSONField(default=dict, blank=True)
+    bank_details = EncryptedJSONField(default=dict, blank=True)
+    seller_details = EncryptedJSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -74,9 +75,21 @@ class WorkspaceMembership(ValidatedModel):
                 raise ValidationError({"workspace": "Cannot leave a workspace containing business records. A reviewed data transfer is required."})
 
 
+class WorkspaceJoinRequest(UUIDModel):
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="join_requests")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="workspace_requests")
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sent_workspace_requests")
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = "accounts"
+        constraints = [models.UniqueConstraint(fields=["workspace", "user"], name="workspace_join_request_unique")]
+
+
 class UserAvatar(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, primary_key=True, related_name="crm_avatar")
-    image = models.BinaryField()
+    image = EncryptedBinaryField()
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -85,7 +98,7 @@ class UserAvatar(models.Model):
 
 class PreviewDataset(ValidatedModel):
     workspace = models.OneToOneField(Workspace, on_delete=models.CASCADE, related_name="preview_dataset")
-    payload = models.JSONField(default=dict)
+    payload = EncryptedJSONField(default=dict)
 
     class Meta:
         app_label = "accounts"
@@ -177,7 +190,7 @@ class Client(ValidatedModel):
     company = models.CharField(max_length=200, blank=True)
     email = models.EmailField(blank=True)
     phone = models.CharField(max_length=50, blank=True)
-    bank_details = models.JSONField(default=dict, blank=True)
+    bank_details = EncryptedJSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -245,7 +258,7 @@ class ClientAttachment(ValidatedModel):
     name = models.CharField(max_length=200)
     content_type = models.CharField(max_length=100)
     size = models.PositiveIntegerField()
-    content = models.BinaryField()
+    content = EncryptedBinaryField()
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -269,6 +282,7 @@ class Deal(ValidatedModel):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="deals")
     client = models.ForeignKey("clients.Client", on_delete=models.PROTECT, related_name="deals")
     title = models.CharField(max_length=250)
+    description = models.TextField(blank=True, default="", max_length=10000)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW_LEAD)
     amount = models.DecimalField(max_digits=18, decimal_places=2)
     currency = models.CharField(max_length=3, validators=[currency_validator])
@@ -369,8 +383,8 @@ class Invoice(ValidatedModel):
     cancellation_reason = models.CharField(max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    seller_snapshot = models.JSONField(default=dict, blank=True)
-    buyer_snapshot = models.JSONField(default=dict, blank=True)
+    seller_snapshot = EncryptedJSONField(default=dict, blank=True)
+    buyer_snapshot = EncryptedJSONField(default=dict, blank=True)
     subtotal = models.DecimalField(max_digits=20, decimal_places=4, default=0)
     tax_total = models.DecimalField(max_digits=20, decimal_places=4, default=0)
     total_amount = models.DecimalField(max_digits=20, decimal_places=4, default=0)

@@ -5,7 +5,7 @@ class CRMConfig(AppConfig):
     name = "crm"
 
     def ready(self):
-        from .auth import signals
+        from .auth import signals  # noqa: F401
 
 
 class MigrationConfig(AppConfig):

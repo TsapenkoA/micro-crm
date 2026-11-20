@@ -10,6 +10,7 @@ dependencies = [
     "python-dotenv>=1.1,<2",
     "Pillow>=13,<14",
     "reportlab>=5.1.0",
+    "cryptography>=46,<51",
 ]
 
 [dependency-groups]
