@@ -5,7 +5,7 @@ from django.db.models.deletion import ProtectedError
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils.http import content_disposition_header
-from rest_framework import filters, generics, status
+from rest_framework import filters, generics
 from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
@@ -14,8 +14,9 @@ from crm.api.pagination import ClientPagination
 from crm.api.permissions import IsWorkspaceMember, WorkspaceQuerysetMixin
 from crm.api.serializers import StrictModelSerializer
 from crm.activity.services import log_activity, snapshot
+from crm.services.uploads import scan_upload
 from crm.clients.serializers import ClientContactSerializer, ClientDetailSerializer, ClientInvoiceSerializer, ClientLinkSerializer, ClientListSerializer, ClientNoteSerializer, ClientSerializer
-from crm.models import Client, ClientAttachment, ClientContact, Invoice, WorkspaceMembership
+from crm.models import Client, ClientAttachment, Invoice, WorkspaceMembership
 
 
 class ClientQuerysetMixin(WorkspaceQuerysetMixin):
@@ -283,6 +284,7 @@ class ClientAttachments(ClientQuerysetMixin, generics.ListCreateAPIView):
         if len(content) != upload.size:
             raise ValidationError({"file": "The upload could not be read."})
         mime = attachment_type(name, content)
+        scan_upload(content)
         attachment = ClientAttachment.objects.create(
             client=client, uploaded_by=request.user, name=name,
             content_type=mime, size=len(content), content=content,
@@ -301,6 +303,7 @@ class ClientAttachmentDetail(ClientQuerysetMixin, generics.GenericAPIView):
 
     def get(self, request, *args, **kwargs):
         attachment = self.get_attachment()
+        scan_upload(bytes(attachment.content))
         response = HttpResponse(bytes(attachment.content), content_type=attachment.content_type)
         response["Content-Disposition"] = content_disposition_header(True, attachment.name)
         response["Cache-Control"] = "no-store"

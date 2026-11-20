@@ -40,7 +40,7 @@ beforeEach(() => {
   vi.mocked(deals.list).mockResolvedValue({ results: [], totals: [] });
   vi.mocked(invoices.list).mockResolvedValue([listItem(record)]);
   vi.mocked(invoices.detail).mockResolvedValue(record);
-  vi.mocked(invoices.page).mockImplementation(async (search, status, currency, page = 1, signal) => {
+  vi.mocked(invoices.page).mockImplementation(async (_search, _status, currency, page = 1) => {
     const rows = invoiceData.filter(invoice => invoice.currency === currency);
     return { count: rows.length, results: rows.slice((page - 1) * 20, page * 20).map(listItem), next: page * 20 < rows.length ? 'next' : null, previous: page > 1 ? 'previous' : null };
   });

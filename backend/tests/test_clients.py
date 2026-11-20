@@ -14,14 +14,6 @@ pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
-def authenticated_api(api, user):
-    api.force_login(user)
-    token = api.get("/api/v1/auth/csrf").json()["csrfToken"]
-    api.credentials(HTTP_X_CSRFTOKEN=token)
-    return api
-
-
-@pytest.fixture
 def colleague(user):
     from django.core.management import call_command
 
@@ -147,14 +139,15 @@ def test_foreign_workspace_not_visible_in_list_search_or_detail(authenticated_ap
     assert authenticated_api.get(f"/api/v1/clients/{uuid.uuid4()}").status_code == 404
 
 
-@pytest.mark.parametrize("field", ["workspace", "workspace_id", "created_by", "owner", "owner_id", "id", "created_at", "unexpected"])
-def test_protected_and_unknown_fields_rejected(authenticated_api, client_record, other_user, field):
-    value = str(other_user.workspace_membership.workspace_id)
-    response = authenticated_api.post("/api/v1/clients", {"name": "Acme", field: value}, format="json")
+def test_protected_and_unknown_fields_rejected(authenticated_api, client_record, other_user):
+    fields = dict.fromkeys(["workspace", "workspace_id", "created_by", "owner", "owner_id", "id", "created_at", "unexpected"], str(other_user.workspace_membership.workspace_id))
+    response = authenticated_api.post("/api/v1/clients", {"name": "Acme", **fields}, format="json")
     assert response.status_code == 400
+    assert set(fields) == set(response.json()["error"]["details"])
     for method in ["put", "patch"]:
-        response = getattr(authenticated_api, method)(f"/api/v1/clients/{client_record.pk}", {"name": "Changed", field: value}, format="json")
+        response = getattr(authenticated_api, method)(f"/api/v1/clients/{client_record.pk}", {"name": "Changed", **fields}, format="json")
         assert response.status_code == 400
+        assert set(fields) == set(response.json()["error"]["details"])
     client_record.refresh_from_db()
     assert client_record.name == "Acme"
 
@@ -254,11 +247,11 @@ def test_invalid_or_unsafe_urls_are_rejected(history_api, client_record, url):
 
 
 @pytest.mark.parametrize("relation,payload", [("notes", {"text": "Note"}), ("links", {"label": "Link", "url": "https://example.com"})])
-@pytest.mark.parametrize("field", ["author", "author_id", "client", "client_id", "workspace", "created_at", "id", "can_delete", "unexpected"])
-def test_identity_and_parent_fields_cannot_be_injected(history_api, client_record, relation, payload, field):
-    response = history_api.post(f"/api/v1/clients/{client_record.pk}/{relation}", {**payload, field: str(uuid.uuid4())}, format="json")
+def test_identity_and_parent_fields_cannot_be_injected(history_api, client_record, relation, payload):
+    fields = dict.fromkeys(["author", "author_id", "client", "client_id", "workspace", "created_at", "id", "can_delete", "unexpected"], str(uuid.uuid4()))
+    response = history_api.post(f"/api/v1/clients/{client_record.pk}/{relation}", {**payload, **fields}, format="json")
     assert response.status_code == 400
-    assert field in response.json()["error"]["details"]
+    assert set(fields) == set(response.json()["error"]["details"])
     assert not ClientNote.objects.exists()
     assert not ClientLink.objects.exists()
 

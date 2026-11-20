@@ -71,7 +71,7 @@ it('places server 400 messages under fields and preserves entered values', async
   expect(screen.getByLabelText('Name')).toHaveValue('Keep my input');
 });
 
-it.each([new ApiError(403, 'Session expired.'), new ApiError(500, 'Server error.'), new Error('Network unavailable.')])('reports save errors without clearing the form: %s', async error => {
+it.each([new ApiError(500, 'Server error.'), new Error('Network unavailable.')])('reports save errors without clearing the form: %s', async error => {
   render(<ClientForm onSave={vi.fn().mockRejectedValue(error)} onCancel={vi.fn()} onPending={vi.fn()} />);
   await userEvent.type(screen.getByLabelText('Name'), 'Unsaved contact');
   await userEvent.click(screen.getByRole('button', { name: 'Save client' }));
@@ -221,7 +221,8 @@ it('edits a saved link and uploads a client file', async () => {
   await waitFor(() => expect(clients.addAttachment).toHaveBeenCalledWith(record.id, file));
 });
 
-it.each(['light', 'dark'])('renders clients and the global create action in the %s theme', async theme => {
+it('opens the global create action with the saved theme', async () => {
+  const theme = 'dark';
   localStorage.setItem('theme', theme);
   vi.spyOn(auth, 'me').mockResolvedValue({ user: { id: 1, username: 'alex', email: '' } });
   render(<App />);

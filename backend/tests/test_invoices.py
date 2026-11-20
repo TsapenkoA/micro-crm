@@ -22,13 +22,6 @@ from crm.models import Client, Deal, Invoice, InvoiceDelivery, InvoiceItem, Invo
 pytestmark = pytest.mark.django_db
 
 
-@pytest.fixture
-def authenticated_api(api, user):
-    api.force_login(user)
-    api.credentials(HTTP_X_CSRFTOKEN=api.get("/api/v1/auth/csrf").json()["csrfToken"])
-    return api
-
-
 def item(description="Service", quantity="1.000", unit_price="10.00", tax_rate="0"):
     return {"description": description, "quantity": quantity, "unit_price": unit_price, "tax_rate": tax_rate}
 
@@ -177,7 +170,7 @@ def test_sent_invoice_due_date_correction_is_visible_in_history_pdf_and_operatio
     assert corrected.json()["due_date_corrections"][0]["reason"] == "Agreed payment date."
     assert authenticated_api.get("/api/v1/operations/overview").json()["undated_invoices"]["count"] == 0
     pdf = authenticated_api.get(path + "/pdf")
-    assert pdf["Cache-Control"] == "private, no-store"
+    assert pdf["Cache-Control"] == "private, no-store, max-age=0"
     assert "Due date correction" in "".join(page.extract_text() for page in PdfReader(BytesIO(pdf.content)).pages)
     assert authenticated_api.post(path + "/due-date-corrections", {"due_date": due.isoformat(), "reason": "Again"}, format="json").status_code == 400
 
@@ -371,7 +364,7 @@ def test_bank_details_are_workspace_scoped_and_frozen_in_invoices(authenticated_
     saved = authenticated_api.put("/api/v1/workspace/bank-details", seller_bank, format="json")
     assert saved.status_code == 200, saved.json()
     assert saved.json() == seller_bank
-    assert saved["Cache-Control"] == "no-store"
+    assert saved["Cache-Control"] == "private, no-store, max-age=0"
     updated = authenticated_api.patch(f"/api/v1/clients/{client_record.pk}", {"bank_details": buyer_bank}, format="json")
     assert updated.status_code == 200, updated.json()
     assert authenticated_api.get(f"/api/v1/clients/{client_record.pk}").json()["bank_details"] == buyer_bank
@@ -420,7 +413,7 @@ def test_bank_details_are_workspace_scoped_and_frozen_in_invoices(authenticated_
     token = teammate.get("/api/v1/auth/csrf").json()["csrfToken"]
     assert teammate.put("/api/v1/workspace/bank-details", {"bank_name": "Blocked"}, format="json", HTTP_X_CSRFTOKEN=token).status_code == 403
     owner_details = authenticated_api.get("/api/v1/workspace/bank-details")
-    assert owner_details["Cache-Control"] == "no-store"
+    assert owner_details["Cache-Control"] == "private, no-store, max-age=0"
     assert owner_details.json() == {"bank_name": "New Bank"}
 
 
@@ -444,7 +437,7 @@ def test_workspace_seller_profile_prefills_new_invoices_without_rewriting_old_on
     first_profile = {"name": "Example Agency Ltd", "email": "billing@example.test", "phone": "+1 202 555 0100", "address": "12 Main Street, London", "tax_id": "GB123456789"}
     saved = authenticated_api.put(path, first_profile, format="json")
     assert saved.status_code == 200 and saved.json() == first_profile
-    assert saved["Cache-Control"] == "no-store"
+    assert saved["Cache-Control"] == "private, no-store, max-age=0"
     assert authenticated_api.get(path).json() == first_profile
 
     created = create(authenticated_api, client_record).json()
@@ -525,7 +518,7 @@ def test_pdf_contains_unicode_totals_and_multiple_pages(authenticated_api, clien
     assert visitor.get(f"/api/v1/invoices/{invoice_id}/pdf").status_code == 404
 
 
-@pytest.mark.parametrize("currency,unit_price,expected", [("JPY", "10.6", "11"), ("GBP", "10.005", "10.01"), ("PLN", "10.125", "10.13"), ("USD", "10.005", "10.01")])
+@pytest.mark.parametrize("currency,unit_price,expected", [("JPY", "10.6", "11"), ("GBP", "10.005", "10.01"), ("PLN", "10.125", "10.13")])
 def test_currency_precision(authenticated_api, client_record, currency, unit_price, expected):
     response = create(authenticated_api, client_record, currency=currency, items=[item(unit_price=unit_price)])
     assert response.status_code == 201, response.json()

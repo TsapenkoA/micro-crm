@@ -28,7 +28,10 @@ class InvoiceQuerysetMixin(WorkspaceQuerysetMixin):
     permission_classes = [IsAuthenticated, IsWorkspaceMember]
 
     def get_queryset(self):
-        return super().get_queryset().filter(client__workspace_id=self.request.workspace_id).select_related("client", "deal").prefetch_related("items", "payments", "deliveries", "due_date_corrections")
+        queryset = super().get_queryset().filter(client__workspace_id=self.request.workspace_id).select_related("client", "deal")
+        if self.request.method == "GET" and not self.kwargs.get("pk"):
+            return queryset.prefetch_related("items")
+        return queryset.prefetch_related("items", "payments", "deliveries", "due_date_corrections")
 
     def lock_membership(self):
         membership = WorkspaceMembership.objects.select_for_update().filter(user=self.request.user, workspace_id=self.request.workspace_id).first()

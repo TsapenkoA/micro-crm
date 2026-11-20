@@ -116,3 +116,8 @@ def test_attachment_rejects_invalid_files(logged_api, client_record, name, conte
     response = logged_api.post(f"/api/v1/clients/{client_record.pk}/attachments", {"file": file}, format="multipart")
     assert response.status_code == 400
     assert not ClientAttachment.objects.exists()
+
+
+@pytest.fixture(autouse=True)
+def clean_file_scanner(monkeypatch):
+    monkeypatch.setattr("crm.clients.views.scan_upload", lambda content: None)

@@ -5,7 +5,7 @@ import { tasks, type TaskPage } from '../tasks/api';
 import { date, money } from '../deals/api';
 import ClientSectionIcon from './ClientSectionIcon';
 
-export type ClientPreview = {
+type ClientPreview = {
   invoices: HistoryPage<ClientInvoice>;
   tasks: TaskPage;
   notes: HistoryPage<ClientNote>;

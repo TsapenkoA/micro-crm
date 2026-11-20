@@ -43,14 +43,17 @@ function HistorySection({ clientId, kind, collapsibleForm, onChanged }: { client
       let requestedPage = destination === 'latest' ? 1 : destination;
       const fetchPage = (number: number) => isNote ? clients.notes(clientId, number, controller.signal) : clients.links(clientId, number, controller.signal);
       let result = await fetchPage(requestedPage);
-      if (destination === 'latest' && result.next) {
-        requestedPage = Math.ceil(result.count / 20);
+      if (destination === 'latest' && result.next && result.results.length) {
+        requestedPage = Math.ceil(result.count / result.results.length);
         result = await fetchPage(requestedPage);
       }
       if (!controller.signal.aborted) { setData(result); setPage(requestedPage); }
     }
     load().catch(cause => {
-      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : `Unable to load ${kind}.`);
+      if (controller.signal.aborted) return;
+      if (cause instanceof ApiError && cause.status === 404 && typeof destination === 'number' && destination > 1) {
+        setDestination(destination - 1);
+      } else setError(cause instanceof Error ? cause.message : `Unable to load ${kind}.`);
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [clientId, kind, isNote, destination, revision]);
@@ -117,9 +120,9 @@ function HistorySection({ clientId, kind, collapsibleForm, onChanged }: { client
   }
 
   async function removeLink(linkId: string) {
-    if (!window.confirm('Delete this link?')) return;
+    if (deleting || !window.confirm('Delete this link?')) return;
     setDeleting(true); setDeleteError('');
-    try { await clients.removeLink(clientId, linkId); setSuccess('Link deleted.'); setRevision(value => value + 1); onChanged?.(); }
+    try { await clients.removeLink(clientId, linkId); setSuccess('Link deleted.'); if (data?.results.length === 1 && page > 1) setDestination(page - 1); setRevision(value => value + 1); onChanged?.(); }
     catch (cause) { setDeleteError(cause instanceof Error ? cause.message : 'Unable to delete the link.'); }
     finally { setDeleting(false); }
   }

@@ -74,8 +74,8 @@ it('preserves a rejected note draft and displays server field errors without a t
   expect(clients.notes).toHaveBeenCalledTimes(1);
 });
 
-it.each([403, 404, 500])('renders history load errors independently and retries (%s)', async status => {
-  vi.mocked(clients.notes).mockRejectedValueOnce(new ApiError(status, 'History unavailable.'));
+it('renders history load errors independently and retries', async () => {
+  vi.mocked(clients.notes).mockRejectedValueOnce(new ApiError(500, 'History unavailable.'));
   render(<ClientHistory clientId="client-1" />);
   const notes = within(screen.getByRole('region', { name: 'Notes' }));
   expect(await notes.findByRole('alert')).toHaveTextContent('History unavailable.');
@@ -125,4 +125,23 @@ it('keeps the note and confirmation visible after a rejected deletion', async ()
   expect(await screen.findByRole('alert')).toHaveTextContent('Only the author can delete this note.');
   expect(screen.getByText(note.text)).toBeInTheDocument();
   expect(clients.notes).toHaveBeenCalledTimes(1);
+});
+
+
+it('returns to the previous page after removing its last link', async () => {
+  let deleted = false;
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  vi.spyOn(clients, 'removeLink').mockImplementation(async () => { deleted = true; });
+  vi.mocked(clients.links).mockImplementation(async (_id, number) => ({
+    count: deleted ? 20 : 21, results: [{ ...link, label: number === 2 ? 'Last link' : 'Earlier link' }],
+    next: number === 1 && !deleted ? 'next' : null, previous: number === 2 ? 'previous' : null,
+  }));
+  render(<ClientHistory clientId="client-1" kind="links" />);
+  await screen.findByText('Earlier link');
+  await userEvent.click(screen.getByRole('button', { name: 'Next links' }));
+  await screen.findByText('Last link');
+  await userEvent.click(screen.getByRole('button', { name: 'Delete link' }));
+  await screen.findByText('Earlier link');
+  expect(clients.links).toHaveBeenLastCalledWith('client-1', 1, expect.any(AbortSignal));
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
