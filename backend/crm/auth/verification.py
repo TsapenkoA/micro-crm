@@ -7,7 +7,6 @@ from django.conf import settings
 from django.contrib.auth import get_user_model, login as session_login
 from django.contrib.auth.hashers import make_password
 from django.core.mail import send_mail
-from django.db import transaction
 from django.middleware.csrf import get_token
 from django.utils import timezone
 from django.utils.decorators import method_decorator

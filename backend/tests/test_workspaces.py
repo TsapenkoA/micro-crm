@@ -24,17 +24,20 @@ def test_database_enforces_one_workspace_per_user(user):
         WorkspaceMembership.objects.bulk_create([WorkspaceMembership(user=user, workspace=workspace)])
 
 
-def test_operations_status_is_visible_only_to_workspace_owner(api, user, other_user, settings, tmp_path):
+def test_operations_status_requires_platform_administrator(api, user, other_user, settings, tmp_path):
     url = "/api/v1/workspace/operations"
     settings.BACKUP_DIRECTORY = ""
     assert api.get(url).status_code == 403
     api.force_login(user)
+    assert api.get(url).status_code == 403
+    user.is_superuser = True
+    user.save(update_fields=["is_superuser"])
     initial = api.get(url)
     assert initial.status_code == 200
     assert initial.json()["exchange_rates"]["healthy"] is False
     assert initial.json()["backup"]["last_restore_verified_at"] is None
     assert initial.json()["backup"]["last_stored_archive_at"] is None
-    assert initial["Cache-Control"] == "no-store"
+    assert initial["Cache-Control"] == "private, no-store, max-age=0"
 
     today = timezone.localdate()
     from crm.services.fx import ECB_CURRENCIES
@@ -178,8 +181,19 @@ def test_only_owner_can_add_an_existing_account_with_an_empty_personal_workspace
     assert api.post(path, {"username": "unknown"}, format="json", HTTP_X_CSRFTOKEN=token).status_code == 409
     assert api.post(path, {"username": other_user.username, "workspace_id": str(target.pk)}, format="json", HTTP_X_CSRFTOKEN=token).status_code == 400
     response = api.post(path, {"username": other_user.username}, format="json", HTTP_X_CSRFTOKEN=token)
-    assert response.status_code == 201
-    assert response.json()["member"] == {"id": other_user.pk, "username": other_user.username, "name": "", "email": other_user.email}
+    assert response.status_code == 202
+    assert response.json()["request"]["username"] == other_user.username
+    assert WorkspaceMembership.objects.get(user=other_user).workspace_id == source.pk
+    recipient = APIClient(enforce_csrf_checks=True)
+    recipient.force_login(other_user)
+    session = recipient.session
+    import time
+    session["auth_time"], session["reauth_user"] = time.time(), str(other_user.pk)
+    session.save()
+    recipient_token = recipient.get("/api/v1/auth/csrf").json()["csrfToken"]
+    decision_path = "/api/v1/workspace/join-requests/" + response.json()["request"]["id"]
+    assert api.post(decision_path, {"decision": "accept"}, format="json", HTTP_X_CSRFTOKEN=token).status_code == 404
+    assert recipient.post(decision_path, {"decision": "accept"}, format="json", HTTP_X_CSRFTOKEN=recipient_token).status_code == 200
     event = api.get("/api/v1/activity?entity_type=workspace").json()["results"][0]
     assert event["action"] == "member_added" and event["changes"]["member"] == other_user.username
     assert "email" not in str(event)
@@ -349,6 +363,8 @@ def test_migration_preserves_all_business_records_and_admin(legacy_database):
         actual.pop("workspace_id", None)
         if model == "client":
             assert actual.pop("bank_details") == {}
+        if model == "deal":
+            assert actual.pop("description") == ""
         if model == "clientnote":
             assert actual.pop("deal_id") is None
         if model in ("deal", "invoice"):
@@ -396,3 +412,31 @@ def test_migration_rejects_inconsistent_legacy_data_atomically(legacy_database, 
         assert cursor.fetchone()[0] == 0
         cursor.execute("SELECT name, workspace_id FROM clients_client")
         assert cursor.fetchone() == ("Private client", None)
+
+
+def test_private_data_migrations_preserve_values_in_both_directions(legacy_database):
+    executor = MigrationExecutor(connection)
+    before_targets = [(label, {"accounts": "0015_pending_email_change", "clients": "0006_clientnote_deal", "invoices": "0011_invoicedelivery_resolution_reason_and_more"}.get(label, migration)) for label, migration in executor.loader.graph.leaf_nodes()]
+    executor.migrate(before_targets)
+    old = executor.loader.project_state(before_targets).apps
+    user = old.get_model("auth", "User").objects.create(username="private-migration")
+    workspace = old.get_model("accounts", "Workspace").objects.create(name="Private", owner_id=user.pk, bank_details={"iban": "PRIVATE-BANK"}, seller_details={"address": "Private street"})
+    client = old.get_model("clients", "Client").objects.create(workspace_id=workspace.pk, created_by_id=user.pk, name="Client", bank_details={"account_number": "PRIVATE-PAYER"})
+    attachment = old.get_model("clients", "ClientAttachment").objects.create(client_id=client.pk, uploaded_by_id=user.pk, name="test.pdf", content_type="application/pdf", size=12, content=b"PRIVATE-FILE")
+    invoice = old.get_model("invoices", "Invoice").objects.create(workspace_id=workspace.pk, created_by_id=user.pk, client_id=client.pk, invoice_number="PRIVATE-1", currency="USD", seller_snapshot={"address": "Private seller"}, buyer_snapshot={"name": "Private buyer"})
+    executor = MigrationExecutor(connection)
+    executor.migrate(executor.loader.graph.leaf_nodes())
+    protected = executor.loader.project_state(executor.loader.graph.leaf_nodes()).apps
+    assert protected.get_model("accounts", "Workspace").objects.get(pk=workspace.pk).bank_details == {"iban": "PRIVATE-BANK"}
+    assert bytes(protected.get_model("clients", "ClientAttachment").objects.get(pk=attachment.pk).content) == b"PRIVATE-FILE"
+    assert protected.get_model("invoices", "Invoice").objects.get(pk=invoice.pk).buyer_snapshot == {"name": "Private buyer"}
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT bank_details FROM accounts_workspace WHERE id = %s", [workspace.pk])
+        assert "PRIVATE-BANK" not in str(cursor.fetchone())
+    executor = MigrationExecutor(connection)
+    executor.migrate(before_targets)
+    restored = executor.loader.project_state(before_targets).apps
+    assert restored.get_model("accounts", "Workspace").objects.get(pk=workspace.pk).bank_details == {"iban": "PRIVATE-BANK"}
+    assert restored.get_model("clients", "Client").objects.get(pk=client.pk).bank_details == {"account_number": "PRIVATE-PAYER"}
+    assert bytes(restored.get_model("clients", "ClientAttachment").objects.get(pk=attachment.pk).content) == b"PRIVATE-FILE"
+    assert restored.get_model("invoices", "Invoice").objects.get(pk=invoice.pk).seller_snapshot == {"address": "Private seller"}

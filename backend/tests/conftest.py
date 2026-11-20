@@ -23,3 +23,10 @@ def client_record(user):
 @pytest.fixture
 def api():
     return APIClient(enforce_csrf_checks=True)
+
+
+@pytest.fixture
+def authenticated_api(api, user):
+    api.force_login(user)
+    api.credentials(HTTP_X_CSRFTOKEN=api.get("/api/v1/auth/csrf").json()["csrfToken"])
+    return api

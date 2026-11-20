@@ -47,15 +47,26 @@ export default function WorkspaceIdentitySettings({ user, onUserUpdated, onOpenS
     setMemberPending(true); setMemberError(''); setMemberMessage('');
     try {
       const result = await workspace.addMember(username.trim());
-      setDetails(previous => previous ? { ...previous, members: previous.members.some(member => member.id === result.member.id) ? previous.members : [...previous.members, result.member] } : previous);
       setUsername('');
-      setMemberMessage(`${result.member.username} can now access this workspace.`);
+      setMemberMessage(`${result.request.username} must accept the request in their Workspace settings before gaining access.`);
     } catch (cause) {
       setMemberError(cause instanceof ApiError && cause.status === 409
         ? 'This account cannot be added. It must have an empty personal workspace.'
         : cause instanceof ApiError && cause.status === 403
           ? 'Confirm your identity in Security before adding a member.'
           : cause instanceof Error ? cause.message : 'Unable to add the member.');
+    } finally { setMemberPending(false); }
+  }
+
+  async function respondToJoin(id: string, decision: 'accept' | 'decline') {
+    if (memberPending) return;
+    setMemberPending(true); setMemberError('');
+    try {
+      await workspace.respondToJoin(id, decision);
+      if (decision === 'accept') window.location.reload();
+      else setDetails(previous => previous ? { ...previous, join_requests: previous.join_requests?.filter(item => item.id !== id) } : previous);
+    } catch (cause) {
+      setMemberError(cause instanceof Error ? cause.message : 'Unable to respond to the request. Confirm your identity in Security and retry.');
     } finally { setMemberPending(false); }
   }
 
@@ -78,6 +89,8 @@ export default function WorkspaceIdentitySettings({ user, onUserUpdated, onOpenS
   if (loading) return <p role="status">Loading workspace…</p>;
   if (!details) return <div><p role="alert">{error}</p><button className="secondary" onClick={() => window.location.reload()}>Retry</button></div>;
   return <section className="account-settings-section">
+    {!!details.join_requests?.length && <div><h3>Requests to join a company</h3><p className="muted">Accepting moves your account to that company and shares future clients, deals and invoices with its members. Only an empty personal workspace can join. Confirm your identity in Security first.</p>{details.join_requests.map(item => <div className="panel" key={item.id}><strong>{item.workspace_name}</strong><div className="button-row"><button className="primary" disabled={memberPending} onClick={() => void respondToJoin(item.id, 'accept')}>Accept and join</button><button className="secondary" disabled={memberPending} onClick={() => void respondToJoin(item.id, 'decline')}>Decline</button><button className="secondary" onClick={onOpenSecurity}>Open Security</button></div></div>)}</div>}
+    {memberError && <p role="alert" className="notice error">{memberError}</p>}
     <h3>Workspace name</h3>
     <p className="muted">Members of this workspace share its clients, deals and invoices.</p>
     <form className="auth-form" onSubmit={save}><div className="field"><label htmlFor="workspace-name">Name</label>
@@ -86,10 +99,10 @@ export default function WorkspaceIdentitySettings({ user, onUserUpdated, onOpenS
     </div><button className="primary" disabled={pending || !name.trim() || name.trim() === details.name}>{pending ? 'Saving…' : 'Save workspace name'}</button></form>
     {error && <p role="alert" className="notice error">{error}</p>}{message && <p role="status" className="notice success">{message}</p>}
     <div><h3>Members</h3><p className="muted">{details.members.length} {details.members.length === 1 ? 'person' : 'people'} in this workspace</p><ul className="account-member-list">{details.members.map(member => <li key={member.id}><strong>{member.name || member.username}{member.id === user.id ? ' (you)' : ''}</strong><small>{member.username}{member.email ? ` · ${member.email}` : ''}</small>{details.can_manage_members && member.id !== user.id && <button type="button" className="secondary" disabled={memberPending} onClick={() => setRemoving(member)}>Remove member</button>}</li>)}</ul></div>
-    {details.can_manage_members ? <div><h3>Add an existing account</h3><p className="muted">Enter the employee's username. Their personal workspace must contain no business records. Confirm your identity in Security before adding them.</p>
+    {details.can_manage_members ? <div><h3>Add an existing account</h3><p className="muted">Enter the employee's username. Their personal workspace must contain no business records. They must accept the request in their own Workspace settings. Confirm your identity in Security before sending it.</p>
       <form className="auth-form" onSubmit={addMember}><div className="field"><label htmlFor="workspace-new-member">Username</label><input id="workspace-new-member" value={username} onChange={event => setUsername(event.target.value)} maxLength={150} required disabled={memberPending} autoComplete="off" /></div>
-        <div className="button-row"><button className="primary" disabled={memberPending || !username.trim()}>{memberPending ? 'Adding…' : 'Add member'}</button><button type="button" className="secondary" onClick={onOpenSecurity}>Open Security</button></div>
-      </form>{memberError && <p role="alert" className="notice error">{memberError}</p>}{memberMessage && <p role="status" className="notice success">{memberMessage}</p>}</div>
+        <div className="button-row"><button className="primary" disabled={memberPending || !username.trim()}>{memberPending ? 'Sending…' : 'Send join request'}</button><button type="button" className="secondary" onClick={onOpenSecurity}>Open Security</button></div>
+      </form>{memberMessage && <p role="status" className="notice success">{memberMessage}</p>}</div>
       : <p className="muted">Only the workspace owner can manage members.</p>}
     {removing && <Dialog title="Remove member" role="alertdialog" busy={memberPending} onClose={() => setRemoving(null)}><div className="dialog-body"><p>Remove {removing.name || removing.username} from this workspace? Their access will end immediately. Clients, deals and invoices stay with the company.</p><div className="dialog-actions"><button className="secondary" disabled={memberPending} onClick={() => setRemoving(null)} data-autofocus>Cancel</button><button className="primary destructive" disabled={memberPending} onClick={removeMember}>{memberPending ? 'Removing…' : 'Confirm removal'}</button></div></div></Dialog>}
   </section>;

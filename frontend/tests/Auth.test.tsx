@@ -222,14 +222,15 @@ it('keeps platform checks out of account settings', async () => {
   }
 });
 
-it('lets the workspace owner add an existing account', async () => {
-  const add = vi.spyOn(workspace, 'addMember').mockResolvedValue({ member: { id: 2, username: 'colleague', name: 'Sam Parker', email: 'sam@example.test' } });
+it('sends a join request without granting immediate workspace access', async () => {
+  const add = vi.spyOn(workspace, 'addMember').mockResolvedValue({ request: { id: 'request-1', username: 'colleague', expires_at: '2026-12-01T00:00:00Z' } });
   render(<AccountSettings user={user} />);
   await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));
   await userEvent.type(await screen.findByLabelText('Username'), 'colleague');
-  await userEvent.click(screen.getByRole('button', { name: 'Add member' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Send join request' }));
   await waitFor(() => expect(add).toHaveBeenCalledWith('colleague'));
-  expect(await screen.findByText('Sam Parker')).toBeInTheDocument();
+  expect(await screen.findByText('colleague must accept the request in their Workspace settings before gaining access.')).toBeInTheDocument();
+  expect(screen.queryByText('Sam Parker')).not.toBeInTheDocument();
 });
 
 it('confirms member removal and updates the workspace directory', async () => {
@@ -339,4 +340,17 @@ it('requires confirmation before disconnecting and refreshes methods after savin
   await userEvent.click(screen.getByRole('button', { name: 'Save password' }));
   expect(change).toHaveBeenCalledWith({ current_password: 'old-password-123', password: 'new-password-123', password_confirm: 'new-password-123' });
   expect(auth.methods).toHaveBeenCalledTimes(3);
+});
+
+
+it('shows company requests and lets the recipient decline without changing members', async () => {
+  vi.mocked(workspace.settings).mockResolvedValue({ id: 'workspace', name: 'Personal', can_manage_members: true, members: [], join_requests: [{ id: 'join-1', workspace_name: 'Other Company', expires_at: '2026-12-01T00:00:00Z' }] });
+  const respond = vi.spyOn(workspace, 'respondToJoin').mockResolvedValue(undefined);
+  render(<AccountSettings user={user} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+  expect(await screen.findByText('Other Company')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Accept and join' })).toBeEnabled();
+  await userEvent.click(screen.getByRole('button', { name: 'Decline' }));
+  await waitFor(() => expect(respond).toHaveBeenCalledWith('join-1', 'decline'));
+  await waitFor(() => expect(screen.queryByText('Other Company')).not.toBeInTheDocument());
 });

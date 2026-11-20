@@ -3,7 +3,6 @@ from pathlib import Path
 
 from django.conf import settings
 from django.db.models import Count
-from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
@@ -11,7 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from crm.api.permissions import IsWorkspaceMember
-from crm.models import BackupCheck, Deal, FxRate, FxSyncRun, Invoice, Workspace
+from crm.models import BackupCheck, Deal, FxRate, FxSyncRun, Invoice
 from crm.services.fx import ECB_CURRENCIES
 
 
@@ -32,9 +31,8 @@ def latest_stored_archive():
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsWorkspaceMember])
 def operations_status(request):
-    workspace = get_object_or_404(Workspace, pk=request.workspace_id)
-    if workspace.owner_id != request.user.pk:
-        raise PermissionDenied("Only the workspace owner can view operations status.")
+    if not request.user.is_superuser:
+        raise PermissionDenied("Only platform administrators can view operations status.")
 
     latest_run = FxSyncRun.objects.order_by("-started_at", "-pk").first()
     complete_date = (
