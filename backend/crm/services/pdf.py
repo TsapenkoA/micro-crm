@@ -2,8 +2,8 @@ import calendar
 import html
 from datetime import datetime
 from io import BytesIO
-from pathlib import Path
 
+from django.conf import settings
 from django.utils import timezone
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_RIGHT
@@ -18,14 +18,8 @@ from .calculations import money_string
 
 
 def font_paths():
-    candidates = [
-        (Path("C:/Windows/Fonts/DejaVuSans.ttf"), Path("C:/Windows/Fonts/DejaVuSans-Bold.ttf")),
-        (Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"), Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")),
-    ]
-    for regular, bold in candidates:
-        if regular.is_file() and bold.is_file():
-            return regular, bold
-    raise RuntimeError("A DejaVu Sans font is required for invoice PDF generation.")
+    directory = settings.BASE_DIR / "assets" / "fonts"
+    return directory / "DejaVuSans.ttf", directory / "DejaVuSans-Bold.ttf"
 
 
 def pdf_date(value):
