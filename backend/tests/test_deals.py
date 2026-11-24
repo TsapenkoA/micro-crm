@@ -12,9 +12,48 @@ from django.db.models.query import QuerySet
 import pytest
 from rest_framework.test import APIClient
 
-from crm.models import Client, ClientNote, Deal, WorkspaceMembership
+from crm.models import Client, ClientNote, Deal, Invoice, Task, WorkspaceMembership
 
 pytestmark = pytest.mark.django_db
+
+
+def test_model_validation_errors_use_the_api_error_format():
+    from django.core.exceptions import ValidationError
+    from crm.api.errors import exception_handler
+
+    response = exception_handler(ValidationError({"deal": "Choose a deal for this client."}), {})
+    assert response.status_code == 400
+    assert response.data == {"error": {"code": 400, "reason": "invalid", "details": {"deal": ["Choose a deal for this client."]}}}
+
+
+def test_protected_deletion_and_stale_update_have_different_error_reasons(authenticated_api, user, deal):
+    Invoice.objects.create(workspace=deal.workspace, client=deal.client, deal=deal, created_by=user,
+                           invoice_number="PROTECTED-1", currency="USD")
+    path = f"/api/v1/deals/{deal.pk}"
+    protected = authenticated_api.delete(path, {"version": deal.version}, format="json")
+    stale = authenticated_api.patch(path, {"version": deal.version + 1, "title": "Stale"}, format="json")
+    assert protected.status_code == stale.status_code == 409
+    assert protected.json()["error"]["reason"] == "protected"
+    assert stale.json()["error"]["reason"] == "version_conflict"
+    assert Deal.objects.filter(pk=deal.pk).exists()
+
+
+@pytest.mark.parametrize("related", ["note", "task"])
+def test_deal_client_change_preserves_related_records(authenticated_api, user, client_record, deal, related):
+    target = Client.objects.create(workspace=deal.workspace, created_by=user, name="Another client")
+    if related == "note":
+        record = ClientNote.objects.create(client=client_record, deal=deal, author=user, text="Keep this history")
+    else:
+        from django.utils import timezone as django_timezone
+        record = Task.objects.create(workspace=deal.workspace, client=client_record, deal=deal, created_by=user,
+                                     assignee=user, title="Keep this task", due_at=django_timezone.now())
+    response = authenticated_api.patch(f"/api/v1/deals/{deal.pk}", {"client": str(target.pk), "version": deal.version}, format="json")
+    assert response.status_code == 400 and "client" in response.json()["error"]["details"]
+    deal.refresh_from_db()
+    record.refresh_from_db()
+    assert deal.client_id == record.client_id == client_record.pk
+    if related == "task":
+        assert authenticated_api.patch(f"/api/v1/tasks/{record.pk}", {"title": "Still editable"}, format="json").status_code == 200
 
 
 @pytest.fixture

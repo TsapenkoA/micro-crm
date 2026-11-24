@@ -18,7 +18,14 @@ from crm.services.fx import rate_date_for
 
 class DealConflict(APIException):
     status_code = 409
+    default_code = "version_conflict"
     default_detail = "This record was updated elsewhere. Reload to see the latest version."
+
+
+class DealProtected(APIException):
+    status_code = 409
+    default_code = "protected"
+    default_detail = "This deal has related records and cannot be deleted."
 
 
 class DealQuerysetMixin(WorkspaceQuerysetMixin):
@@ -116,8 +123,12 @@ class DealDetail(DealQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
             raise DealConflict()
         if "client" in values:
             values["client"] = self.lock_client(values["client"])
-            if values["client"].pk != instance.client_id and instance.invoices.exists():
-                raise ValidationError({"client": "Remove linked invoices before changing this deal's client."})
+            if values["client"].pk != instance.client_id:
+                instance = Deal.objects.select_for_update().get(pk=instance.pk)
+                if instance.version != version:
+                    raise DealConflict()
+                if instance.invoices.exists() or instance.tasks.exists() or instance.notes.exists():
+                    raise ValidationError({"client": "A deal with linked invoices, tasks or notes cannot be moved to another client."})
         status = values.get("status", instance.status)
         now = timezone.now()
         values["paid_at"] = (instance.paid_at if instance.status == Deal.Status.PAID else now) if status == Deal.Status.PAID else None
@@ -133,8 +144,6 @@ class DealDetail(DealQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
         changed = Deal.objects.filter(pk=instance.pk, workspace_id=request.workspace_id, version=version, version__lt=2147483647).update(**values)
         if not changed:
             raise DealConflict()
-        if "client" in values and values["client"].pk != instance.client_id and instance.invoices.exists():
-            raise ValidationError({"client": "Remove linked invoices before changing this deal's client."})
         instance.refresh_from_db()
         log_activity(instance, request.user, "updated", before)
         if instance.description != previous_description:
@@ -154,7 +163,7 @@ class DealDetail(DealQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
             log_activity(instance, request.user, "deleted")
             instance.delete()
         except ProtectedError as exc:
-            raise DealConflict("This deal has related records and cannot be deleted.") from exc
+            raise DealProtected() from exc
         return Response(status=204)
 
 
