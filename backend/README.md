@@ -15,7 +15,7 @@ Do not move models between application labels or reset migration history. Before
 
 ## API
 
-Routes below start with `/api/v1` and have no trailing slash except OAuth callbacks. Business endpoints require a session and workspace membership, including for administrators. Foreign records return 404. Writes require the CSRF cookie and `X-CSRFToken`; login rotates the token. Errors use `{error: {code, details}}`. All API responses are private and non-cacheable.
+Routes below start with `/api/v1` and have no trailing slash except OAuth callbacks. Business endpoints require a session and workspace membership, including for administrators. Foreign records return 404. Writes require the CSRF cookie and `X-CSRFToken`; login rotates the token. Errors retain `{error: {code, details}}`. Handled API exceptions also include `reason`, distinguishing `version_conflict` from `protected`; `code` remains the HTTP status. All API responses are private and non-cacheable.
 
 | Routes | Methods and purpose |
 | --- | --- |
@@ -25,7 +25,7 @@ Routes below start with `/api/v1` and have no trailing slash except OAuth callba
 | /auth/login, /auth/logout | POST: establish or end a session |
 | /auth/sign-up | POST: username, email, password, password_confirm; returns 202 and emails a verification link |
 | /auth/resend-verification | POST: email; rotates the link for a pending registration, with a neutral 202 response |
-| /auth/verify-email | POST: token; creates the account and workspace, then opens a session |
+| /auth/verify-email | POST: token and original signup password; creates the account and workspace, then opens a session |
 | /auth/forgot-password, /auth/reset-password | POST: request a reset or submit uid, token and matching passwords |
 | /auth/profile | PATCH: username only |
 | /auth/email-change, /auth/email-change/confirm | POST: request or confirm an email change |
@@ -78,6 +78,10 @@ Routes below start with `/api/v1` and have no trailing slash except OAuth callba
 
 ## Contracts
 
+- Email confirmation requires `POST /auth/verify-email` with `token` and the original signup `password`. An active pending signup cannot be overwritten; use resend verification instead. Changing an account email sends a security notification to the previous address after commit.
+- Login and password-recovery limits combine the identifier and client IP, with a higher IP-wide quota. Successful login resets its identifier/IP counter. Forwarded IP headers are ignored unless both `TRUSTED_PROXY_COUNT` and `TRUSTED_PROXY_IPS` are configured for a trusted proxy chain; the proxy must replace untrusted forwarded headers. Invoice sends and reminders share quotas of 20 requests per user and 100 per workspace per hour.
+- A deal with linked invoices, tasks or notes cannot be moved to another client. Client changes lock the deal while checking its relationships; version checks remain mandatory.
+- Definite SMTP rejections are recorded as failed and can be retried. Timeouts and other uncertain results remain unknown and block resend until reviewed. Issuing an invoice and delivering email are separate events: a failed delivery does not revert an issued document. Logs contain delivery IDs and error classes, without recipient addresses, credentials or raw SMTP responses.
 - One membership per user. Registration provisions an independent workspace only after email confirmation. Matching email domains never join a company. Owner requests expire after seven days; recipients must explicitly accept after confirming identity. Acceptance rechecks ownership and an empty personal workspace. Removal retains company records, creates a personal workspace and invalidates the former member's sessions. Any member can rename the workspace.
 - Clients sort by `-created_at`, `-id`, support name/company/email search and pagination. Details include related workspace deals. Primary contacts mirror client name/email/phone; changing the primary contact leaves issued invoice snapshots intact. Related history and financial records block deletion with 409. Notes are plain text with server-supplied author/time; only the author can delete a note. Links accept HTTP/HTTPS only. Attachments are private, signature-checked and scanned, at most 5 MB each and 50 per client.
 - Deals use decimal string amounts, a timezone-qualified deadline, five stages and archived outcomes `none`, `lost`, `cancelled`. Updates/deletion require the observed integer `version`; conflicts return 409 without partial changes. Description is independent of shared notes. List filters: `search`, `status`, `currency`, `page`, `page_size`, `ordering=newest|title|client|deadline`. Totals cover the complete matching selection.
