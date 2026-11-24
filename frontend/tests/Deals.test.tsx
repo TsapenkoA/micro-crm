@@ -93,6 +93,71 @@ it('loads another board page only on request and keeps server totals', async () 
   expect(deals.page).toHaveBeenLastCalledWith({ search: '', status: '', currency: '' }, 2, 'newest', expect.any(AbortSignal));
 });
 
+it('keeps the loaded board through repeated status changes, editing and deletion', async () => {
+  let rows = Array.from({ length: 21 }, (_, index) => ({ ...deal, id: `loaded-${index}`, title: `Loaded deal ${index + 1}` }));
+  vi.mocked(deals.page).mockImplementation(async (_filters, page = 1) => ({
+    count: rows.length, results: rows.slice((page - 1) * 20, page * 20),
+    next: page * 20 < rows.length ? 'next' : null, previous: page > 1 ? 'previous' : null, totals: [],
+  }));
+  vi.mocked(deals.detail).mockImplementation(async id => rows.find(row => row.id === id)!);
+  vi.mocked(deals.status).mockImplementation(async (current, status) => {
+    const updated = { ...current, status, version: current.version + 1 };
+    rows = rows.map(row => row.id === updated.id ? updated : row);
+    return updated;
+  });
+  vi.mocked(deals.update).mockImplementation(async (current, values) => {
+    const updated = { ...current, ...values, version: current.version + 1 };
+    rows = rows.map(row => row.id === updated.id ? updated : row);
+    return updated;
+  });
+  vi.mocked(deals.remove).mockImplementation(async current => { rows = rows.filter(row => row.id !== current.id); });
+  render(<DealsPage />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Load more deals (20 of 21)' }));
+  await screen.findByRole('button', { name: 'Open Loaded deal 21' });
+  await act(async () => drag.end!({ active: { id: 'loaded-20' }, over: { id: 'in_progress' } }));
+  await waitFor(() => expect(within(screen.getByRole('region', { name: 'In Progress' })).getByRole('button', { name: 'Open Loaded deal 21' })).not.toBeDisabled());
+  await waitFor(() => expect(screen.queryByText('Refreshing deals…')).not.toBeInTheDocument());
+  await act(async () => drag.end!({ active: { id: 'loaded-20' }, over: { id: 'paid' } }));
+  expect(deals.status).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'loaded-20', version: 2 }), 'paid', 'none');
+  await waitFor(() => expect(screen.queryByText('Refreshing deals…')).not.toBeInTheDocument());
+  await userEvent.click(screen.getByRole('button', { name: 'Open Loaded deal 21' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Edit deal' }));
+  await userEvent.clear(screen.getByLabelText('Deal title'));
+  await userEvent.type(screen.getByLabelText('Deal title'), 'Updated older deal');
+  await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  await screen.findByText('Deal saved.');
+  await waitFor(() => expect(screen.queryByText('Refreshing deals…')).not.toBeInTheDocument());
+  expect(screen.getByRole('button', { name: 'Open Updated older deal' })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Delete deal' }));
+  await userEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Confirm deletion' }));
+  await screen.findByText('Deal deleted.');
+  await waitFor(() => expect(screen.queryByText('Refreshing deals…')).not.toBeInTheDocument());
+  expect(screen.getAllByRole('button', { name: /^Open Loaded deal/ })).toHaveLength(20);
+  expect(document.body.style.overflow).toBe('');
+}, 15000);
+
+it('shows a status conflict inside deal details', async () => {
+  vi.mocked(deals.status).mockRejectedValue(new ApiError(409, 'Conflict', undefined, 'version_conflict'));
+  render(<DealsPage />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Open Website project' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Deal details' });
+  await userEvent.selectOptions(await within(dialog).findByLabelText('Change status'), 'paid');
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('updated elsewhere');
+  expect(within(dialog).getByRole('button', { name: 'Reload current' })).toBeInTheDocument();
+});
+
+it('does not offer version reload for a protected deletion', async () => {
+  vi.mocked(deals.remove).mockRejectedValue(new ApiError(409, 'This deal has related records and cannot be deleted.', undefined, 'protected'));
+  render(<DealsPage />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Open Website project' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Delete deal' }));
+  const dialog = screen.getByRole('alertdialog');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm deletion' }));
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('related records');
+  expect(within(dialog).queryByRole('button', { name: 'Reload current' })).not.toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: 'Confirm deletion' })).toBeDisabled();
+});
+
 it('opens compact deal details over the unchanged Kanban and navigates its sections', async () => {
   render(<DealsPage />);
   const trigger = await screen.findByRole('button', { name: 'Open Website project' });
@@ -186,10 +251,11 @@ it('chooses a deadline from an English calendar and submits a timezone-qualified
 });
 
 it('retains a stale edit draft and requires an explicit discard after comparing latest data', async () => {
-  vi.mocked(deals.update).mockRejectedValue(new ApiError(409, 'Conflict'));
+  vi.mocked(deals.update).mockRejectedValue(new ApiError(409, 'Conflict', undefined, 'version_conflict'));
   vi.mocked(deals.detail).mockResolvedValue({ ...deal, title: 'Colleague edit', version: 2 });
   const saved = vi.fn();
-  render(<DealForm initial={{ ...deal, amount: '9800.00' }} clients={[client]} onCancel={vi.fn()} onPending={vi.fn()} onSaved={saved} />);
+  const discarded = vi.fn();
+  render(<DealForm initial={{ ...deal, amount: '9800.00' }} clients={[client]} onCancel={vi.fn()} onPending={vi.fn()} onSaved={saved} onDiscard={discarded} />);
   expect(screen.getByLabelText('Amount')).toHaveValue('9800');
   await userEvent.clear(screen.getByLabelText('Deal title'));
   await userEvent.type(screen.getByLabelText('Deal title'), 'My unsaved edit');
@@ -202,11 +268,30 @@ it('retains a stale edit draft and requires an explicit discard after comparing 
   expect(saved).not.toHaveBeenCalled();
   expect(screen.getByLabelText('Deal title')).toHaveValue('My unsaved edit');
   await userEvent.click(screen.getByRole('button', { name: 'Discard draft and open latest' }));
-  expect(saved).toHaveBeenCalledWith(expect.objectContaining({ version: 2 }));
+  expect(discarded).toHaveBeenCalledWith(expect.objectContaining({ version: 2 }));
+  expect(saved).not.toHaveBeenCalled();
+});
+
+it('only retries a conflict over a freshly loaded version after explicit confirmation', async () => {
+  const latest = { ...deal, title: 'Colleague edit', version: 2 };
+  vi.mocked(deals.detail).mockResolvedValue(latest);
+  vi.mocked(deals.update).mockRejectedValueOnce(new ApiError(409, 'Conflict', undefined, 'version_conflict'))
+    .mockResolvedValueOnce({ ...latest, title: 'My draft', version: 3 });
+  const saved = vi.fn();
+  render(<DealForm initial={deal} clients={[client]} onCancel={vi.fn()} onPending={vi.fn()} onSaved={saved} />);
+  await userEvent.clear(screen.getByLabelText('Deal title'));
+  await userEvent.type(screen.getByLabelText('Deal title'), 'My draft');
+  await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Reload current' }));
+  const retry = await screen.findByRole('button', { name: 'Save my changes over version 2' });
+  expect(deals.update).toHaveBeenCalledTimes(1);
+  await userEvent.click(retry);
+  await waitFor(() => expect(saved).toHaveBeenCalledWith(expect.objectContaining({ title: 'My draft', version: 3 })));
+  expect(deals.update).toHaveBeenLastCalledWith(latest, expect.objectContaining({ title: 'My draft' }));
 });
 
 it.each([409, 500])('rolls back a failed drag with status %s and keeps the error after refetch', async code => {
-  vi.mocked(deals.status).mockRejectedValue(new ApiError(code, 'Request failed'));
+  vi.mocked(deals.status).mockRejectedValue(new ApiError(code, 'Request failed', undefined, code === 409 ? 'version_conflict' : undefined));
   render(<DealsPage />);
   await screen.findByText('Website project');
   await act(async () => drag.end!({ active: { id: deal.id }, over: { id: 'paid' } }));

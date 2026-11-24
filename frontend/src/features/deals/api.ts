@@ -57,7 +57,8 @@ export const deals = {
   remove: (deal: Deal) => request<void>(`/deals/${encodeURIComponent(deal.id)}`, { method: 'DELETE', body: JSON.stringify({ version: deal.version }) }),
 };
 
-export const errorMessage = (cause: unknown) => cause instanceof ApiError && cause.status === 409
+export const isVersionConflict = (cause: unknown) => cause instanceof ApiError && cause.reason === 'version_conflict';
+export const errorMessage = (cause: unknown) => isVersionConflict(cause)
   ? 'This record was updated elsewhere. Reload to see the latest version.'
   : cause instanceof Error ? cause.message : 'Unable to complete the request. Please try again.';
 

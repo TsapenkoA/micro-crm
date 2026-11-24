@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { ApiError } from '../../api/client';
 import type { Client } from '../clients/api';
-import { deals, errorMessage, stages, type Deal, type DealInput, type Outcome, type Status } from './api';
+import { deals, errorMessage, isVersionConflict, stages, type Deal, type DealInput, type Outcome, type Status } from './api';
 import DeadlinePicker from './DeadlinePicker';
 
 function localDate(value: string | null) {
@@ -10,7 +10,8 @@ function localDate(value: string | null) {
   return new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
 
-export default function DealForm({ initial, clients, onSaved, onCancel, onPending }: { initial?: Deal; clients: Client[]; onSaved: (deal: Deal) => void; onCancel: () => void; onPending: (pending: boolean) => void }) {
+export default function DealForm({ initial, clients, onSaved, onDiscard, onCancel, onPending }: { initial?: Deal; clients: Client[]; onSaved: (deal: Deal) => void; onDiscard?: (deal: Deal) => void; onCancel: () => void; onPending: (pending: boolean) => void }) {
+  const [baseDeal, setBaseDeal] = useState(initial);
   const [values, setValues] = useState({ title: initial?.title ?? '', description: initial?.description ?? '', client: initial?.client ?? '', amount: initial?.amount.replace(/\.00$/, '') ?? '', currency: initial?.currency ?? 'USD', status: initial?.status ?? 'new_lead' as Status, outcome: initial?.outcome ?? 'none' as Outcome, deadline: localDate(initial?.deadline ?? null) });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
@@ -20,9 +21,9 @@ export default function DealForm({ initial, clients, onSaved, onCancel, onPendin
   const [reloading, setReloading] = useState(false);
 
   function field(name: keyof typeof values, value: string) { setValues(current => ({ ...current, [name]: value })); }
-  async function submit(event: FormEvent) {
+  async function submit(event: FormEvent, observed = baseDeal) {
     event.preventDefault();
-    if (saving || conflict) return;
+    if (saving || conflict && observed === baseDeal) return;
     const invalid: Record<string, string> = {};
     if (!values.title.trim()) invalid.title = 'Enter a deal title.';
     if (!values.client) invalid.client = 'Select a client.';
@@ -33,10 +34,11 @@ export default function DealForm({ initial, clients, onSaved, onCancel, onPendin
     if (Object.keys(invalid).length) return;
     const payload: DealInput = { ...values, title: values.title.trim(), outcome: values.status === 'archived' ? values.outcome : 'none', deadline: values.deadline ? new Date(values.deadline).toISOString() : null };
     setSaving(true); onPending(true);
-    try { onSaved(initial ? await deals.update(initial, payload) : await deals.create(payload)); }
+    setBaseDeal(observed); setConflict(false); setLatest(null);
+    try { onSaved(observed ? await deals.update(observed, payload) : await deals.create(payload)); }
     catch (cause) {
       setError(errorMessage(cause));
-      if (cause instanceof ApiError && cause.status === 409) setConflict(true);
+      if (isVersionConflict(cause)) setConflict(true);
       if (cause instanceof ApiError && cause.status === 400 && cause.details && typeof cause.details === 'object') {
         setErrors(Object.fromEntries(Object.entries(cause.details).map(([key, value]) => [key, Array.isArray(value) ? value.join(' ') : String(value)])));
       }
@@ -55,7 +57,18 @@ export default function DealForm({ initial, clients, onSaved, onCancel, onPendin
   return <form className="client-form live-deal-form" onSubmit={submit} noValidate>
     <p className="muted">Shared with your company. Changes are saved to your workspace.</p>
     {error && <p role="alert" className="notice error">{error}</p>}
-    {conflict && <div className="deal-conflict"><p>Your unsaved values are kept below. Load the latest record to compare before discarding your draft.</p><button className="secondary" type="button" disabled={reloading} onClick={reload}>{reloading ? 'Loading…' : 'Reload current'}</button>{latest && <div><strong>Latest server record · version {latest.version}</strong><p>{latest.title} · {latest.amount} {latest.currency} · {latest.status.replaceAll('_', ' ')}</p><button className="secondary" type="button" onClick={() => onSaved(latest)}>Discard draft and open latest</button></div>}</div>}
+    {conflict && <div className="deal-conflict">
+      <p>Your unsaved values are kept below. Load the latest record and compare before saving again.</p>
+      <button className="secondary" type="button" disabled={reloading || saving} onClick={reload}>{reloading ? 'Loading…' : 'Reload current'}</button>
+      {latest && <div>
+        <strong>Latest server record · version {latest.version}</strong>
+        <p>{latest.title} · {latest.amount} {latest.currency} · {latest.status.replaceAll('_', ' ')}</p>
+        <p>{latest.description || 'No description yet.'}</p>
+        <p>Client: {clients.find(client => client.id === latest.client)?.name || 'Client unavailable'} · Deadline: {latest.deadline ? new Date(latest.deadline).toLocaleString('en-US') : 'No deadline'} · Archive outcome: {latest.outcome}</p>
+        <button className="secondary" type="button" disabled={saving} onClick={() => onDiscard ? onDiscard(latest) : onCancel()}>Discard draft and open latest</button>
+        <button className="primary" type="button" disabled={saving} onClick={event => void submit(event, latest)}>Save my changes over version {latest.version}</button>
+      </div>}
+    </div>}
     {!clients.length && <p role="alert">Create a client before adding a deal.</p>}
     <label className="field">Deal title<input {...input('title')} maxLength={250} required data-autofocus />{problem('title')}</label>
     <label className="field">Description<textarea {...input('description')} maxLength={10000} rows={4} placeholder="Describe the scope and next steps" disabled={saving} />{problem('description')}</label>

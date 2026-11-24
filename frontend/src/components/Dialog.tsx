@@ -10,6 +10,9 @@ type Props = {
   className?: string;
 };
 
+let openDialogs = 0;
+let previousOverflow = '';
+
 export default function Dialog({ title, children, onClose, busy = false, drawer = false, role = 'dialog', className = '' }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -17,13 +20,15 @@ export default function Dialog({ title, children, onClose, busy = false, drawer 
   useEffect(() => {
     const trigger = document.activeElement;
     const dialog = ref.current!;
-    const overflow = document.body.style.overflow;
+    if (openDialogs === 0) previousOverflow = document.body.style.overflow;
+    openDialogs += 1;
     document.body.style.overflow = 'hidden';
     dialog.showModal();
     (dialog.querySelector<HTMLElement>('[data-autofocus]') ?? dialog.querySelector<HTMLElement>('button'))?.focus();
     return () => {
       dialog.close();
-      document.body.style.overflow = overflow;
+      openDialogs -= 1;
+      if (openDialogs === 0) document.body.style.overflow = previousOverflow;
       if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus();
       else document.querySelector<HTMLElement>('[data-dialog-fallback]')?.focus();
     };

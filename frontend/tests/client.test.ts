@@ -66,3 +66,13 @@ it('uploads an avatar as multipart data with session credentials', async () => {
   expect(options.headers).not.toHaveProperty('Content-Type');
   expect(options.credentials).toBe('same-origin');
 });
+
+it('uses safe validation messages and preserves machine-readable conflict reasons', async () => {
+  vi.stubGlobal('fetch', vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 400, reason: 'invalid', details: { amount: ['Payment exceeds the outstanding balance.'] } } }), { status: 400 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 409, reason: 'protected', details: { detail: 'This deal has related records and cannot be deleted.' } } }), { status: 409 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ error: { details: 'private traceback' } }), { status: 500 })));
+  await expect(request('/invoices')).rejects.toMatchObject({ message: 'Payment exceeds the outstanding balance.', reason: 'invalid' });
+  await expect(request('/deals')).rejects.toMatchObject({ status: 409, reason: 'protected', message: 'This deal has related records and cannot be deleted.' });
+  await expect(request('/clients')).rejects.toMatchObject({ message: expect.not.stringContaining('private') });
+});
