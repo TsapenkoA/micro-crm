@@ -2,6 +2,13 @@ from django.shortcuts import get_object_or_404
 from rest_framework import serializers
 
 
+class SingleLineField(serializers.CharField):
+    def to_internal_value(self, data):
+        if isinstance(data, str) and any(character in data for character in "\r\n"):
+            raise serializers.ValidationError("Enter a single line without line breaks.")
+        return super().to_internal_value(data)
+
+
 class StrictModelSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         if isinstance(data, dict):

@@ -15,12 +15,14 @@ from rest_framework import serializers
 from crm.api.pagination import ClientPagination
 from crm.api.permissions import IsWorkspaceMember, WorkspaceQuerysetMixin
 from crm.activity.services import log_activity, snapshot
-from crm.invoices.delivery import DeliveryConflict, reminder_blocker, reminder_copy, prepare_invoice_email
+from crm.invoices.delivery import DeliveryConflict, reminder_blocker, reminder_copy, prepare_invoice_email, send_message
 from crm.invoices.serializers import InvoiceCancelSerializer, InvoiceDueDateCorrectionInputSerializer, InvoiceListSerializer, InvoiceOutputSerializer, InvoicePaymentInputSerializer, InvoicePaymentVoidSerializer, InvoiceStatusSerializer, InvoiceWriteSerializer
 from crm.invoices.services import buyer_snapshot, invoice_number, issue_invoice, record_payment, recorded_total
 from crm.models import Client, Deal, Invoice, InvoiceDelivery, InvoiceDueDateCorrection, InvoiceItem, InvoicePayment, Workspace, WorkspaceMembership
 from crm.services.calculations import CURRENCY_PLACES, calculate_items, money_string
 from crm.services.pdf import render_invoice
+from crm.auth.security import InvoiceEmailThrottle
+
 
 
 class InvoiceQuerysetMixin(WorkspaceQuerysetMixin):
@@ -293,6 +295,8 @@ class InvoiceCancel(InvoiceQuerysetMixin, generics.GenericAPIView):
 
 
 class InvoiceSend(InvoiceQuerysetMixin, generics.GenericAPIView):
+    throttle_classes = [InvoiceEmailThrottle]
+
     def post(self, request, pk):
         with transaction.atomic():
             self.lock_membership()
@@ -312,6 +316,8 @@ class InvoiceSend(InvoiceQuerysetMixin, generics.GenericAPIView):
 
 
 class InvoiceReminder(InvoiceQuerysetMixin, generics.GenericAPIView):
+    throttle_classes = [InvoiceEmailThrottle]
+
     def get(self, request, pk):
         invoice = get_object_or_404(self.get_queryset(), pk=pk)
         if invoice.due_date is None:
@@ -333,12 +339,7 @@ class InvoiceReminder(InvoiceQuerysetMixin, generics.GenericAPIView):
 
 
 def complete_delivery(invoice, delivery, message, actor, activity_action):
-    try:
-        accepted = message.send(fail_silently=False)
-    except Exception:
-        result = InvoiceDelivery.Result.UNKNOWN
-    else:
-        result = InvoiceDelivery.Result.ACCEPTED if accepted == 1 else InvoiceDelivery.Result.FAILED
+    result = send_message(message, delivery.pk)
     with transaction.atomic():
         delivery.result = result
         delivery.save(update_fields=["result"])

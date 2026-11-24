@@ -1,13 +1,14 @@
 import re
 from rest_framework import serializers
+from crm.api.serializers import SingleLineField
 
 
 class WorkspaceNameSerializer(serializers.Serializer):
-    name = serializers.CharField(max_length=200, allow_blank=False, trim_whitespace=True)
+    name = SingleLineField(max_length=200, allow_blank=False, trim_whitespace=True)
 
 
 class SellerDetailsSerializer(serializers.Serializer):
-    name = serializers.CharField(max_length=200, trim_whitespace=True)
+    name = SingleLineField(max_length=200, trim_whitespace=True)
     email = serializers.EmailField()
     phone = serializers.CharField(max_length=80, required=False, allow_blank=True, trim_whitespace=True)
     address = serializers.CharField(max_length=500, required=False, allow_blank=True, trim_whitespace=True)

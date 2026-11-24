@@ -1,4 +1,7 @@
 from datetime import timedelta
+import logging
+import socket
+import smtplib
 
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -11,6 +14,35 @@ from crm.models import InvoiceDelivery
 from crm.invoices.services import recorded_total
 from crm.services.calculations import money_string
 from crm.services.pdf import render_invoice
+from crm.api.serializers import SingleLineField
+
+logger = logging.getLogger(__name__)
+
+
+def send_message(message, delivery_id):
+    connection = None
+    opened = False
+    try:
+        connection = message.get_connection(fail_silently=False)
+        connection.open()
+        opened = True
+        accepted = message.send(fail_silently=False)
+        return InvoiceDelivery.Result.ACCEPTED if accepted == 1 else InvoiceDelivery.Result.FAILED
+    except Exception as exc:
+        rejected = not opened or isinstance(exc, (
+            smtplib.SMTPConnectError, smtplib.SMTPAuthenticationError, smtplib.SMTPRecipientsRefused,
+            smtplib.SMTPSenderRefused, smtplib.SMTPDataError, smtplib.SMTPNotSupportedError,
+            ConnectionRefusedError, socket.gaierror,
+        ))
+        result = InvoiceDelivery.Result.FAILED if rejected else InvoiceDelivery.Result.UNKNOWN
+        logger.warning("Invoice email result %s for delivery %s (%s).", result, delivery_id, type(exc).__name__)
+        return result
+    finally:
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception as exc:
+                logger.warning("Invoice email connection close failed for delivery %s (%s).", delivery_id, type(exc).__name__)
 
 
 class MailUnavailable(APIException):
@@ -68,6 +100,7 @@ def prepare_invoice_email(invoice, kind):
     }:
         raise MailUnavailable()
     recipient = recipient_for(invoice)
+    SingleLineField(max_length=200).run_validation(invoice.seller_snapshot.get("name") or "Your supplier")
     if kind == InvoiceDelivery.Kind.REMINDER:
         subject, body = reminder_copy(invoice)
     else:

@@ -1,14 +1,14 @@
 from decimal import Decimal
 from django.utils import timezone
 from rest_framework import serializers
-from crm.api.serializers import StrictModelSerializer, StrictSerializer, WorkspaceClientField
+from crm.api.serializers import SingleLineField, StrictModelSerializer, StrictSerializer, WorkspaceClientField
 from crm.models import Client, Deal, Invoice, InvoiceDelivery, InvoiceDueDateCorrection, InvoiceItem, InvoicePayment
 from crm.services.calculations import CURRENCY_PLACES, money_string
 from crm.invoices.services import recorded_total
 
 
 class SellerSerializer(StrictSerializer):
-    name = serializers.CharField(max_length=200, trim_whitespace=True)
+    name = SingleLineField(max_length=200, trim_whitespace=True)
     email = serializers.EmailField(required=False, allow_blank=True)
     phone = serializers.CharField(max_length=80, required=False, allow_blank=True)
     address = serializers.CharField(max_length=500, required=False, allow_blank=True)

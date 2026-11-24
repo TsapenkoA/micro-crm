@@ -22,6 +22,66 @@ from crm.models import Client, Deal, Invoice, InvoiceDelivery, InvoiceItem, Invo
 pytestmark = pytest.mark.django_db
 
 
+@pytest.mark.parametrize("failure", ["authentication", "connection", "recipients", "sender", "data"])
+def test_rejected_email_attempt_can_be_retried(authenticated_api, client_record, monkeypatch, caplog, failure):
+    import smtplib
+
+    exceptions = {
+        "authentication": smtplib.SMTPAuthenticationError(535, b"private credentials"),
+        "connection": ConnectionRefusedError("private host"),
+        "recipients": smtplib.SMTPRecipientsRefused({"private@example.com": (550, b"Rejected")}),
+        "sender": smtplib.SMTPSenderRefused(550, b"Rejected", "private@example.com"),
+        "data": smtplib.SMTPDataError(554, b"Rejected"),
+    }
+    created = create(authenticated_api, client_record).json()
+    path = f"/api/v1/invoices/{created['id']}/send"
+    def reject(*args, **kwargs):
+        raise exceptions[failure]
+    monkeypatch.setattr("crm.invoices.delivery.EmailMessage.send", reject)
+    assert authenticated_api.post(path, {}, format="json").status_code == 503
+    assert InvoiceDelivery.objects.get(invoice_id=created["id"]).result == "failed"
+    assert "private" not in caplog.text
+    monkeypatch.setattr("crm.invoices.delivery.EmailMessage.send", lambda *args, **kwargs: 1)
+    assert authenticated_api.post(path, {}, format="json").status_code == 200
+
+
+def test_unreachable_smtp_connection_is_a_retryable_failure(authenticated_api, client_record, settings):
+    import socket
+
+    settings.EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    settings.EMAIL_HOST = "127.0.0.1"
+    settings.EMAIL_HOST_USER = settings.EMAIL_HOST_PASSWORD = ""
+    settings.EMAIL_USE_TLS = settings.EMAIL_USE_SSL = False
+    settings.EMAIL_TIMEOUT = 1
+    created = create(authenticated_api, client_record).json()
+    with socket.socket() as reserved:
+        reserved.bind(("127.0.0.1", 0))
+        settings.EMAIL_PORT = reserved.getsockname()[1]
+        assert authenticated_api.post(f"/api/v1/invoices/{created['id']}/send", {}, format="json").status_code == 503
+    assert InvoiceDelivery.objects.get(invoice_id=created["id"]).result == "failed"
+
+
+def test_invoice_email_quota_is_shared_across_documents(authenticated_api, client_record, settings):
+    settings.AUTH_RATE_LIMITS = {**settings.AUTH_RATE_LIMITS, "invoice_email": (1, 3600)}
+    first = create(authenticated_api, client_record).json()
+    second = create(authenticated_api, client_record).json()
+    assert authenticated_api.post(f"/api/v1/invoices/{first['id']}/send", {}, format="json").status_code == 200
+    response = authenticated_api.post(f"/api/v1/invoices/{second['id']}/send", {}, format="json")
+    assert response.status_code == 429 and "Retry-After" in response
+    assert not InvoiceDelivery.objects.filter(invoice_id=second["id"]).exists()
+
+
+def test_email_subject_fields_reject_line_breaks_before_delivery(authenticated_api, client_record):
+    response = create(authenticated_api, client_record, seller={"name": "Studio\nBcc: other@example.com"})
+    assert response.status_code == 400
+    assert authenticated_api.patch("/api/v1/workspace/settings", {"name": "Studio\nInjected"}, format="json").status_code == 400
+    created = create(authenticated_api, client_record).json()
+    Invoice.objects.filter(pk=created["id"]).update(seller_snapshot={"name": "Old\r\nInvalid", "email": "old@example.com"})
+    assert authenticated_api.post(f"/api/v1/invoices/{created['id']}/send", {}, format="json").status_code == 400
+    assert not InvoiceDelivery.objects.filter(invoice_id=created["id"]).exists()
+    assert Invoice.objects.get(pk=created["id"]).status == "draft"
+
+
 def item(description="Service", quantity="1.000", unit_price="10.00", tax_rate="0"):
     return {"description": description, "quantity": quantity, "unit_price": unit_price, "tax_rate": tax_rate}
 
