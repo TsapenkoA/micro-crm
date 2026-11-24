@@ -7,6 +7,7 @@ from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
 from crm.models import Client, ClientAttachment, ClientContact, Invoice
@@ -15,6 +16,24 @@ copy_primary_contacts = import_module("crm.migrations.clients.0005_clientattachm
 
 
 pytestmark = pytest.mark.django_db
+
+
+def test_attachment_metadata_and_deletion_do_not_read_file_content(logged_api, user, client_record):
+    attachment = ClientAttachment.objects.create(client=client_record, uploaded_by=user, name="brief.pdf",
+                                                content_type="application/pdf", size=12, content=b"%PDF-1.4 old")
+    path = f"/api/v1/clients/{client_record.pk}/attachments"
+    with CaptureQueriesContext(connection) as captured:
+        response = logged_api.get(path)
+    assert response.status_code == 200
+    assert response.json()["results"][0]["name"] == "brief.pdf"
+    assert "content" not in response.json()["results"][0]
+    queries = [query["sql"] for query in captured if query["sql"].lstrip().startswith("SELECT") and "clients_clientattachment" in query["sql"]]
+    assert queries and all('"content"' not in query for query in queries)
+    with CaptureQueriesContext(connection) as captured:
+        response = logged_api.delete(f"{path}/{attachment.pk}")
+    assert response.status_code == 204
+    queries = [query["sql"] for query in captured if query["sql"].lstrip().startswith("SELECT") and "clients_clientattachment" in query["sql"]]
+    assert queries and all('"content"' not in query for query in queries)
 
 
 @pytest.fixture

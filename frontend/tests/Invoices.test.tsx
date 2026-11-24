@@ -68,6 +68,33 @@ it('lists saved invoices and shows authoritative details', async () => {
   expect(within(dialog).getByRole('button', { name: 'Issue without email' })).toBeInTheDocument();
 });
 
+it('starts with the preferred currency and explains a currency-filtered empty list', async () => {
+  invoiceData = [{ ...record, currency: 'EUR' }];
+  render(<InvoicesPage workspaceName="Workspace" userEmail="seller@example.test" reportingCurrency="GBP" totalCount={1} />);
+  expect(await screen.findByText('No invoices match GBP.')).toBeInTheDocument();
+  expect(screen.queryByText('No invoices yet. Create a draft to get started.')).not.toBeInTheDocument();
+  await userEvent.selectOptions(screen.getByLabelText('Summary currency'), 'EUR');
+  expect(await screen.findByRole('button', { name: 'INV-000001' })).toBeInTheDocument();
+});
+
+it('switches the list to the currency of a newly saved invoice', async () => {
+  vi.mocked(invoices.create).mockImplementation(async () => {
+    const created = { ...record, id: 'eur-invoice', invoice_number: 'INV-EUR-1', currency: 'EUR' };
+    invoiceData.push(created);
+    return created;
+  });
+  const view = render(<InvoicesPage workspaceName="Workspace" userEmail="seller@example.test" createRequested totalCount={1} />);
+  const editor = await screen.findByRole('dialog', { name: 'New invoice' });
+  view.rerender(<InvoicesPage workspaceName="Workspace" userEmail="seller@example.test" totalCount={1} />);
+  await userEvent.selectOptions(within(editor).getByLabelText('Currency'), 'EUR');
+  await userEvent.type(within(editor).getByLabelText('Description'), 'European project');
+  await userEvent.type(within(editor).getByLabelText('Unit price'), '100');
+  await userEvent.click(within(editor).getByRole('button', { name: 'Save draft' }));
+  await screen.findByText('Invoice created.');
+  expect(screen.getByLabelText('Summary currency')).toHaveValue('EUR');
+  expect(await screen.findByRole('button', { name: 'INV-EUR-1' })).toBeInTheDocument();
+});
+
 it('paginates invoice rows while keeping the workspace summary', async () => {
   vi.mocked(invoices.page).mockImplementation(async (_search, _status, _currency, page = 1) => ({
     count: 21, results: [{ ...listItem(record), id: `invoice-${page}`, invoice_number: `INV-00000${page}` }],

@@ -51,6 +51,7 @@ class ClientList(ClientQuerysetMixin, generics.ListCreateAPIView):
 
 class ClientInUse(APIException):
     status_code = 409
+    default_code = "protected"
     default_detail = "This client has related records and cannot be deleted. Remove or resolve those records first."
 
 
@@ -264,7 +265,7 @@ class ClientAttachments(ClientQuerysetMixin, generics.ListCreateAPIView):
         return get_object_or_404(queryset, pk=self.kwargs["pk"])
 
     def get_queryset(self):
-        return self.get_client().attachments.order_by("-created_at", "-id")
+        return self.get_client().attachments.defer("content").order_by("-created_at", "-id")
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -298,7 +299,7 @@ class ClientAttachmentDetail(ClientQuerysetMixin, generics.GenericAPIView):
         client = get_object_or_404(super().get_queryset(), pk=self.kwargs["pk"])
         queryset = client.attachments
         if lock:
-            queryset = queryset.select_for_update()
+            queryset = queryset.defer("content").select_for_update()
         return get_object_or_404(queryset, pk=self.kwargs["attachment_id"])
 
     def get(self, request, *args, **kwargs):
