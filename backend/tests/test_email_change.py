@@ -23,7 +23,7 @@ def token_from_message():
     return parse_qs(urlparse(url).fragment.split("?", 1)[1])["email_change_token"][0]
 
 
-def test_email_change_requires_recent_auth_and_verifies_new_address(api, user, settings):
+def test_email_change_requires_recent_auth_and_verifies_new_address(api, user, settings, django_capture_on_commit_callbacks):
     settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
     api.force_login(user)
     session = api.session
@@ -38,11 +38,14 @@ def test_email_change_requires_recent_auth_and_verifies_new_address(api, user, s
     assert pending.email == "new@example.com" and token not in pending.token_hash
     assert user.email == "alex@example.com"
     assert post(api, "email-change/confirm", {"token": "invalid"}).status_code == 400
-    response = post(api, "email-change/confirm", {"token": token})
+    with django_capture_on_commit_callbacks(execute=True):
+        response = post(api, "email-change/confirm", {"token": token})
     assert response.status_code == 200 and response.json()["user"]["email"] == "new@example.com"
     user.refresh_from_db()
     assert user.email == "new@example.com"
     assert EmailAddress.objects.get(user=user).email == "new@example.com"
+    assert mail.outbox[-1].to == ["alex@example.com"]
+    assert mail.outbox[-1].subject == "Your MicroFlow email address changed"
     assert not PendingEmailChange.objects.filter(user=user).exists()
     assert WorkspaceMembership.objects.get(user=user).workspace_id == old_workspace
     assert post(api, "email-change/confirm", {"token": token}).status_code == 400

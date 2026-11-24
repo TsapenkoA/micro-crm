@@ -101,7 +101,19 @@ SIGNUP_VERIFICATION_TIMEOUT = 86400
 AUTH_REAUTH_SECONDS = 300
 AUTH_RATE_LIMITS = {"login": (10, 300), "signup": (5, 3600), "forgot": (5, 3600),
                     "reset": (10, 300), "verify": (10, 300), "resend": (5, 3600),
-                    "security": (10, 300), "oauth": (20, 300)}
+                    "security": (10, 300), "oauth": (20, 300), "invoice_email": (20, 3600)}
+TRUSTED_PROXY_COUNT = int(os.getenv("TRUSTED_PROXY_COUNT", "0"))
+TRUSTED_PROXY_IPS = [value.strip() for value in os.getenv("TRUSTED_PROXY_IPS", "").split(",") if value.strip()]
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "loggers": {
+        "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+        "crm": {"handlers": ["console"], "level": "INFO", "propagate": False},
+    },
+}
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Micro-CRM <noreply@localhost>")
 EMAIL_HOST = os.getenv("EMAIL_HOST", "")

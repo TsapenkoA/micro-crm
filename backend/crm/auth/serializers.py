@@ -61,6 +61,10 @@ class VerifyEmailSerializer(serializers.Serializer):
     token = serializers.CharField(max_length=128)
 
 
+class SignupVerificationSerializer(VerifyEmailSerializer):
+    password = serializers.CharField(trim_whitespace=False, max_length=4096, write_only=True)
+
+
 class ResetSerializer(NewPasswordSerializer):
     uid = serializers.CharField(max_length=100)
     token = serializers.CharField(max_length=200)

@@ -51,7 +51,7 @@ export default function AuthScreen({ path, onLogin, notice = '' }: { path: strin
     setPending(true);
     try {
       if (signup) setMessage((await auth.signup(username, email, password, password_confirm)).message);
-      else if (verify) onLogin(await auth.verifyEmail(params.get('token')!));
+      else if (verify) onLogin(await auth.verifyEmail(params.get('token')!, password));
       else if (resend) setMessage((await auth.resendVerification(email)).message);
       else if (forgot) setMessage((await auth.forgotPassword(email)).message);
       else {
@@ -85,6 +85,7 @@ export default function AuthScreen({ path, onLogin, notice = '' }: { path: strin
         {errors.username && <p id="auth-username-error" className="field-error">{errors.username}</p>}</div>}
       {!reset && !verify && <div className="field"><label htmlFor="auth-email">Email</label><input id="auth-email" type="email" name="email" autoComplete="email" required maxLength={254} disabled={pending} aria-invalid={!!errors.email} aria-describedby={errors.email ? 'auth-email-error' : undefined} />
         {errors.email && <p id="auth-email-error" className="field-error">{errors.email}</p>}</div>}
+      {verify && <><p className="muted">Enter the password you used to sign up. Do not confirm an account you did not request.</p><PasswordField name="password" label="Signup password" current disabled={pending} error={errors.password} /></>}
       {!forgot && !resend && !verify && <><PasswordField name="password" disabled={pending} error={errors.password} /><PasswordField name="password_confirm" label="Confirm password" disabled={pending} error={errors.password_confirm} /></>}
       <button className="primary" disabled={pending}>{pending ? 'Saving…' : signup ? 'Create account' : resend ? 'Resend email' : verify ? 'Verify email' : forgot ? 'Send reset link' : 'Save new password'}</button>
       <AuthLink to="/login">Back to sign in</AuthLink>

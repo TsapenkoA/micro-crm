@@ -10,7 +10,15 @@ export type SellerDetails = { name: string; email: string; phone?: string; addre
 type Session = { user: User; csrfToken?: string };
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string, public details?: unknown) { super(message); }
+  constructor(public status: number, message: string, public details?: unknown, public reason?: string) { super(message); }
+}
+
+function serverMessage(details: unknown): string | undefined {
+  if (typeof details === 'string') return details;
+  if (!details || typeof details !== 'object') return undefined;
+  const values = Array.isArray(details) ? details : Object.values(details);
+  const messages = values.map(serverMessage).filter((value): value is string => !!value);
+  return messages.length ? messages.slice(0, 5).join(' ').slice(0, 1000) : undefined;
 }
 
 let csrfToken = '';
@@ -39,7 +47,7 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
     if (response.status === 403) csrfToken = '';
-    if (response.status === 403 && payload?.error?.details?.detail === 'Authentication credentials were not provided.' && path !== '/auth/me') {
+    if (response.status === 403 && (payload?.error?.reason === 'not_authenticated' || payload?.error?.details?.detail === 'Authentication credentials were not provided.') && path !== '/auth/me') {
       window.dispatchEvent(new Event('session-expired'));
     }
     const messages: Record<number, string> = {
@@ -49,7 +57,9 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
       409: 'Related records prevent this action.',
       429: 'Too many attempts. Please wait before trying again.',
     };
-    throw new ApiError(response.status, messages[response.status] ?? 'The server could not complete the request. Please try again.', payload?.error?.details);
+    const details = payload?.error?.details;
+    const message = response.status < 500 || response.status === 503 ? serverMessage(details) : undefined;
+    throw new ApiError(response.status, message || messages[response.status] || 'The server could not complete the request. Please try again.', details, payload?.error?.reason);
   }
   return response.status === 204 ? undefined as T : response.json() as Promise<T>;
 }
@@ -68,8 +78,8 @@ export const auth = {
   signup: (username: string, email: string, password: string, password_confirm: string) =>
     request<{ message: string }>('/auth/sign-up', { method: 'POST', body: JSON.stringify({ username, email, password, password_confirm }) }),
   resendVerification: (email: string) => request<{ message: string }>('/auth/resend-verification', { method: 'POST', body: JSON.stringify({ email }) }),
-  async verifyEmail(token: string) {
-    const session = await request<Session>('/auth/verify-email', { method: 'POST', body: JSON.stringify({ token }) });
+  async verifyEmail(token: string, password: string) {
+    const session = await request<Session>('/auth/verify-email', { method: 'POST', body: JSON.stringify({ token, password }) });
     csrfToken = session.csrfToken ?? '';
     return session.user;
   },

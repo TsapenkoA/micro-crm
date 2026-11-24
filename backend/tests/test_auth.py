@@ -105,7 +105,7 @@ def test_signup_verifies_email_before_creating_personal_workspace(api, settings)
     token = verification_token()
     assert token not in PendingSignup.objects.get(email="new@example.com").token_hash
     assert post(api, "verify-email", {"token": "invalid"}).status_code == 400
-    response = post(api, "verify-email", {"token": token})
+    response = post(api, "verify-email", {"token": token, "password": data["password"]})
     assert response.status_code == 201
     user = get_user_model().objects.get(email="new@example.com")
     assert EmailAddress.objects.get(user=user).verified
@@ -115,8 +115,8 @@ def test_signup_verifies_email_before_creating_personal_workspace(api, settings)
     assert user.workspace_membership.workspace.name == "newuser's workspace"
     assert api.get("/api/v1/auth/me").json()["user"]["id"] == user.pk
     assert post(api, "login", {"email": "NEW@example.com", "password": data["password"]}).status_code == 200
-    assert post(api, "verify-email", {"token": token}).status_code == 400
-    assert post(api, "sign-up", data).status_code == 202
+    assert post(api, "verify-email", {"token": token, "password": data["password"]}).status_code == 400
+    assert post(api, "sign-up", data).status_code == 400
     assert get_user_model().objects.count() == 1
 
 
@@ -127,7 +127,7 @@ def test_signup_failure_rolls_back_user_and_workspace(api, monkeypatch, settings
     assert post(api, "sign-up", {"username": "newuser", "email": "new@example.com", "password": "New-secure-pass-123", "password_confirm": "New-secure-pass-123"}).status_code == 202
     monkeypatch.setattr(WorkspaceMembership, "save", fail)
     with pytest.raises(RuntimeError):
-        post(api, "verify-email", {"token": verification_token()})
+        post(api, "verify-email", {"token": verification_token(), "password": "New-secure-pass-123"})
     assert get_user_model().objects.count() == 0
     assert Workspace.objects.count() == 0
     assert PendingSignup.objects.count() == 1
@@ -141,26 +141,26 @@ def test_resend_rotates_token_and_expiry_blocks_verification(api, settings):
     assert post(api, "resend-verification", {"email": data["email"]}).status_code == 202
     second = verification_token()
     assert first != second
-    assert post(api, "verify-email", {"token": first}).status_code == 400
+    assert post(api, "verify-email", {"token": first, "password": data["password"]}).status_code == 400
     PendingSignup.objects.update(expires_at=timezone.now() - datetime.timedelta(seconds=1))
-    assert post(api, "verify-email", {"token": second}).status_code == 400
+    assert post(api, "verify-email", {"token": second, "password": data["password"]}).status_code == 400
     assert get_user_model().objects.count() == 0
 
 
-def test_signup_retry_replaces_pending_details_and_old_link(api, settings):
+def test_signup_retry_cannot_replace_another_browsers_credentials(api, settings):
     settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
     data = {"username": "first_name", "email": "new@example.com", "password": "First-secure-pass-123", "password_confirm": "First-secure-pass-123"}
     assert post(api, "sign-up", data).status_code == 202
-    first = verification_token()
+    token = verification_token()
+    attacker = APIClient(enforce_csrf_checks=True)
     changed = {**data, "username": "second_name", "password": "Second-secure-pass-123", "password_confirm": "Second-secure-pass-123"}
-    assert post(api, "sign-up", changed).status_code == 202
-    assert PendingSignup.objects.count() == 1
-    assert post(api, "verify-email", {"token": first}).status_code == 400
-    assert post(api, "verify-email", {"token": verification_token()}).status_code == 201
+    assert post(attacker, "sign-up", changed).status_code == 202
+    assert PendingSignup.objects.count() == len(mail.outbox) == 1
+    assert post(api, "verify-email", {"token": token, "password": changed["password"]}).status_code == 400
+    assert post(api, "verify-email", {"token": token, "password": data["password"]}).status_code == 201
     user = get_user_model().objects.get(email=data["email"])
-    assert user.username == "second_name"
-    assert user.check_password(changed["password"])
-    assert not user.check_password(data["password"])
+    assert user.username == data["username"] and user.check_password(data["password"])
+    assert post(attacker, "login", {"email": data["email"], "password": changed["password"]}).status_code == 403
 
 
 def test_clear_expired_signups_preserves_live_requests(api, settings):
@@ -248,6 +248,50 @@ def test_throttle_is_persistent_and_recovers_after_window(api, settings):
     assert "Retry-After" in response
     AuthAttempt.objects.update(window_start=timezone.now() - datetime.timedelta(seconds=301))
     assert post(api, "login", {"username": "missing", "password": "wrong"}).status_code == 403
+
+
+def test_login_and_recovery_limits_do_not_block_another_ip(api, user, settings):
+    settings.AUTH_RATE_LIMITS = {**settings.AUTH_RATE_LIMITS, "login": (2, 300), "forgot": (2, 3600)}
+    settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+    for path in ("login", "forgot-password"):
+        data = {"email": user.email, "password": "incorrect"}
+        for _ in range(2):
+            assert post(api, path, data).status_code in (202, 403)
+        assert post(api, path, data).status_code == 429
+    victim = APIClient(enforce_csrf_checks=True, REMOTE_ADDR="192.0.2.2")
+    assert post(victim, "login", {"email": user.email, "password": "test-password-123"}).status_code == 200
+    assert post(victim, "forgot-password", {"email": user.email}).status_code == 202
+
+
+def test_successful_login_resets_only_its_identifier_ip_limit(api, user, settings):
+    settings.AUTH_RATE_LIMITS = {**settings.AUTH_RATE_LIMITS, "login": (2, 300)}
+    for _ in range(3):
+        assert post(api, "login", {"username": user.username, "password": "wrong"}).status_code == 403
+        assert sign_in(api, user).status_code == 200
+
+
+def test_signup_username_validation_does_not_reveal_registered_email(api, user):
+    data = {"username": user.username, "password": "New-secure-pass-123", "password_confirm": "New-secure-pass-123"}
+    existing = post(api, "sign-up", {**data, "email": user.email})
+    missing = post(api, "sign-up", {**data, "email": "unknown@example.com"})
+    assert existing.status_code == missing.status_code == 400
+    assert existing.json() == missing.json()
+
+
+def test_forwarded_ip_requires_explicit_trusted_proxy(settings):
+    from django.test import RequestFactory
+    from crm.auth.security import client_ip
+
+    request = RequestFactory().get("/", REMOTE_ADDR="127.0.0.1", HTTP_X_FORWARDED_FOR="192.0.2.8")
+    settings.TRUSTED_PROXY_COUNT = 1
+    settings.TRUSTED_PROXY_IPS = []
+    assert client_ip(request) == "127.0.0.1"
+    settings.TRUSTED_PROXY_IPS = ["127.0.0.1/32"]
+    assert client_ip(request) == "192.0.2.8"
+    request.META["REMOTE_ADDR"] = "198.51.100.3"
+    assert client_ip(request) == "198.51.100.3"
+    request.META.update(REMOTE_ADDR="127.0.0.1", HTTP_X_FORWARDED_FOR="invalid")
+    assert client_ip(request) == "127.0.0.1"
 
 
 @pytest.fixture

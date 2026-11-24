@@ -5,7 +5,7 @@ from datetime import timedelta
 from allauth.account.models import EmailAddress
 from django.conf import settings
 from django.contrib.auth import get_user_model, login as session_login
-from django.contrib.auth.hashers import make_password
+from django.contrib.auth.hashers import make_password, check_password as matches_password
 from django.core.mail import send_mail
 from django.middleware.csrf import get_token
 from django.utils import timezone
@@ -16,7 +16,7 @@ from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 
 from crm.auth.security import email_in_use, email_lock
-from crm.auth.serializers import EmailSerializer, SignupSerializer, UsernameSerializer, VerifyEmailSerializer, check_password
+from crm.auth.serializers import EmailSerializer, SignupSerializer, SignupVerificationSerializer, UsernameSerializer, check_password
 from crm.auth.views import PublicAuthView, user_data
 from crm.models import PendingSignup
 
@@ -59,15 +59,15 @@ class SignupView(PublicAuthView):
         user = get_user_model()(username=username, email=email)
         check_password(fields["password"], user)
         with email_lock(email), email_lock("username:" + username):
-            if email_in_use(email):
-                return Response({"message": SIGNUP_MESSAGE}, status=202)
             try:
                 UsernameSerializer().validate_username(username)
             except serializers.ValidationError as error:
                 raise serializers.ValidationError({"username": error.detail})
-            if PendingSignup.objects.filter(username__iexact=username, expires_at__gt=timezone.now()).exclude(email=email).exists():
+            if PendingSignup.objects.filter(username__iexact=username, expires_at__gt=timezone.now()).exists():
                 raise serializers.ValidationError({"username": ["This username is already taken."]})
             pending = PendingSignup.objects.filter(email=email).first()
+            if email_in_use(email) or pending and pending.expires_at > timezone.now():
+                return Response({"message": SIGNUP_MESSAGE}, status=202)
             token, digest = new_token()
             expires_at = timezone.now() + timedelta(seconds=settings.SIGNUP_VERIFICATION_TIMEOUT)
             if pending:
@@ -107,7 +107,7 @@ class VerifyEmailView(PublicAuthView):
     rate_scope = "verify"
 
     def post(self, request):
-        serializer = VerifyEmailSerializer(data=request.data)
+        serializer = SignupVerificationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         digest = hashlib.sha256(serializer.validated_data["token"].encode()).hexdigest()
         candidate = PendingSignup.objects.filter(token_hash=digest).values("email", "username").first()
@@ -117,6 +117,8 @@ class VerifyEmailView(PublicAuthView):
             pending = PendingSignup.objects.select_for_update().filter(token_hash=digest).first()
             if not pending or pending.expires_at <= timezone.now() or email_in_use(candidate["email"]):
                 raise serializers.ValidationError({"token": [INVALID_TOKEN]})
+            if not matches_password(serializer.validated_data["password"], pending.password_hash):
+                raise serializers.ValidationError({"password": ["Enter the password you used to sign up. If you did not request this account, do not confirm it."]})
             if get_user_model().objects.filter(username__iexact=pending.username).exists():
                 raise serializers.ValidationError({"token": [INVALID_TOKEN]})
             user = get_user_model()(username=pending.username, email=pending.email, password=pending.password_hash)

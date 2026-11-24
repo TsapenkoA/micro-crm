@@ -19,7 +19,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from crm.api.permissions import IsWorkspaceMember
-from crm.auth.security import AuthThrottle, email_lock, email_user, recent_auth
+from crm.auth.security import AuthThrottle, clear_login_attempts, email_lock, email_user, recent_auth
 from crm.auth.serializers import LoginSerializer, EmailSerializer, ResetSerializer, UsernameSerializer, NewPasswordSerializer, check_password
 from crm.models import UserAvatar, Workspace, WorkspaceMembership
 from crm.services.fx import ECB_CURRENCIES
@@ -64,6 +64,7 @@ class LoginView(PublicAuthView):
         if user is None:
             return Response({"error": {"code": 403, "details": "Invalid credentials."}}, status=403)
         session_login(request, user)
+        clear_login_attempts(request)
         return Response({"user": user_data(user), "csrfToken": get_token(request)})
 
 

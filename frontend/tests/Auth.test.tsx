@@ -84,8 +84,9 @@ it('verifies a signup link before opening the workspace', async () => {
   const verify = vi.spyOn(auth, 'verifyEmail').mockResolvedValue(user);
   const onLogin = vi.fn();
   render(<AuthScreen path="/verify-email" onLogin={onLogin} />);
+  await userEvent.type(screen.getByLabelText('Signup password'), 'Signup-secure-pass-123');
   await userEvent.click(screen.getByRole('button', { name: 'Verify email' }));
-  expect(verify).toHaveBeenCalledWith('one-time-token');
+  expect(verify).toHaveBeenCalledWith('one-time-token', 'Signup-secure-pass-123');
   expect(onLogin).toHaveBeenCalledWith(user);
 });
 

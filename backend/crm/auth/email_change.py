@@ -1,4 +1,5 @@
 import hashlib
+import logging
 from datetime import timedelta
 
 from allauth.account.models import EmailAddress
@@ -19,6 +20,18 @@ from crm.models import PendingEmailChange
 
 
 INVALID_TOKEN = "This link is invalid or has expired. Request another email change."
+logger = logging.getLogger(__name__)
+
+
+def notify_previous_address(email):
+    if not email:
+        return
+    try:
+        send_mail("Your MicroFlow email address changed",
+                  "Your account email address was changed. If you did not approve this change, contact support immediately.",
+                  settings.DEFAULT_FROM_EMAIL, [email])
+    except Exception:
+        logger.warning("Account email change notification could not be sent.")
 
 
 class RequestEmailChange(SecurityView):
@@ -65,9 +78,11 @@ class ConfirmEmailChange(SecurityView):
                 if not pending or pending.expires_at <= timezone.now() or email_in_use(candidate):
                     raise serializers.ValidationError({"token": INVALID_TOKEN})
                 user = get_user_model().objects.select_for_update().get(pk=request.user.pk)
+                previous_email = user.email
                 user.email = candidate
                 user.save(update_fields=["email"])
                 EmailAddress.objects.filter(user=user).delete()
                 EmailAddress.objects.create(user=user, email=candidate, verified=True, primary=True)
                 pending.delete()
+                transaction.on_commit(lambda: notify_previous_address(previous_email))
         return Response({"user": user_data(user)})
