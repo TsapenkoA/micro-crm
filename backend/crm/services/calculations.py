@@ -1,5 +1,6 @@
-from decimal import Decimal, ROUND_HALF_UP
-
+from collections.abc import Mapping, Sequence
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 
 CURRENCY_PLACES = {
     "AUD": 2, "CAD": 2, "CHF": 2, "EUR": 2, "GBP": 2, "PLN": 2, "USD": 2,
@@ -8,19 +9,21 @@ CURRENCY_PLACES = {
 MAX_AMOUNT = Decimal("9999999999999999.9999")
 
 
-def money_quantum(currency):
+def money_quantum(currency: str) -> Decimal:
     return Decimal(1).scaleb(-CURRENCY_PLACES[currency])
 
 
-def round_money(value, currency):
+def round_money(value: Decimal, currency: str) -> Decimal:
     return value.quantize(money_quantum(currency), rounding=ROUND_HALF_UP)
 
 
-def money_string(value, currency):
+def money_string(value: Decimal, currency: str) -> str:
     return f"{value:.{CURRENCY_PLACES.get(currency, 2)}f}"
 
 
-def calculate_items(items, currency):
+def calculate_items(
+    items: Sequence[Mapping[str, Any]], currency: str
+) -> tuple[list[dict[str, Any]], Decimal, Decimal, Decimal]:
     subtotal = tax_total = Decimal("0")
     calculated = []
     for item in items:
