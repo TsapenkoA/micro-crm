@@ -120,9 +120,9 @@ export const workspace = {
   addMember: (username: string) => request<{ request: { id: string; username: string; expires_at: string } }>('/workspace/members', { method: 'POST', body: JSON.stringify({ username }) }),
   respondToJoin: (id: string, decision: 'accept' | 'decline') => request<{ workspace: { id: string; name: string } } | void>(`/workspace/join-requests/${id}`, { method: 'POST', body: JSON.stringify({ decision }) }),
   removeMember: (id: number) => request<void>(`/workspace/members/${id}`, { method: 'DELETE' }),
-  bankDetails: () => request<BankDetails>('/workspace/bank-details'),
+  bankDetails: (signal?: AbortSignal) => request<BankDetails>('/workspace/bank-details', { signal }),
   saveBankDetails: (details: BankDetails) => request<BankDetails>('/workspace/bank-details', { method: 'PUT', body: JSON.stringify(details) }),
-  sellerDetails: () => request<SellerDetails>('/workspace/seller-details'),
+  sellerDetails: (signal?: AbortSignal) => request<SellerDetails>('/workspace/seller-details', { signal }),
   saveSellerDetails: (details: SellerDetails) => request<SellerDetails>('/workspace/seller-details', { method: 'PUT', body: JSON.stringify(details) }),
   preview: (signal?: AbortSignal) => request<PreviewData>('/workspace/preview', { signal }),
 };

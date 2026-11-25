@@ -4,7 +4,7 @@ import './date-input.css';
 type Props = {
   id?: string; name?: string; value?: string; defaultValue?: string;
   onChange?: (value: string) => void; onCommit?: (value: string) => void; disabled?: boolean; required?: boolean;
-  min?: string; max?: string; time?: boolean; 'aria-label'?: string;
+  min?: string; max?: string; time?: boolean; 'aria-label'?: string; 'aria-invalid'?: boolean; 'aria-describedby'?: string;
 };
 const pad = (value: number) => String(value).padStart(2, '0');
 const dateValue = (day: Date) => `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;

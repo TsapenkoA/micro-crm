@@ -11,7 +11,10 @@ import ProfileAvatarSettings from './ProfileAvatarSettings';
 import EmailSettings from './EmailSettings';
 
 export default function AccountSettings({ user, onUserUpdated }: { user: User; onUserUpdated?: (user: User) => void }) {
-  const [tab, setTab] = useState<'Profile' | 'Appearance' | 'Workspace' | 'Security'>(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('section') === 'workspace' ? 'Workspace' : 'Profile');
+  const [tab, setTab] = useState<'Profile' | 'Appearance' | 'Workspace' | 'Security'>(() => {
+    const section = new URLSearchParams(window.location.hash.split('?')[1] || '').get('section');
+    return section === 'workspace' ? 'Workspace' : section === 'security' ? 'Security' : 'Profile';
+  });
   const sections = ['Profile', 'Appearance', 'Workspace', 'Security'] as const;
   const [username, setUsername] = useState(user.username);
   const [methods, setMethods] = useState<SignInMethods | null>(null);

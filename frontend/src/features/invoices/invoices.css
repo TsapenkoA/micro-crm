@@ -50,9 +50,11 @@
 .invoice-item-fields { display: grid; gap: 12px; padding: 16px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 8px; }
 .invoice-remove { justify-self: start; color: var(--danger); }
 .invoice-live-preview { align-self: start; position: sticky; top: 0; padding: 25px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-raised); }
-.invoice-eyebrow { font-size: 11.7px; letter-spacing: 1.5px; color: var(--text-muted); }
-.invoice-live-preview h3 { margin-top: 12px; font-size: 22px; }
-.invoice-live-preview hr { border: 0; border-top: 1px solid var(--border); margin: 22px 0; }
+.invoice-live-preview .invoice-document { padding: 0; border: 0; background: transparent; }
+.invoice-live-preview .invoice-document-top { font-size: 16px; }
+.invoice-live-preview .invoice-parties { gap: 12px; margin: 18px 0; font-size: 12.9px; }
+.invoice-live-preview .invoice-document-meta { flex-direction: column; font-size: 12.9px; }
+.invoice-live-preview .invoice-document .invoice-table-wrap th, .invoice-live-preview .invoice-document .invoice-table-wrap td { padding: 8px 4px; font-size: 12.9px; }
 .invoice-live-preview dl, .invoice-totals { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
 .invoice-live-preview dd, .invoice-totals dd { text-align: right; }
 .invoice-detail { padding: 20px; }
