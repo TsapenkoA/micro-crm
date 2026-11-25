@@ -21,6 +21,8 @@ The authenticated `/preview` reads a separate workspace dataset. Its edits reset
 
 Kanban refreshes preserve the loaded page range, and successful status changes apply the server's new version before further writes. Version conflicts preserve the edit draft and require explicit confirmation before saving over a freshly loaded version. Protected deletions do not offer a version retry. Dialogs share the body scroll lock until the last dialog closes.
 
-Invoices start in the user's reporting currency. Saving a draft selects its currency and returns to the first list page; a currency-filtered empty result is distinguished from an empty workspace.
+Invoices start in the user's reporting currency. Saving a draft selects its currency and returns to the first list page; a currency-filtered empty result is distinguished from an empty workspace. The editor and saved invoice use the same document component, including parties, dates, item rows, tax and totals. The live preview calculates estimates with the server's currency precision; the saved response remains authoritative. New drafts require an explicit client selection.
+
+The root README documents CI and the pinned local formatter/lint commands. CI runs TypeScript, React Hooks lint, tests and a production build on Node.js 24.
 
 Use a browser to verify responsive navigation, keyboard focus, OAuth consent and printing when changing those flows. Component tests cannot establish visual fidelity or real provider/email delivery.

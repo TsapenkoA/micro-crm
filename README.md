@@ -10,7 +10,7 @@ A small CRM for freelancers and agencies: company workspaces, clients and notes,
 
 ## Local setup
 
-Requires Python 3.12, uv, Node.js 24, npm and PostgreSQL. Use npm.cmd when PowerShell blocks npm.ps1.
+Requires Python 3.12, uv 0.9.16, Node.js 24, npm and PostgreSQL 18. Use npm.cmd when PowerShell blocks npm.ps1. CI uses the same language/runtime versions.
 
 Copy .env.example to .env only if a configured .env does not already exist. Set DJANGO_SECRET_KEY to a random value and configure PGDATABASE, PGUSER, PGPASSWORD, PGHOST and PGPORT. Use the same browser hostname throughout development.
 
@@ -47,6 +47,31 @@ npm.cmd run dev
 
 Open http://127.0.0.1:5173. Register at /sign-up or use the optional local administrator account. Public registration emails a verification link; the account and independent workspace are created only after the link is confirmed. Local email appears in the backend terminal unless SMTP is configured. See the backend README to assign colleagues to a shared workspace.
 
+### Linux and macOS
+
+Install Python 3.12, uv 0.9.16, Node.js 24, npm and PostgreSQL 18. Configure a local PostgreSQL role and the `micro_crm` and `test_micro_crm` databases as described above. In the repository root, copy the example environment file only when you do not already have a local `.env`, then set its database values and a random `DJANGO_SECRET_KEY`:
+
+```sh
+test -f .env || cp .env.example .env
+mkdir -p "$HOME/.config/micro-crm"
+cd backend
+uv sync --locked
+uv run python manage.py initialize_data_key --recovery-file "$HOME/.config/micro-crm/micro-crm-data.key"
+uv run python manage.py migrate
+uv run python manage.py createsuperuser
+uv run python manage.py runserver 127.0.0.1:8000
+```
+
+In another terminal:
+
+```sh
+cd frontend
+npm ci
+npm run dev
+```
+
+Open http://127.0.0.1:5173. Keep the recovery key outside the repository and protect it separately from the database backup.
+
 ## First use
 
 1. Sign in or register and verify your email to create a personal workspace. Send a join request from Settings > Workspace when company data should be shared. Trusted administrators can still use the backend management command.
@@ -66,21 +91,28 @@ uv run python manage.py snapshot_fx_rates
 
 The snapshot command assigns historical rate dates to older paid records after import. If a required rate is unavailable, the affected total is hidden instead of showing a partial amount. See the backend README for supported currencies and date rules.
 
-Account settings contain profile, password/provider methods and appearance. Password reset messages appear in the backend terminal unless email delivery is configured. The optional design preview is separate from live company records; see the frontend README for its limits.
+Account settings contain profile, password/provider methods and appearance. Password reset messages appear in the backend terminal unless email delivery is configured. The optional design preview is separate from live company records; see the frontend README for its limits. Current architecture decisions are summarized in [docs/architecture-decisions.md](docs/architecture-decisions.md).
 
 ## Checks
 
+The backend tests use PostgreSQL. Django creates a separate `test_<PGDATABASE>` database; tests do not write to the configured application database. The CI workflow uses PostgreSQL 18 and contains no local credentials.
+
 ```powershell
 cd backend
+python -m pip install -r requirements-tools.txt
+ruff check crm/services/calculations.py crm/services/fx.py
+mypy crm/services/calculations.py crm/services/fx.py
 uv run python manage.py check
 uv run python manage.py makemigrations --check --dry-run
 uv run pytest
 cd ../frontend
+npm.cmd run format:check
+npm.cmd run lint
 npm.cmd test
 npm.cmd run build
 ```
 
-Backend tests require PostgreSQL and the precreated test database. They reuse that database and never use the application database. Back up existing application data before applying migrations.
+On Linux/macOS, use `python -m pip` and `npm` in place of `npm.cmd`; the remaining checks are the same. Ruff and mypy currently check the financial and FX services from `backend/requirements-tools.txt`; React Hooks lint and Prettier are installed with the frontend's locked development dependencies. Back up existing application data before applying migrations.
 
 ## Security prerequisites
 

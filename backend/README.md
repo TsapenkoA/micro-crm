@@ -17,6 +17,8 @@ Do not move models between application labels or reset migration history. Before
 
 Routes below start with `/api/v1` and have no trailing slash except OAuth callbacks. Business endpoints require a session and workspace membership, including for administrators. Foreign records return 404. Writes require the CSRF cookie and `X-CSRFToken`; login rotates the token. Errors retain `{error: {code, details}}`. Handled API exceptions also include `reason`, distinguishing `version_conflict` from `protected`; `code` remains the HTTP status. All API responses are private and non-cacheable.
 
+These are the implemented contracts, not assumptions from generic REST examples: browser requests use sessions and CSRF rather than bearer tokens; draft edits use `PATCH`; and invoice status, payments, delivery and due-date corrections have separate action endpoints. Refer to the route and contract tables below and [the architecture decisions](../docs/architecture-decisions.md) when updating clients.
+
 | Routes | Methods and purpose |
 | --- | --- |
 | /health | GET: database availability; 503 when unavailable |
