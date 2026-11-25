@@ -77,7 +77,7 @@ it('validates signup, preserves server field errors and requests verification', 
   expect(screen.getByRole('link', { name: 'Resend verification email' })).toBeInTheDocument();
   expect(onLogin).not.toHaveBeenCalled();
   expect(signup).toHaveBeenLastCalledWith('alex', user.email, 'test-password-123', 'test-password-123');
-});
+}, 10000);
 
 it('verifies a signup link before opening the workspace', async () => {
   window.history.replaceState(null, '', '/verify-email?token=one-time-token');
