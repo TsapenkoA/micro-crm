@@ -20,24 +20,32 @@ it('opens each workspace section after restoring a session', async () => {
   const sideNavigation = screen.getByRole('navigation', { name: 'Main navigation' });
   expect(within(sideNavigation).getByRole('button', { name: 'Activity' })).toBeInTheDocument();
   expect(within(sideNavigation).queryByRole('button', { name: 'Tasks' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Create' })).not.toBeInTheDocument();
   for (const page of ['Deals', 'Clients', 'Invoices', 'Settings']) {
     await userEvent.click(screen.getByRole('button', { name: new RegExp(page) }));
     expect(screen.getByRole('heading', { name: page, level: 1 })).toBeInTheDocument();
+    if (page === 'Settings') {
+      expect(screen.getByRole('button', { name: 'Create' })).toBeInTheDocument();
+    } else {
+      expect(screen.queryByRole('button', { name: 'Create' })).not.toBeInTheDocument();
+    }
   }
   await userEvent.click(within(topNavigation).getByRole('link', { name: 'Clients' }));
   expect(screen.getByRole('heading', { name: 'Clients', level: 1 })).toBeInTheDocument();
 }, 15000);
 
-it('provides the shared create menu on Tasks and Operations', async () => {
+it('provides the shared create menu on other workspace pages', async () => {
   vi.spyOn(auth, 'me').mockResolvedValue({ user: { id: 1, username: 'alex', email: '' } });
   render(<App />);
   await screen.findByRole('heading', { name: 'Dashboard', level: 1 });
   for (const navigateTo of [
     () => userEvent.click(screen.getByRole('link', { name: 'Tasks' })),
+    () => userEvent.click(screen.getByRole('button', { name: 'Activity' })),
     () => userEvent.click(screen.getByRole('button', { name: 'Operations' })),
+    () => userEvent.click(screen.getByRole('button', { name: 'Settings' })),
   ]) {
     await navigateTo();
-    const page = await screen.findByRole('heading', { name: /Tasks|Operations/, level: 1 });
+    const page = await screen.findByRole('heading', { name: /Tasks|Activity|Operations|Settings/, level: 1 });
     const createButton = screen.getByRole('button', { name: 'Create' });
     await userEvent.click(createButton);
     const createMenu = screen.getByRole('group', { name: 'Create' });

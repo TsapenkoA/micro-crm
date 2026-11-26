@@ -20,6 +20,7 @@ export default function QuickActions({
   const [createOpen, setCreateOpen] = useState(false);
   const createRef = useRef<HTMLDivElement>(null);
   const createButtonRef = useRef<HTMLButtonElement>(null);
+  const showGlobalCreate = page === 'Tasks' || page === 'Activity' || page === 'Operations' || page === 'Settings';
 
   useEffect(() => {
     if (!createOpen) return;
@@ -47,25 +48,27 @@ export default function QuickActions({
 
   return (
     <div className="quick-actions" role="group" aria-label="Quick actions">
-      <div className="quick-create" ref={createRef}>
-        <button
-          ref={createButtonRef}
-          className="primary"
-          aria-expanded={createOpen}
-          aria-controls="quick-create-menu"
-          onClick={() => setCreateOpen((open) => !open)}
-        >
-          <ActionIcon name="add" />
-          Create
-        </button>
-        {createOpen && (
-          <div id="quick-create-menu" className="quick-create-menu" role="group" aria-label="Create">
-            <button onClick={() => runCreate(onNewClient)}>Client</button>
-            <button onClick={() => runCreate(onNewDeal)}>Deal</button>
-            <button onClick={() => runCreate(onNewInvoice)}>Invoice</button>
-          </div>
-        )}
-      </div>
+      {showGlobalCreate && (
+        <div className="quick-create" ref={createRef}>
+          <button
+            ref={createButtonRef}
+            className="primary"
+            aria-expanded={createOpen}
+            aria-controls="quick-create-menu"
+            onClick={() => setCreateOpen((open) => !open)}
+          >
+            <ActionIcon name="add" />
+            Create
+          </button>
+          {createOpen && (
+            <div id="quick-create-menu" className="quick-create-menu" role="group" aria-label="Create">
+              <button onClick={() => runCreate(onNewClient)}>Client</button>
+              <button onClick={() => runCreate(onNewDeal)}>Deal</button>
+              <button onClick={() => runCreate(onNewInvoice)}>Invoice</button>
+            </div>
+          )}
+        </div>
+      )}
       <div className="quick-context-actions" role="group" aria-label="Page actions">
         {page === 'Dashboard' && (
           <>
