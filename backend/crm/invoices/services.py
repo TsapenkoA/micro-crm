@@ -1,10 +1,11 @@
 import re
 from datetime import timedelta
 from decimal import Decimal
+
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
-from crm.models import Invoice
-from crm.models import InvoicePayment
+
+from crm.models import Invoice, InvoicePayment
 from crm.services.calculations import round_money
 from crm.services.fx import rate_date_for
 
@@ -55,6 +56,7 @@ def issue_invoice(invoice):
             raise ValidationError({"due_date": "Due date cannot precede the issue date."})
         invoice.status = Invoice.Status.SENT
         invoice.issued_at = timezone.now()
+        invoice.issued_on = today
         if invoice.due_date is None:
             invoice.due_date = today + timedelta(days=30)
             if not invoice.payment_terms:

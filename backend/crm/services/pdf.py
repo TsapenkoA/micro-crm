@@ -65,7 +65,7 @@ def render_invoice(invoice):
             [paragraph("PAYER BANK", small)] + [paragraph(f"{label}: {buyer_bank[key]}") for key, label in bank_labels.items() if buyer_bank.get(key)] if buyer_bank else [],
         ]], colWidths=[87 * mm, 87 * mm])
         bank_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
-    metadata = Table([[paragraph(f"Status: {invoice.status.title()}", small), paragraph(f"Issued: {pdf_date(invoice.issued_at)}", small)]], colWidths=[87 * mm, 87 * mm])
+    metadata = Table([[paragraph(f"Status: {invoice.status.title()}", small), paragraph(f"Issued: {pdf_date(invoice.issued_on or invoice.issued_at)}", small)]], colWidths=[87 * mm, 87 * mm])
     metadata.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0)]))
     content.extend([parties, Spacer(1, 8 * mm)])
     if seller_bank or buyer_bank:

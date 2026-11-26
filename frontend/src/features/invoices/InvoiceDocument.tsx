@@ -29,6 +29,7 @@ export default function InvoiceDocument({
   buyer,
   items,
   issuedAt,
+  issuedOn,
   dueDate,
   dueDateFallback = '30 days after issue',
   paymentTerms,
@@ -44,6 +45,7 @@ export default function InvoiceDocument({
   buyer: DocumentParty;
   items: InvoiceDocumentItem[];
   issuedAt: string | null;
+  issuedOn?: string | null;
   dueDate: string | null;
   dueDateFallback?: string;
   paymentTerms: string;
@@ -108,7 +110,7 @@ export default function InvoiceDocument({
       ) : null}
       <div className="invoice-document-meta">
         <span>Status: {status}</span>
-        <span>Issued: {formatDate(issuedAt, 'Not issued')}</span>
+        <span>Issued: {formatDate(issuedOn ?? issuedAt, 'Not issued')}</span>
         <span>Due: {formatDate(dueDate, dueDateFallback)}</span>
       </div>
       {paymentTerms && <p className="invoice-document-terms">Payment terms: {paymentTerms}</p>}

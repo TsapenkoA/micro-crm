@@ -144,13 +144,18 @@ export default function InvoicesPage({
     setSearch(draft.trim());
   }
   async function save(values: InvoiceInput) {
-    const saved =
-      editor === 'new' ? await invoices.create(values) : await invoices.update((editor as Invoice).id, values);
+    const creating = editor === 'new';
+    const saved = creating ? await invoices.create(values) : await invoices.update((editor as Invoice).id, values);
     setEditor(null);
     setSelected(saved);
     setPage(1);
     setSummaryCurrency(saved.currency);
-    setMessage(editor === 'new' ? 'Invoice created.' : 'Draft updated.');
+    if (creating) {
+      setDraft('');
+      setSearch('');
+      setStatus('');
+    }
+    setMessage(creating ? 'Invoice created.' : 'Draft updated.');
     refresh();
     onCountChanged?.();
   }
@@ -359,8 +364,10 @@ export default function InvoicesPage({
                     </td>
                     <td>{invoice.client_company || invoice.client_name}</td>
                     <td>
-                      {invoice.issued_at
-                        ? new Date(invoice.issued_at).toLocaleDateString('en-US', {
+                      {invoice.issued_on || invoice.issued_at
+                        ? new Date(
+                            invoice.issued_on ? `${invoice.issued_on}T00:00:00` : invoice.issued_at!,
+                          ).toLocaleDateString('en-US', {
                             month: 'short',
                             day: 'numeric',
                             year: 'numeric',
@@ -480,6 +487,7 @@ export default function InvoicesPage({
               buyer={selected.buyer_snapshot}
               items={selected.items.map((item) => ({ ...item, line_total: item.line_total }))}
               issuedAt={selected.issued_at}
+              issuedOn={selected.issued_on}
               dueDate={selected.due_date}
               dueDateFallback={selected.status === 'draft' ? '30 days after issue' : 'No due date'}
               paymentTerms={selected.payment_terms}

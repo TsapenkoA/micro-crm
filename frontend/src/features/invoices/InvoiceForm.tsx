@@ -571,6 +571,7 @@ export default function InvoiceForm({
             buyer={initial ? initial.buyer_snapshot : (detailedClient ?? selectedClient ?? {})}
             items={previewItems}
             issuedAt={initial?.issued_at ?? null}
+            issuedOn={initial?.issued_on ?? null}
             dueDate={values.due_date}
             paymentTerms={values.payment_terms}
             subtotal={totals?.subtotal ?? null}

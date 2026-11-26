@@ -1,19 +1,18 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
+from datetime import datetime, timedelta
+from datetime import timezone as datetime_timezone
 from decimal import Decimal
 from io import BytesIO
 from threading import Barrier
 
+import pytest
 from django.contrib.auth import get_user_model
+from django.core import mail
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.core import mail
-from django.db import close_old_connections
-from django.db import transaction
+from django.db import close_old_connections, transaction
 from django.test import override_settings
 from django.utils import timezone
-
-import pytest
 from pypdf import PdfReader
 from rest_framework.test import APIClient
 
@@ -289,6 +288,24 @@ def test_invoice_list_omits_private_snapshots_and_payment_details(authenticated_
     assert "seller_snapshot" in authenticated_api.get(f"/api/v1/invoices/{created['id']}").json()
 
 
+def test_invoice_issue_date_is_fixed_when_workspace_time_zone_changes(authenticated_api, client_record, monkeypatch):
+    company = client_record.workspace
+    company.time_zone = "Asia/Tokyo"
+    company.save(update_fields=["time_zone"])
+    instant = datetime(2026, 1, 1, 16, 0, tzinfo=datetime_timezone.utc)
+    monkeypatch.setattr("django.utils.timezone.now", lambda: instant)
+    created = create(authenticated_api, client_record).json()
+    issued = authenticated_api.patch(f"/api/v1/invoices/{created['id']}/status", {"status": "sent"}, format="json")
+    assert issued.status_code == 200
+    assert issued.json()["issued_on"] == "2026-01-02"
+    assert issued.json()["due_date"] == "2026-02-01"
+
+    company.time_zone = "America/Los_Angeles"
+    company.save(update_fields=["time_zone"])
+    reloaded = authenticated_api.get(f"/api/v1/invoices/{created['id']}").json()
+    assert reloaded["issued_on"] == "2026-01-02"
+
+
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
 def test_uncertain_email_attempt_is_recorded_and_blocks_resend(authenticated_api, client_record, monkeypatch):
     created = create(authenticated_api, client_record).json()
@@ -310,6 +327,41 @@ def test_uncertain_email_attempt_is_recorded_and_blocks_resend(authenticated_api
     assert resolved["result"] == "failed" and resolved["resolution_reason"] == "Provider confirmed no acceptance"
     monkeypatch.setattr("crm.invoices.delivery.EmailMessage.send", lambda *args, **kwargs: 1)
     assert authenticated_api.post(path + "/send", {}, format="json").status_code == 200
+
+
+def test_invoice_delivery_resolution_api_is_platform_admin_only(authenticated_api, client_record, monkeypatch):
+    created = create(authenticated_api, client_record).json()
+    path = f"/api/v1/invoices/{created['id']}"
+    def timeout(*args, **kwargs):
+        raise TimeoutError()
+
+    monkeypatch.setattr("crm.invoices.delivery.EmailMessage.send", timeout)
+    assert authenticated_api.post(path + "/send", {}, format="json").status_code == 503
+    attempt_id = authenticated_api.get(path).json()["deliveries"][0]["id"]
+    endpoint = "/api/v1/operations/invoice-deliveries"
+    assert authenticated_api.get(endpoint).status_code == 403
+    assert authenticated_api.post(f"{endpoint}/{attempt_id}/resolve", {"outcome": "failed", "reason": "Checked"}, format="json").status_code == 403
+
+    operator = get_user_model().objects.create_superuser(username="operator", email="operator@example.test", password="test-password-123")
+    admin_api = APIClient()
+    admin_api.force_login(operator)
+    attempts = admin_api.get(endpoint)
+    assert attempts.status_code == 200
+    assert attempts.json()["count"] == 1
+    assert attempts.json()["results"][0]["id"] == attempt_id
+    resolved = admin_api.post(
+        f"{endpoint}/{attempt_id}/resolve",
+        {"outcome": "failed", "reason": "Provider confirmed no acceptance"},
+        format="json",
+    )
+    assert resolved.status_code == 200
+    assert resolved.json()["result"] == "failed"
+    assert resolved.json()["resolution_reason"] == "Provider confirmed no acceptance"
+    assert admin_api.post(
+        f"{endpoint}/{attempt_id}/resolve",
+        {"outcome": "accepted", "reason": "Duplicate"},
+        format="json",
+    ).status_code == 400
 
 
 @pytest.mark.django_db(transaction=True)

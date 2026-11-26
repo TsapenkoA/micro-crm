@@ -205,6 +205,53 @@ it('switches the list to the currency of a newly saved invoice', async () => {
   expect(await screen.findByRole('button', { name: 'INV-EUR-1' })).toBeInTheDocument();
 });
 
+it('clears search and status filters after creating an invoice', async () => {
+  invoiceData = [];
+  const created = { ...record, id: 'new-invoice', invoice_number: 'INV-NEW-1' };
+  vi.mocked(invoices.create).mockImplementation(async () => {
+    invoiceData.push(created);
+    return created;
+  });
+  const onCreateHandled = vi.fn();
+  const view = render(<InvoicesPage workspaceName="Workspace" userEmail="seller@example.test" totalCount={1} />);
+
+  await screen.findByText(/No invoices match USD/);
+  await userEvent.click(screen.getByRole('button', { name: 'Sent' }));
+  await userEvent.type(screen.getByLabelText('Search invoices'), 'missing');
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+  await waitFor(() =>
+    expect(invoices.page).toHaveBeenLastCalledWith('missing', 'sent', 'USD', 1, expect.any(AbortSignal)),
+  );
+
+  view.rerender(
+    <InvoicesPage
+      workspaceName="Workspace"
+      userEmail="seller@example.test"
+      totalCount={1}
+      createRequested
+      onCreateHandled={onCreateHandled}
+    />,
+  );
+  const editor = await screen.findByRole('dialog', { name: 'New invoice' });
+  view.rerender(
+    <InvoicesPage
+      workspaceName="Workspace"
+      userEmail="seller@example.test"
+      totalCount={1}
+      onCreateHandled={onCreateHandled}
+    />,
+  );
+  await userEvent.selectOptions(within(editor).getByLabelText('Client'), client.id);
+  await userEvent.type(within(editor).getByLabelText('Description'), 'New work');
+  await userEvent.type(within(editor).getByLabelText('Unit price'), '100');
+  await userEvent.click(within(editor).getByRole('button', { name: 'Save draft' }));
+
+  expect(await screen.findByRole('button', { name: 'INV-NEW-1' })).toBeInTheDocument();
+  expect(screen.getByLabelText('Search invoices')).toHaveValue('');
+  expect(screen.getByRole('button', { name: 'All invoices' })).toHaveAttribute('aria-pressed', 'true');
+  await waitFor(() => expect(invoices.page).toHaveBeenLastCalledWith('', '', 'USD', 1, expect.any(AbortSignal)));
+});
+
 it('paginates invoice rows while keeping the workspace summary', async () => {
   vi.mocked(invoices.page).mockImplementation(async (_search, _status, _currency, page = 1) => ({
     count: 21,

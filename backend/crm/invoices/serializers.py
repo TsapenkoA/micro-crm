@@ -1,10 +1,25 @@
 from decimal import Decimal
+
 from django.utils import timezone
 from rest_framework import serializers
-from crm.api.serializers import SingleLineField, StrictModelSerializer, StrictSerializer, WorkspaceClientField
-from crm.models import Client, Deal, Invoice, InvoiceDelivery, InvoiceDueDateCorrection, InvoiceItem, InvoicePayment
-from crm.services.calculations import CURRENCY_PLACES, money_string
+
+from crm.api.serializers import (
+    SingleLineField,
+    StrictModelSerializer,
+    StrictSerializer,
+    WorkspaceClientField,
+)
 from crm.invoices.services import recorded_total
+from crm.models import (
+    Client,
+    Deal,
+    Invoice,
+    InvoiceDelivery,
+    InvoiceDueDateCorrection,
+    InvoiceItem,
+    InvoicePayment,
+)
+from crm.services.calculations import CURRENCY_PLACES, money_string
 
 
 class SellerSerializer(StrictSerializer):
@@ -104,7 +119,7 @@ class InvoiceOutputSerializer(StrictModelSerializer):
 
     class Meta:
         model = Invoice
-        fields = ["id", "invoice_number", "client", "deal", "created_by", "currency", "status", "issued_at", "due_date", "due_date_corrections", "payment_terms", "paid_at", "cancelled_at", "cancellation_reason", "fx_rate_date", "seller_snapshot", "buyer_snapshot", "items", "subtotal", "tax_total", "total_amount", "payments", "paid_amount", "balance_due", "overdue", "deliveries", "created_at", "updated_at"]
+        fields = ["id", "invoice_number", "client", "deal", "created_by", "currency", "status", "issued_at", "issued_on", "due_date", "due_date_corrections", "payment_terms", "paid_at", "cancelled_at", "cancellation_reason", "fx_rate_date", "seller_snapshot", "buyer_snapshot", "items", "subtotal", "tax_total", "total_amount", "payments", "paid_amount", "balance_due", "overdue", "deliveries", "created_at", "updated_at"]
         read_only_fields = fields
 
     def get_items(self, invoice):
@@ -149,7 +164,7 @@ class InvoiceListSerializer(StrictModelSerializer):
 
     class Meta:
         model = Invoice
-        fields = ["id", "invoice_number", "client", "deal", "client_name", "client_company", "description", "currency", "status", "issued_at", "due_date", "total_amount", "overdue", "needs_due_date", "created_at"]
+        fields = ["id", "invoice_number", "client", "deal", "client_name", "client_company", "description", "currency", "status", "issued_at", "issued_on", "due_date", "total_amount", "overdue", "needs_due_date", "created_at"]
         read_only_fields = fields
 
     def get_description(self, invoice):
@@ -182,3 +197,18 @@ class InvoiceDeliveryOutputSerializer(serializers.ModelSerializer):
     class Meta:
         model = InvoiceDelivery
         fields = ["id", "kind", "result", "recipient", "attempted_at", "resolved_at", "resolution_reason"]
+
+
+class InvoiceDeliveryResolutionInputSerializer(serializers.Serializer):
+    outcome = serializers.ChoiceField(choices=[InvoiceDelivery.Result.ACCEPTED, InvoiceDelivery.Result.FAILED])
+    reason = serializers.CharField(max_length=500, trim_whitespace=True)
+
+
+class InvoiceDeliveryResolutionOutputSerializer(serializers.ModelSerializer):
+    invoice_id = serializers.UUIDField(read_only=True)
+    invoice_number = serializers.CharField(source="invoice.invoice_number", read_only=True)
+    workspace_name = serializers.CharField(source="invoice.workspace.name", read_only=True)
+
+    class Meta:
+        model = InvoiceDelivery
+        fields = ["id", "invoice_id", "invoice_number", "workspace_name", "kind", "result", "recipient", "attempted_at", "resolved_at", "resolution_reason"]

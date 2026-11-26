@@ -1,28 +1,59 @@
 import re
 from decimal import Decimal
+
 from django.db import transaction
 from django.db.models import Count, DecimalField, F, OuterRef, Q, Subquery, Sum, Value
 from django.db.models.functions import Coalesce, Greatest
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework import filters, generics, status
+from rest_framework import filters, generics, serializers, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework import serializers
+
+from crm.activity.services import log_activity, snapshot
 from crm.api.pagination import ClientPagination
 from crm.api.permissions import IsWorkspaceMember, WorkspaceQuerysetMixin
-from crm.activity.services import log_activity, snapshot
-from crm.invoices.delivery import DeliveryConflict, reminder_blocker, reminder_copy, prepare_invoice_email, send_message
-from crm.invoices.serializers import InvoiceCancelSerializer, InvoiceDueDateCorrectionInputSerializer, InvoiceListSerializer, InvoiceOutputSerializer, InvoicePaymentInputSerializer, InvoicePaymentVoidSerializer, InvoiceStatusSerializer, InvoiceWriteSerializer
-from crm.invoices.services import buyer_snapshot, invoice_number, issue_invoice, record_payment, recorded_total
-from crm.models import Client, Deal, Invoice, InvoiceDelivery, InvoiceDueDateCorrection, InvoiceItem, InvoicePayment, Workspace, WorkspaceMembership
+from crm.auth.security import InvoiceEmailThrottle
+from crm.invoices.delivery import (
+    DeliveryConflict,
+    prepare_invoice_email,
+    reminder_blocker,
+    reminder_copy,
+    send_message,
+)
+from crm.invoices.serializers import (
+    InvoiceCancelSerializer,
+    InvoiceDueDateCorrectionInputSerializer,
+    InvoiceListSerializer,
+    InvoiceOutputSerializer,
+    InvoicePaymentInputSerializer,
+    InvoicePaymentVoidSerializer,
+    InvoiceStatusSerializer,
+    InvoiceWriteSerializer,
+)
+from crm.invoices.services import (
+    buyer_snapshot,
+    invoice_number,
+    issue_invoice,
+    record_payment,
+    recorded_total,
+)
+from crm.models import (
+    Client,
+    Deal,
+    Invoice,
+    InvoiceDelivery,
+    InvoiceDueDateCorrection,
+    InvoiceItem,
+    InvoicePayment,
+    Workspace,
+    WorkspaceMembership,
+)
 from crm.services.calculations import CURRENCY_PLACES, calculate_items, money_string
 from crm.services.pdf import render_invoice
-from crm.auth.security import InvoiceEmailThrottle
-
 
 
 class InvoiceQuerysetMixin(WorkspaceQuerysetMixin):
