@@ -1,10 +1,11 @@
-from decimal import Decimal
 import re
+from decimal import Decimal
+
 from django.utils import timezone
 from rest_framework import serializers
+
 from crm.api.serializers import StrictModelSerializer, WorkspaceClientField
 from crm.models import Client, Deal
-
 
 CURRENCIES = frozenset("""
 AED AFN ALL AMD AOA ARS AUD AWG AZN BAM BBD BDT BHD BIF BMD BND BOB BOV BRL BSD BTN
@@ -60,7 +61,18 @@ class DealSerializer(StrictModelSerializer):
             raise serializers.ValidationError({"version": "This field is required."})
         status = attrs.get("status", self.instance.status if self.instance else Deal.Status.NEW_LEAD)
         outcome = attrs.get("outcome", self.instance.outcome if self.instance else Deal.Outcome.NONE)
-        if status != Deal.Status.ARCHIVED:
+        if status == Deal.Status.ARCHIVED:
+            if self.instance and self.instance.status == Deal.Status.PAID:
+                if "outcome" in attrs and outcome != Deal.Outcome.WON:
+                    raise serializers.ValidationError({"outcome": "Paid deals must be archived as won."})
+                attrs["outcome"] = Deal.Outcome.WON
+            elif self.instance and self.instance.status == Deal.Status.ARCHIVED and self.instance.outcome == Deal.Outcome.WON:
+                if "outcome" in attrs and outcome != Deal.Outcome.WON:
+                    raise serializers.ValidationError({"outcome": "A won deal cannot be changed to another outcome."})
+                attrs["outcome"] = Deal.Outcome.WON
+            elif outcome == Deal.Outcome.WON:
+                raise serializers.ValidationError({"outcome": "Only paid deals can have a won outcome."})
+        else:
             if "outcome" in attrs and outcome != Deal.Outcome.NONE:
                 raise serializers.ValidationError({"outcome": "An outcome is only allowed for archived deals."})
             attrs["outcome"] = Deal.Outcome.NONE

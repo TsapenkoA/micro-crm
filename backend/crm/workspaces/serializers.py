@@ -1,10 +1,24 @@
 import re
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from rest_framework import serializers
+
 from crm.api.serializers import SingleLineField
 
 
 class WorkspaceNameSerializer(serializers.Serializer):
     name = SingleLineField(max_length=200, allow_blank=False, trim_whitespace=True)
+
+
+class WorkspaceTimezoneSerializer(serializers.Serializer):
+    time_zone = serializers.CharField(max_length=64, trim_whitespace=True)
+
+    def validate_time_zone(self, value):
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as error:
+            raise serializers.ValidationError("Choose a valid IANA time zone, such as Europe/Kyiv.") from error
+        return value
 
 
 class SellerDetailsSerializer(serializers.Serializer):

@@ -7,11 +7,17 @@ from rest_framework import filters, generics
 from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
+from crm.activity.services import log_activity, snapshot
 from crm.api.pagination import ClientPagination
 from crm.api.permissions import IsWorkspaceMember, WorkspaceQuerysetMixin
-from crm.activity.services import log_activity, snapshot
 from crm.clients.serializers import ClientNoteSerializer
-from crm.deals.serializers import DealDeleteSerializer, DealFilters, DealSerializer, DealStatusSerializer
+from crm.deals.serializers import (
+    DealDeleteSerializer,
+    DealFilters,
+    DealSerializer,
+    DealStatusSerializer,
+)
 from crm.models import Client, ClientNote, Deal, WorkspaceMembership
 from crm.services.fx import rate_date_for
 
@@ -131,12 +137,23 @@ class DealDetail(DealQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
                     raise ValidationError({"client": "A deal with linked invoices, tasks or notes cannot be moved to another client."})
         status = values.get("status", instance.status)
         now = timezone.now()
-        values["paid_at"] = (instance.paid_at if instance.status == Deal.Status.PAID else now) if status == Deal.Status.PAID else None
+        preserve_archived_win = status == Deal.Status.ARCHIVED and (
+            instance.status == Deal.Status.PAID
+            or (instance.status == Deal.Status.ARCHIVED and instance.outcome == Deal.Outcome.WON)
+        )
+        values["paid_at"] = (
+            (instance.paid_at if instance.status == Deal.Status.PAID else now)
+            if status == Deal.Status.PAID
+            else instance.paid_at if preserve_archived_win else None
+        )
         if values["paid_at"]:
-            same_currency = values.get("currency", instance.currency) == instance.currency
-            values["fx_rate_date"] = instance.fx_rate_date if same_currency else None
-            if values["fx_rate_date"] is None:
-                values["fx_rate_date"] = rate_date_for(values.get("currency", instance.currency), timezone.localtime(values["paid_at"]).date())
+            if preserve_archived_win:
+                values["fx_rate_date"] = instance.fx_rate_date
+            else:
+                same_currency = values.get("currency", instance.currency) == instance.currency
+                values["fx_rate_date"] = instance.fx_rate_date if same_currency else None
+                if values["fx_rate_date"] is None:
+                    values["fx_rate_date"] = rate_date_for(values.get("currency", instance.currency), timezone.localtime(values["paid_at"]).date())
         else:
             values["fx_rate_date"] = None
         values["updated_at"] = now

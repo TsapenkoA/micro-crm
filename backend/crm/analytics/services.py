@@ -1,7 +1,9 @@
 from datetime import datetime
-from decimal import Decimal, ROUND_HALF_UP
-from django.db.models import Count
+from decimal import ROUND_HALF_UP, Decimal
+
+from django.db.models import Count, Q
 from django.utils import timezone
+
 from crm.models import Deal, FxRate, InvoicePayment
 from crm.services.calculations import money_string, round_money
 from crm.services.fx import common_rate_date, convert
@@ -30,7 +32,12 @@ def dashboard_data(workspace_id, currency, period):
     deals = Deal.objects.filter(workspace_id=workspace_id, client__workspace_id=workspace_id)
     active = deals.filter(status__in=[Deal.Status.NEW_LEAD, Deal.Status.NEGOTIATION, Deal.Status.IN_PROGRESS])
     active_records = list(active.values("amount", "currency"))
-    paid_records = list(deals.filter(status=Deal.Status.PAID).values("amount", "currency", "fx_rate_date"))
+    paid_records = list(
+        deals.filter(
+            Q(status=Deal.Status.PAID)
+            | Q(status=Deal.Status.ARCHIVED, outcome=Deal.Outcome.WON)
+        ).values("amount", "currency", "fx_rate_date")
+    )
     payments = list(InvoicePayment.objects.filter(
         invoice__workspace_id=workspace_id, invoice__client__workspace_id=workspace_id,
         received_on__gte=start.date(), received_on__lt=end.date(), voided_at__isnull=True,

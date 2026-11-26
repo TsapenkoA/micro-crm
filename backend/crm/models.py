@@ -1,12 +1,13 @@
 import uuid
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator, URLValidator
 from django.db import models
 from django.db.models import Q
-from crm.fields import EncryptedJSONField, EncryptedBinaryField
 
+from crm.fields import EncryptedBinaryField, EncryptedJSONField
 
 currency_validator = RegexValidator(r"^[A-Z]{3}$", "Use a three-letter uppercase ISO currency code.")
 
@@ -42,10 +43,17 @@ def validate_workspace(instance):
 class Workspace(ValidatedModel):
     name = models.CharField(max_length=200)
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="owned_workspaces")
+    time_zone = models.CharField(max_length=64, default="UTC")
     bank_details = EncryptedJSONField(default=dict, blank=True)
     seller_details = EncryptedJSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def clean(self):
+        try:
+            ZoneInfo(self.time_zone)
+        except (ZoneInfoNotFoundError, ValueError) as error:
+            raise ValidationError({"time_zone": "Choose a valid IANA time zone."}) from error
 
     class Meta:
         app_label = "accounts"
@@ -277,6 +285,7 @@ class Deal(ValidatedModel):
         NONE = "none", "None"
         LOST = "lost", "Lost"
         CANCELLED = "cancelled", "Cancelled"
+        WON = "won", "Won"
 
     workspace = models.ForeignKey("accounts.Workspace", on_delete=models.PROTECT, related_name="deals")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="deals")
@@ -300,9 +309,16 @@ class Deal(ValidatedModel):
             models.CheckConstraint(condition=Q(amount__gte=0), name="deal_amount_nonnegative"),
             models.CheckConstraint(condition=Q(version__gte=1), name="deal_version_positive"),
             models.CheckConstraint(condition=Q(status__in=["new_lead", "negotiation", "in_progress", "paid", "archived"]), name="deal_status_valid"),
-            models.CheckConstraint(condition=Q(outcome__in=["none", "lost", "cancelled"]), name="deal_outcome_valid"),
+            models.CheckConstraint(condition=Q(outcome__in=["none", "lost", "cancelled", "won"]), name="deal_outcome_valid"),
             models.CheckConstraint(condition=Q(status="archived") | Q(outcome="none"), name="deal_outcome_archived"),
-            models.CheckConstraint(condition=(Q(status="paid", paid_at__isnull=False) | (~Q(status="paid") & Q(paid_at__isnull=True))), name="deal_paid_at_matches_status"),
+            models.CheckConstraint(
+                condition=(
+                    Q(status="paid", paid_at__isnull=False)
+                    | Q(status="archived", outcome="won", paid_at__isnull=False)
+                    | (~Q(status="paid") & ~Q(status="archived", outcome="won") & Q(paid_at__isnull=True))
+                ),
+                name="deal_paid_at_matches_status",
+            ),
         ]
 
     def clean(self):
@@ -377,6 +393,7 @@ class Invoice(ValidatedModel):
     paid_at = models.DateTimeField(null=True, blank=True)
     fx_rate_date = models.DateField(null=True, blank=True)
     issued_at = models.DateTimeField(null=True, blank=True)
+    issued_on = models.DateField(null=True, blank=True)
     due_date = models.DateField(null=True, blank=True)
     payment_terms = models.CharField(max_length=500, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)

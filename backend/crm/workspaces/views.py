@@ -1,9 +1,9 @@
 from datetime import timedelta
 
-from django.db import transaction
-from django.db.models import F
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
+from django.db import transaction
+from django.db.models import F
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
@@ -11,11 +11,26 @@ from rest_framework.exceptions import APIException, NotFound, PermissionDenied, 
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from crm.api.permissions import IsWorkspaceMember
+
 from crm.activity.services import log_activity, log_workspace_change, log_workspace_member, snapshot
+from crm.api.permissions import IsWorkspaceMember
 from crm.auth.security import AuthThrottle, recent_auth
-from crm.models import Client, Deal, Invoice, PreviewDataset, Task, Workspace, WorkspaceMembership, WorkspaceJoinRequest
-from crm.workspaces.serializers import BankDetailsSerializer, SellerDetailsSerializer, WorkspaceNameSerializer
+from crm.models import (
+    Client,
+    Deal,
+    Invoice,
+    PreviewDataset,
+    Task,
+    Workspace,
+    WorkspaceJoinRequest,
+    WorkspaceMembership,
+)
+from crm.workspaces.serializers import (
+    BankDetailsSerializer,
+    SellerDetailsSerializer,
+    WorkspaceNameSerializer,
+    WorkspaceTimezoneSerializer,
+)
 
 
 @api_view(["GET"])
@@ -113,6 +128,7 @@ class WorkspaceSettings(APIView):
         return Response({
             "id": str(workspace.pk),
             "name": workspace.name,
+            "time_zone": workspace.time_zone,
             "can_manage_members": workspace.owner_id == request.user.pk,
             "members": [member_data(member.user) for member in members],
             "join_requests": [
@@ -123,16 +139,28 @@ class WorkspaceSettings(APIView):
 
     @transaction.atomic
     def patch(self, request):
-        if not isinstance(request.data, dict) or set(request.data) != {"name"}:
-            raise ValidationError({"name": "Only name can be changed here."})
-        serializer = WorkspaceNameSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not isinstance(request.data, dict):
+            raise ValidationError("Enter workspace settings as an object.")
+        if set(request.data) == {"name"}:
+            serializer = WorkspaceNameSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            value = serializer.validated_data["name"]
+            field = "name"
+        elif set(request.data) == {"time_zone"}:
+            serializer = WorkspaceTimezoneSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            value = serializer.validated_data["time_zone"]
+            field = "time_zone"
+        else:
+            raise ValidationError("Change either the workspace name or time zone.")
         if not WorkspaceMembership.objects.select_for_update().filter(user=request.user, workspace_id=request.workspace_id).exists():
             raise PermissionDenied("Workspace membership has changed. Please retry the request.")
         workspace = Workspace.objects.select_for_update().get(pk=request.workspace_id)
-        workspace.name = serializer.validated_data["name"]
-        workspace.save(update_fields=["name", "updated_at"])
-        return Response({"id": str(workspace.pk), "name": workspace.name})
+        if field == "time_zone" and workspace.owner_id != request.user.pk:
+            raise PermissionDenied("Only the workspace owner can change its time zone.")
+        setattr(workspace, field, value)
+        workspace.save(update_fields=[field, "updated_at"])
+        return Response({"id": str(workspace.pk), field: value})
 
 
 class MembershipConflict(APIException):

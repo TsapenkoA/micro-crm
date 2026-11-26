@@ -4,21 +4,21 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from threading import Barrier
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.db import close_old_connections, connection
 from django.db.models.query import QuerySet
-
-import pytest
 from rest_framework.test import APIClient
 
-from crm.models import Client, ClientNote, Deal, Invoice, Task, WorkspaceMembership
+from crm.models import Client, ClientNote, Deal, FxRate, Invoice, Task, WorkspaceMembership
 
 pytestmark = pytest.mark.django_db
 
 
 def test_model_validation_errors_use_the_api_error_format():
     from django.core.exceptions import ValidationError
+
     from crm.api.errors import exception_handler
 
     response = exception_handler(ValidationError({"deal": "Choose a deal for this client."}), {})
@@ -188,7 +188,7 @@ def test_missing_version_stale_update_and_no_partial_changes(authenticated_api, 
     assert authenticated_api.get(path).json() == updated
 
 
-@pytest.mark.parametrize("outcome", Deal.Outcome.values)
+@pytest.mark.parametrize("outcome", [Deal.Outcome.NONE, Deal.Outcome.LOST, Deal.Outcome.CANCELLED])
 def test_archived_outcomes_and_reopening(authenticated_api, deal, outcome):
     path = f"/api/v1/deals/{deal.pk}"
     response = authenticated_api.patch(path + "/status", {"version": 1, "status": "archived", "outcome": outcome}, format="json")
@@ -212,6 +212,53 @@ def test_paid_timestamp_lifecycle_and_status_only_input(authenticated_api, deal)
     assert reopened["paid_at"] is None
     repaid = authenticated_api.patch(path + "/status", {"version": 4, "status": "paid"}, format="json").json()
     assert repaid["paid_at"] > paid["paid_at"]
+
+
+def test_archiving_paid_deal_preserves_payment_facts_and_sets_won(authenticated_api, deal):
+    from django.utils import timezone as django_timezone
+
+    rate_date = django_timezone.localdate()
+    FxRate.objects.create(date=rate_date, currency="USD", per_eur=Decimal("1.10"))
+    FxRate.objects.create(date=rate_date, currency="EUR", per_eur=Decimal("1.00"))
+    path = f"/api/v1/deals/{deal.pk}"
+    paid_response = authenticated_api.patch(path + "/status", {"version": 1, "status": "paid"}, format="json")
+    assert paid_response.status_code == 200
+    paid = paid_response.json()
+    assert paid["fx_rate_date"] == rate_date.isoformat()
+
+    archived_response = authenticated_api.patch(path + "/status", {"version": 2, "status": "archived"}, format="json")
+    assert archived_response.status_code == 200
+    archived = archived_response.json()
+    assert archived["outcome"] == Deal.Outcome.WON
+    assert archived["paid_at"] == paid["paid_at"]
+    assert archived["fx_rate_date"] == paid["fx_rate_date"]
+
+
+def test_won_outcome_requires_a_paid_deal(authenticated_api, deal):
+    path = f"/api/v1/deals/{deal.pk}"
+    invalid_win = authenticated_api.patch(
+        path + "/status", {"version": 1, "status": "archived", "outcome": Deal.Outcome.WON}, format="json"
+    )
+    assert invalid_win.status_code == 400
+    assert "outcome" in invalid_win.json()["error"]["details"]
+
+    paid = authenticated_api.patch(path + "/status", {"version": 1, "status": "paid"}, format="json")
+    assert paid.status_code == 200
+    invalid_paid_archive = authenticated_api.patch(
+        path + "/status", {"version": 2, "status": "archived", "outcome": Deal.Outcome.LOST}, format="json"
+    )
+    assert invalid_paid_archive.status_code == 400
+    deal.refresh_from_db()
+    assert deal.status == Deal.Status.PAID and deal.paid_at is not None
+
+
+def test_won_outcome_migration_does_not_backfill_legacy_archives():
+    from importlib import import_module
+
+    from django.db import migrations
+
+    migration = import_module("crm.migrations.deals.0006_deal_won_outcome")
+    assert not any(isinstance(operation, (migrations.RunPython, migrations.RunSQL)) for operation in migration.Migration.operations)
 
 
 def test_colleagues_share_deals_and_deletion(authenticated_api, colleague, deal, client_record):
@@ -360,8 +407,9 @@ def test_description_updates_independently_of_notes_and_is_workspace_scoped(auth
 
 
 def test_description_migration_preserves_the_text_previously_displayed(user, deal):
-    from django.apps import apps
     from importlib import import_module
+
+    from django.apps import apps
     first = ClientNote.objects.create(client=deal.client, deal=deal, author=user, text="Earlier note")
     latest = ClientNote.objects.create(client=deal.client, deal=deal, author=user, text="Currently displayed description")
     migration = import_module("crm.migrations.deals.0005_deal_description")

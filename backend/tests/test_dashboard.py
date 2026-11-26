@@ -1,9 +1,8 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from django.utils import timezone
-
 import pytest
+from django.utils import timezone
 
 from crm.models import Client, Deal, FxRate, Invoice, InvoicePayment
 
@@ -14,11 +13,12 @@ URL = "/api/v1/analytics/dashboard"
 
 
 def deal(user, client, status, amount, currency="USD", outcome="none"):
+    paid_at = timezone.now() if status == "paid" or outcome == "won" else None
     return Deal.objects.create(
         workspace=client.workspace, created_by=user, client=client, title="Project",
         status=status, amount=Decimal(amount), currency=currency, outcome=outcome,
-        paid_at=timezone.now() if status == "paid" else None,
-        fx_rate_date=timezone.localdate() if status == "paid" else None,
+        paid_at=paid_at,
+        fx_rate_date=timezone.localtime(paid_at).date() if paid_at else None,
     )
 
 
@@ -69,6 +69,20 @@ def test_currency_workspace_and_revenue_source(api, user, other_user, client_rec
     eur = api.get(URL + "?currency=EUR").json()
     assert (eur["pipeline_value"], eur["revenue"], eur["average_deal_size"], eur["win_rate"]) == ("132.33", "10.42", "25.00", "50.00")
     assert eur["fx"]["source"] == "ECB" and eur["fx"]["pipeline_rate_date"] == timezone.localdate().isoformat()
+
+
+def test_archived_wins_count_once_and_legacy_archives_are_not_inferred(api, user, client_record):
+    deal(user, client_record, "paid", "30.00")
+    deal(user, client_record, "archived", "60.00", outcome="won")
+    legacy = deal(user, client_record, "archived", "90.00")
+    deal(user, client_record, "archived", "10.00", outcome="lost")
+
+    api.force_login(user)
+    data = api.get(URL + "?currency=USD").json()
+    assert data["win_rate"] == "66.67"
+    assert data["average_deal_size"] == "45.00"
+    legacy.refresh_from_db()
+    assert legacy.outcome == Deal.Outcome.NONE
 
 
 def test_period_boundaries_and_precision(api, user, client_record):
