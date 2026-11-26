@@ -132,9 +132,11 @@ function Column({
           ) : currencyTotals.length > 1 ? (
             <details>
               <summary>Totals in {currencyTotals.length} currencies</summary>
-              {currencyTotals.map((total) => (
-                <span key={total.currency}>{money(total.amount, total.currency)}</span>
-              ))}
+              <ul className="deal-column-currency-totals">
+                {currencyTotals.map((total) => (
+                  <li key={total.currency}>{money(total.amount, total.currency)}</li>
+                ))}
+              </ul>
             </details>
           ) : currencyTotals.length === 1 ? (
             <span>{money(currencyTotals[0].amount, currencyTotals[0].currency)}</span>

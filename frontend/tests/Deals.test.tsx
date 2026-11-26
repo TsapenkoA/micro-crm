@@ -152,6 +152,8 @@ it('keeps multiple column currencies separate and collapsed until requested', as
   const column = await screen.findByRole('region', { name: 'New Lead' });
   const summary = within(column).getByText('Totals in 2 currencies');
   const totalsDetails = summary.closest('details')!;
+  expect(within(totalsDetails).getByRole('list')).toBeInTheDocument();
+  expect(within(totalsDetails).getAllByRole('listitem')).toHaveLength(2);
   expect(within(totalsDetails).getByText('1,234.56 EUR')).not.toBeVisible();
   expect(within(totalsDetails).getByText('500 USD')).not.toBeVisible();
   await userEvent.click(summary);
