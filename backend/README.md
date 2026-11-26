@@ -125,7 +125,19 @@ uv run python manage.py check_fx_rates
 uv run python manage.py refresh_fx_rates
 ```
 
-Schedule `refresh_fx_rates` daily after ECB publication outside the request process. It imports, fills missing paid-record rate dates and checks freshness; failure exits nonzero. `FX_ALERT_EMAIL` plus SMTP enables operator failure notices. No external scheduler is installed by these commands.
+On Windows, register a daily Task Scheduler job from the repository root to run after ECB publication:
+
+```powershell
+$backend = (Resolve-Path .\backend).Path
+$uv = (Get-Command uv).Source
+$action = New-ScheduledTaskAction -Execute $uv -Argument "run python manage.py refresh_fx_rates" -WorkingDirectory $backend
+$trigger = New-ScheduledTaskTrigger -Daily -At "5:00 PM"
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew
+$principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
+Register-ScheduledTask -TaskName "MicroFlow ECB FX Refresh" -Action $action -Trigger $trigger -Settings $settings -Principal $principal
+```
+
+The task runs as the current Windows user while signed in; `StartWhenAvailable` catches up after a missed run. `refresh_fx_rates` imports rates, fills missing paid-record rate dates and checks freshness; failure exits nonzero. `FX_ALERT_EMAIL` plus SMTP enables operator failure notices. On a hosted deployment, configure the equivalent daily scheduler there instead.
 
 For trusted administrator assignment, create a user with `createsuperuser` or Django's `create_user`, then run `assign_workspace <username> <workspace-uuid>`. This command bypasses the user consent flow; restrict it to trusted operators. It refuses to move business data.
 
