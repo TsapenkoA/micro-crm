@@ -1,5 +1,6 @@
 from django.core.validators import URLValidator
 from rest_framework import serializers
+
 from crm.api.serializers import StrictModelSerializer
 from crm.models import Client, ClientContact, ClientLink, ClientNote, Deal, Invoice
 from crm.services.calculations import money_string

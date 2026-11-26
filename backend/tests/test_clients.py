@@ -2,10 +2,9 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from io import StringIO
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-
-import pytest
 from rest_framework.test import APIClient
 
 from crm.models import Client, ClientLink, ClientNote, Deal, Invoice, WorkspaceMembership

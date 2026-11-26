@@ -1,4 +1,5 @@
 import os
+
 from django.db import transaction
 from django.db.models import Count, Q
 from django.db.models.deletion import ProtectedError
@@ -10,13 +11,22 @@ from rest_framework.exceptions import APIException, PermissionDenied, Validation
 from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
+from crm.activity.services import log_activity, snapshot
 from crm.api.pagination import ClientPagination
 from crm.api.permissions import IsWorkspaceMember, WorkspaceQuerysetMixin
 from crm.api.serializers import StrictModelSerializer
-from crm.activity.services import log_activity, snapshot
-from crm.services.uploads import scan_upload
-from crm.clients.serializers import ClientContactSerializer, ClientDetailSerializer, ClientInvoiceSerializer, ClientLinkSerializer, ClientListSerializer, ClientNoteSerializer, ClientSerializer
+from crm.clients.serializers import (
+    ClientContactSerializer,
+    ClientDetailSerializer,
+    ClientInvoiceSerializer,
+    ClientLinkSerializer,
+    ClientListSerializer,
+    ClientNoteSerializer,
+    ClientSerializer,
+)
 from crm.models import Client, ClientAttachment, Invoice, WorkspaceMembership
+from crm.services.uploads import scan_upload
 
 
 class ClientQuerysetMixin(WorkspaceQuerysetMixin):
