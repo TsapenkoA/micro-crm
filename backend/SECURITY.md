@@ -12,21 +12,7 @@ All API responses, including errors, use `Cache-Control: private, no-store, max-
 
 Set `FILE_SCAN_HOST` and `FILE_SCAN_PORT` to a trusted ClamAV daemon with current signature databases. The connection must be private (localhost or a protected private network), never a public unauthenticated endpoint. File bytes are sent to that daemon for scanning. Configure its stream limit to at least 5 MB and its timeouts above the application scan timeout. Uploads and downloads fail closed with HTTP 503 if no scanner is configured, the verdict is incomplete, or it is unavailable. A malicious verdict returns a controlled validation error. Existing attachments are scanned before download too. File signatures and limits remain additional checks, not a substitute for antivirus scanning. A clean verdict cannot guarantee a file is harmless.
 
-For Windows x64 development, run from the repository root:
-
-```powershell
-.\scripts\start-file-scanner.ps1 -Setup
-```
-
-The script downloads the pinned official portable ClamAV archive, checks its SHA-256, downloads official signatures, binds only to `127.0.0.1:3310` and verifies clean/EICAR detection before configuring `.env`. It keeps executable files, signatures, configuration and logs under ignored `.local/`. No Windows service, firewall change or global installation is required. Restart Django after the initial setup. On another developer's PC, repeat setup with their own `.env` and database; antivirus binaries and signatures do not belong in Git.
-
-After restarting Windows, start the local scanner again:
-
-```powershell
-.\scripts\start-file-scanner.ps1
-```
-
-The hidden FreshClam process checks for updates four times a day while running; ClamD checks for updated files every five minutes and refuses startup when signatures are older than seven days. `-Update` runs an explicit update (stop the background updater first if it holds the update log lock). Update the pinned portable release intentionally when security fixes are published; automatic signature updates do not update the engine binary. Official references: [Windows portable packages](https://docs.clamav.net/faq/faq-win32.html) and [signature updates](https://docs.clamav.net/manual/Usage/SignatureManagement.html).
+For Windows x64 development, install and configure ClamAV using its official documentation. Bind the daemon to localhost or a protected private network, keep signatures current, and set `FILE_SCAN_HOST` and `FILE_SCAN_PORT` in the local environment. Do not expose an unauthenticated scanner publicly or commit antivirus binaries, signatures, configuration, or logs. Official references: [Windows portable packages](https://docs.clamav.net/faq/faq-win32.html) and [signature updates](https://docs.clamav.net/manual/Usage/SignatureManagement.html).
 
 Run `python manage.py check_file_scanner` from `backend` to test the real configured service. It sends clean bytes and the harmless standard EICAR test string in memory; it does not write an antivirus test file to disk. API tests with real ClamAV should verify a clean PDF upload and download with matching hashes and roll back the test record. Mocked scanner unit tests alone are not an integration result.
 

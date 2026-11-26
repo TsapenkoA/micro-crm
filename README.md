@@ -91,11 +91,11 @@ uv run python manage.py snapshot_fx_rates
 
 The snapshot command assigns historical rate dates to older paid records after import. If a required rate is unavailable, the affected total is hidden instead of showing a partial amount. See the backend README for supported currencies and date rules.
 
-Account settings contain profile, password/provider methods and appearance. Password reset messages appear in the backend terminal unless email delivery is configured. The optional design preview is separate from live company records; see the frontend README for its limits. Current architecture decisions are summarized in [docs/architecture-decisions.md](docs/architecture-decisions.md).
+Account settings contain profile, password/provider methods and appearance. Password reset messages appear in the backend terminal unless email delivery is configured. The optional design preview is separate from live company records; see the frontend README for its limits.
 
 ## Checks
 
-The backend tests use PostgreSQL. Django creates a separate `test_<PGDATABASE>` database; tests do not write to the configured application database. The CI workflow uses PostgreSQL 18 and contains no local credentials.
+The backend tests use PostgreSQL. Django creates a separate `test_<PGDATABASE>` database; tests do not write to the configured application database.
 
 ```powershell
 cd backend
@@ -118,4 +118,4 @@ On Linux/macOS, use `python -m pip` and `npm` in place of `npm.cmd`; the remaini
 
 See [backend/SECURITY.md](backend/SECURITY.md) for workspace consent, CSP, key recovery and the limits of field-level encryption. Set `FILE_SCAN_HOST` and `FILE_SCAN_PORT` for a trusted private ClamAV service before using client file uploads/downloads. Without it, those operations return a controlled 503; tests use a scanner stub only where explicitly declared. Other CRM features do not require the scanner. Storage encryption for the complete PostgreSQL database and backups remains a hosting requirement.
 
-On Windows x64, use `./scripts/start-file-scanner.ps1 -Setup` once and restart Django. Run `./scripts/start-file-scanner.ps1` after restarting Windows. The portable scanner and updater run locally; the script verifies clean/EICAR detection before configuring the application. No binaries, signatures or secrets are committed. See the security instructions for other operating systems and recovery-key handling.
+On Windows x64, configure a trusted local ClamAV daemon and set `FILE_SCAN_HOST` and `FILE_SCAN_PORT` in the local environment. Keep the daemon private and use current signatures; the repository does not include antivirus binaries or signatures.
