@@ -9,10 +9,25 @@ export const stages = [
   { id: 'paid', label: 'Paid', color: 'green' },
   { id: 'archived', label: 'Archived', color: 'gray' },
 ] as const;
-export type Status = typeof stages[number]['id'];
+export type Status = (typeof stages)[number]['id'];
 export type Outcome = 'none' | 'lost' | 'cancelled';
-export type DealInput = { title: string; description?: string; client: string; status: Status; amount: string; currency: string; deadline: string | null; outcome: Outcome };
-export type Deal = DealInput & { id: string; version: number; paid_at: string | null; created_at: string; updated_at: string };
+export type DealInput = {
+  title: string;
+  description?: string;
+  client: string;
+  status: Status;
+  amount: string;
+  currency: string;
+  deadline: string | null;
+  outcome: Outcome;
+};
+export type Deal = DealInput & {
+  id: string;
+  version: number;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
 export type Total = { status: Status; currency: string; count: number; amount: string };
 type DealPage = { count: number; results: Deal[]; next: string | null; previous: string | null; totals: Total[] };
 type Filters = { search: string; status: string; currency: string };
@@ -34,7 +49,7 @@ export const deals = {
       query.set('page', String(page++));
       result = await request<DealPage>(`/deals?${query}`, { signal });
       if (page === 2) totals = result.totals;
-      result.results.forEach(deal => records.set(deal.id, deal));
+      result.results.forEach((deal) => records.set(deal.id, deal));
     } while (result.next);
     return { results: [...records.values()], totals };
   },
@@ -44,23 +59,40 @@ export const deals = {
     let result: ClientPage;
     do {
       result = await request<ClientPage>(`/clients?page_size=100&page=${page++}`, { signal });
-      result.results.forEach(client => records.set(client.id, client));
+      result.results.forEach((client) => records.set(client.id, client));
     } while (result.next);
     return [...records.values()];
   },
   detail: (id: string, signal?: AbortSignal) => request<Deal>(`/deals/${encodeURIComponent(id)}`, { signal }),
-  notes: (id: string, page = 1, signal?: AbortSignal) => request<HistoryPage<ClientNote>>(`/deals/${encodeURIComponent(id)}/notes?page=${page}`, { signal }),
-  addNote: (id: string, text: string) => request<ClientNote>(`/deals/${encodeURIComponent(id)}/notes`, { method: 'POST', body: JSON.stringify({ text }) }),
+  notes: (id: string, page = 1, signal?: AbortSignal) =>
+    request<HistoryPage<ClientNote>>(`/deals/${encodeURIComponent(id)}/notes?page=${page}`, { signal }),
+  addNote: (id: string, text: string) =>
+    request<ClientNote>(`/deals/${encodeURIComponent(id)}/notes`, { method: 'POST', body: JSON.stringify({ text }) }),
   create: (values: DealInput) => request<Deal>('/deals', { method: 'POST', body: JSON.stringify(values) }),
-  update: (deal: Deal, values: DealInput) => request<Deal>(`/deals/${encodeURIComponent(deal.id)}`, { method: 'PATCH', body: JSON.stringify({ ...values, version: deal.version }) }),
-  status: (deal: Deal, status: Status, outcome: Outcome = 'none') => request<Deal>(`/deals/${encodeURIComponent(deal.id)}/status`, { method: 'PATCH', body: JSON.stringify({ status, outcome: status === 'archived' ? outcome : 'none', version: deal.version }) }),
-  remove: (deal: Deal) => request<void>(`/deals/${encodeURIComponent(deal.id)}`, { method: 'DELETE', body: JSON.stringify({ version: deal.version }) }),
+  update: (deal: Deal, values: DealInput) =>
+    request<Deal>(`/deals/${encodeURIComponent(deal.id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ ...values, version: deal.version }),
+    }),
+  status: (deal: Deal, status: Status, outcome: Outcome = 'none') =>
+    request<Deal>(`/deals/${encodeURIComponent(deal.id)}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, outcome: status === 'archived' ? outcome : 'none', version: deal.version }),
+    }),
+  remove: (deal: Deal) =>
+    request<void>(`/deals/${encodeURIComponent(deal.id)}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ version: deal.version }),
+    }),
 };
 
 export const isVersionConflict = (cause: unknown) => cause instanceof ApiError && cause.reason === 'version_conflict';
-export const errorMessage = (cause: unknown) => isVersionConflict(cause)
-  ? 'This record was updated elsewhere. Reload to see the latest version.'
-  : cause instanceof Error ? cause.message : 'Unable to complete the request. Please try again.';
+export const errorMessage = (cause: unknown) =>
+  isVersionConflict(cause)
+    ? 'This record was updated elsewhere. Reload to see the latest version.'
+    : cause instanceof Error
+      ? cause.message
+      : 'Unable to complete the request. Please try again.';
 
 export function money(amount: string, currency: string) {
   const [whole, fraction = '00'] = amount.split('.');
@@ -69,9 +101,15 @@ export function money(amount: string, currency: string) {
 }
 
 export function date(value: string | null) {
-  return value ? new Date(value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'No deadline';
+  return value
+    ? new Date(value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    : 'No deadline';
 }
 
 export function isOverdue(deal: Pick<Deal, 'deadline' | 'status'>) {
-  return Boolean(deal.deadline && ['new_lead', 'negotiation', 'in_progress'].includes(deal.status) && new Date(deal.deadline) < new Date());
+  return Boolean(
+    deal.deadline &&
+    ['new_lead', 'negotiation', 'in_progress'].includes(deal.status) &&
+    new Date(deal.deadline) < new Date(),
+  );
 }

@@ -1,37 +1,187 @@
 import ActionIcon from '../../components/ActionIcon';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
 import Dialog from '../../components/Dialog';
 import { ApiError } from '../../api/client';
 import type { Client } from '../clients/api';
 import DealForm from './DealForm';
 import DealDetails from './DealDetails';
-import { date, deals, errorMessage, isOverdue, money, stages, type Deal, type Outcome, type Status, type Total } from './api';
+import {
+  date,
+  deals,
+  errorMessage,
+  isOverdue,
+  money,
+  stages,
+  type Deal,
+  type Outcome,
+  type Status,
+  type Total,
+} from './api';
 import './deals.css';
 
 const linkedDeal = () => new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('deal');
 
 function Badge({ status }: { status: Status }) {
-  const stage = stages.find(item => item.id === status)!;
-  return <span className={`deal-badge deal-${stage.color}`}><i />{stage.label}</span>;
+  const stage = stages.find((item) => item.id === status)!;
+  return (
+    <span className={`deal-badge deal-${stage.color}`}>
+      <i />
+      {stage.label}
+    </span>
+  );
 }
 
-function Card({ deal, client, onOpen, disabled }: { deal: Deal; client?: Client; onOpen: (trigger: HTMLButtonElement) => void; disabled: boolean }) {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({ id: deal.id, disabled });
-  return <article ref={setNodeRef} className={`live-deal-card ${isDragging ? 'is-dragging' : ''}`}>
-    <div className="deal-card-top"><span className="deal-client-mark" aria-hidden="true">{(client?.company || client?.name || '?').slice(0, 2).toUpperCase()}</span><button ref={setActivatorNodeRef} {...attributes} {...listeners} className="deal-drag-handle" disabled={disabled} aria-label={`Drag ${deal.title} to another status`}>⠿</button></div>
-    <button className="deal-open-card" aria-label={`Open ${deal.title}`} onClick={event => onOpen(event.currentTarget)}><strong>{deal.title}</strong><span>{client?.name ?? 'Client unavailable'}</span>{client?.company && <small>{client.company}</small>}</button><strong className="deal-money">{money(deal.amount, deal.currency)}</strong><div className="deal-card-footer"><span>{isOverdue(deal) && <strong className="is-overdue">Overdue · </strong>}{date(deal.deadline)}</span><Badge status={deal.status} /></div>
-  </article>;
+function Card({
+  deal,
+  client,
+  onOpen,
+  disabled,
+}: {
+  deal: Deal;
+  client?: Client;
+  onOpen: (trigger: HTMLButtonElement) => void;
+  disabled: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
+    id: deal.id,
+    disabled,
+  });
+  return (
+    <article ref={setNodeRef} className={`live-deal-card ${isDragging ? 'is-dragging' : ''}`}>
+      <div className="deal-card-top">
+        <span className="deal-client-mark" aria-hidden="true">
+          {(client?.company || client?.name || '?').slice(0, 2).toUpperCase()}
+        </span>
+        <button
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+          className="deal-drag-handle"
+          disabled={disabled}
+          aria-label={`Drag ${deal.title} to another status`}
+        >
+          ⠿
+        </button>
+      </div>
+      <button
+        className="deal-open-card"
+        aria-label={`Open ${deal.title}`}
+        onClick={(event) => onOpen(event.currentTarget)}
+      >
+        <strong>{deal.title}</strong>
+        <span>{client?.name ?? 'Client unavailable'}</span>
+        {client?.company && <small>{client.company}</small>}
+      </button>
+      <strong className="deal-money">{money(deal.amount, deal.currency)}</strong>
+      <div className="deal-card-footer">
+        <span>
+          {isOverdue(deal) && <strong className="is-overdue">Overdue · </strong>}
+          {date(deal.deadline)}
+        </span>
+        <Badge status={deal.status} />
+      </div>
+    </article>
+  );
 }
 
-function Column({ status, deals: records, totals, clients, onOpen, busy, showTotals }: { status: Status; deals: Deal[]; totals: Total[]; clients: Map<string, Client>; onOpen: (id: string, trigger: HTMLButtonElement) => void; busy: boolean; showTotals: boolean }) {
+function Column({
+  status,
+  deals: records,
+  totals,
+  clients,
+  onOpen,
+  busy,
+}: {
+  status: Status;
+  deals: Deal[];
+  totals: Total[];
+  clients: Map<string, Client>;
+  onOpen: (id: string, trigger: HTMLButtonElement) => void;
+  busy: boolean;
+}) {
   const { setNodeRef, isOver } = useDroppable({ id: status, disabled: busy });
-  const stage = stages.find(item => item.id === status)!;
+  const stage = stages.find((item) => item.id === status)!;
   const count = totals.reduce((sum, total) => sum + total.count, 0);
-  return <section ref={setNodeRef} aria-label={stage.label} className={`live-deal-column deal-${stage.color} ${isOver ? 'drop-over' : ''}`}><header><div><i className="deal-stage-dot" /><h2>{stage.label}</h2><span className="deal-count">{count}</span></div>{showTotals && <div className="deal-column-totals">{busy ? <span>Updating…</span> : totals.length ? totals.map(total => <span key={total.currency}>{money(total.amount, total.currency)}</span>) : <span>No value yet</span>}</div>}</header><div className="deal-card-stack">{records.map(deal => <Card key={deal.id} deal={deal} client={clients.get(deal.client)} onOpen={trigger => onOpen(deal.id, trigger)} disabled={busy} />)}{!records.length && <p className="deal-column-empty">{count ? 'Load more to see deals in this stage.' : <>No deals in this stage.<br />Move an opportunity here when it’s ready.</>}</p>}</div></section>;
+  const currencyTotals = totals.filter((total) => total.count > 0);
+  return (
+    <section
+      ref={setNodeRef}
+      aria-label={stage.label}
+      className={`live-deal-column deal-${stage.color} ${isOver ? 'drop-over' : ''}`}
+    >
+      <header>
+        <div>
+          <i className="deal-stage-dot" />
+          <h2>{stage.label}</h2>
+          <span className="deal-count">{count}</span>
+        </div>
+        <div className="deal-column-totals">
+          {busy ? (
+            <span>Updating…</span>
+          ) : currencyTotals.length > 1 ? (
+            <details>
+              <summary>Totals in {currencyTotals.length} currencies</summary>
+              {currencyTotals.map((total) => (
+                <span key={total.currency}>{money(total.amount, total.currency)}</span>
+              ))}
+            </details>
+          ) : currencyTotals.length === 1 ? (
+            <span>{money(currencyTotals[0].amount, currencyTotals[0].currency)}</span>
+          ) : (
+            <span>No value yet</span>
+          )}
+        </div>
+      </header>
+      <div className="deal-card-stack">
+        {records.map((deal) => (
+          <Card
+            key={deal.id}
+            deal={deal}
+            client={clients.get(deal.client)}
+            onOpen={(trigger) => onOpen(deal.id, trigger)}
+            disabled={busy}
+          />
+        ))}
+        {!records.length && (
+          <p className="deal-column-empty">
+            {count ? (
+              'Load more to see deals in this stage.'
+            ) : (
+              <>
+                No deals in this stage.
+                <br />
+                Move an opportunity here when it’s ready.
+              </>
+            )}
+          </p>
+        )}
+      </div>
+    </section>
+  );
 }
 
-export default function DealsPage({ createRequested = false, onCreateHandled, onCountChanged, showCreate = true }: { createRequested?: boolean; onCreateHandled?: () => void; onCountChanged?: () => void; showCreate?: boolean }) {
+export default function DealsPage({
+  createRequested = false,
+  onCreateHandled,
+  onCountChanged,
+  showCreate = true,
+}: {
+  createRequested?: boolean;
+  onCreateHandled?: () => void;
+  onCountChanged?: () => void;
+  showCreate?: boolean;
+}) {
   const [records, setRecords] = useState<Deal[]>([]);
   const [totals, setTotals] = useState<Total[]>([]);
   const [count, setCount] = useState(0);
@@ -67,22 +217,43 @@ export default function DealsPage({ createRequested = false, onCreateHandled, on
   const lastLoad = useRef({ key: '', revision: -1, page: 0 });
   const mounted = useRef(true);
   const detailTrigger = useRef<HTMLButtonElement | null>(null);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 7 } }), useSensor(KeyboardSensor));
-  const clientMap = useMemo(() => new Map(clients.map(client => [client.id, client])), [clients]);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 7 } }),
+    useSensor(KeyboardSensor),
+  );
+  const clientMap = useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients]);
 
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => { if (createRequested) { setEditor({}); onCreateHandled?.(); } }, [createRequested, onCreateHandled]);
   useEffect(() => {
-    const changed = () => { const id = linkedDeal(); if (id) setSelected(id); };
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (createRequested) {
+      setEditor({});
+      onCreateHandled?.();
+    }
+  }, [createRequested, onCreateHandled]);
+  useEffect(() => {
+    const changed = () => {
+      const id = linkedDeal();
+      if (id) setSelected(id);
+    };
     window.addEventListener('hashchange', changed);
     return () => window.removeEventListener('hashchange', changed);
   }, []);
   useEffect(() => {
     const controller = new AbortController();
     const key = JSON.stringify([search, status, currency, view, sort]);
-    const append = view === 'board' && tablePage > 1 && lastLoad.current.key === key
-      && lastLoad.current.revision === revision && lastLoad.current.page === tablePage - 1;
-    setLoading(true); setError('');
+    const append =
+      view === 'board' &&
+      tablePage > 1 &&
+      lastLoad.current.key === key &&
+      lastLoad.current.revision === revision &&
+      lastLoad.current.page === tablePage - 1;
+    setLoading(true);
+    setError('');
     async function loadRecords() {
       const filters = { search, status, currency };
       if (view === 'table') return deals.page(filters, tablePage, sort, controller.signal);
@@ -95,66 +266,170 @@ export default function DealsPage({ createRequested = false, onCreateHandled, on
         rows.push(...result.results);
         next = result.next;
       }
-      return { ...first, results: [...new Map(rows.map(deal => [deal.id, deal])).values()], next };
+      return { ...first, results: [...new Map(rows.map((deal) => [deal.id, deal])).values()], next };
     }
     Promise.all([loadRecords(), deals.clients(controller.signal)])
       .then(([result, clients]) => {
         if (controller.signal.aborted) return;
-        setRecords(current => append ? [...new Map([...current, ...result.results].map(deal => [deal.id, deal])).values()] : result.results);
+        setRecords((current) =>
+          append
+            ? [...new Map([...current, ...result.results].map((deal) => [deal.id, deal])).values()]
+            : result.results,
+        );
         lastLoad.current = { key, revision, page: tablePage };
-        setTotals(result.totals); setCount(result.count ?? result.results.length); setClients(clients); setLoaded(true);
-        setCurrencies(current => [...new Set([...current, ...result.totals.map(total => total.currency)])].sort());
-      }).catch(cause => { if (!controller.signal.aborted) setError(errorMessage(cause)); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+        setTotals(result.totals);
+        setCount(result.count ?? result.results.length);
+        setClients(clients);
+        setLoaded(true);
+        setCurrencies((current) => [...new Set([...current, ...result.totals.map((total) => total.currency)])].sort());
+      })
+      .catch((cause) => {
+        if (!controller.signal.aborted) setError(errorMessage(cause));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
     return () => controller.abort();
   }, [search, status, currency, view, sort, tablePage, revision]);
   useEffect(() => {
-    if (!selected) { setDetail(null); return; }
+    if (!selected) {
+      setDetail(null);
+      return;
+    }
     const controller = new AbortController();
-    setDetail(null); setDetailLoading(true); setDetailError('');
-    deals.detail(selected, controller.signal).then(result => { if (!controller.signal.aborted) { setDetail(result); setOutcome(result.outcome); } })
-      .catch(cause => { if (!controller.signal.aborted) setDetailError(errorMessage(cause)); })
-      .finally(() => { if (!controller.signal.aborted) setDetailLoading(false); });
+    setDetail(null);
+    setDetailLoading(true);
+    setDetailError('');
+    deals
+      .detail(selected, controller.signal)
+      .then((result) => {
+        if (!controller.signal.aborted) {
+          setDetail(result);
+          setOutcome(result.outcome);
+        }
+      })
+      .catch((cause) => {
+        if (!controller.signal.aborted) setDetailError(errorMessage(cause));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setDetailLoading(false);
+      });
     return () => controller.abort();
   }, [selected, detailRevision]);
 
-  function refresh() { setRevision(value => value + 1); }
-  function reloadDetail() { setMutationError(''); setDetailRevision(value => value + 1); refresh(); }
-  function searchSubmit(event: FormEvent) { event.preventDefault(); setSearch(draft.trim()); setTablePage(1); refresh(); }
-  function openDetail(id: string, trigger: HTMLButtonElement) { detailTrigger.current = trigger; setMutationError(''); setSelected(id); }
-  function closeDetail() { setSelected(null); if (linkedDeal()) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#/deals`); if (detailTrigger.current?.isConnected) detailTrigger.current.focus(); }
-  function saved(deal: Deal) { setEditor(null); setDetail(deal); setSelected(deal.id); setMessage('Deal saved.'); refresh(); onCountChanged?.(); }
-  function discarded(deal: Deal) { setEditor(null); setDetail(deal); setSelected(deal.id); setMessage('Draft discarded. Showing the latest record.'); refresh(); }
-  function confirmDelete(deal: Deal) { setDeleteError(''); setDeleteReason(''); setDeleting(deal); }
+  function refresh() {
+    setRevision((value) => value + 1);
+  }
+  function reloadDetail() {
+    setMutationError('');
+    setDetailRevision((value) => value + 1);
+    refresh();
+  }
+  function searchSubmit(event: FormEvent) {
+    event.preventDefault();
+    setSearch(draft.trim());
+    setTablePage(1);
+    refresh();
+  }
+  function openDetail(id: string, trigger: HTMLButtonElement) {
+    detailTrigger.current = trigger;
+    setMutationError('');
+    setSelected(id);
+  }
+  function closeDetail() {
+    setSelected(null);
+    if (linkedDeal())
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#/deals`);
+    if (detailTrigger.current?.isConnected) detailTrigger.current.focus();
+  }
+  function saved(deal: Deal) {
+    setEditor(null);
+    setDetail(deal);
+    setSelected(deal.id);
+    setMessage('Deal saved.');
+    refresh();
+    onCountChanged?.();
+  }
+  function discarded(deal: Deal) {
+    setEditor(null);
+    setDetail(deal);
+    setSelected(deal.id);
+    setMessage('Draft discarded. Showing the latest record.');
+    refresh();
+  }
+  function confirmDelete(deal: Deal) {
+    setDeleteError('');
+    setDeleteReason('');
+    setDeleting(deal);
+  }
   async function changeStatus(deal: Deal, next: Status, archivedOutcome: Outcome = 'none') {
     if (mutationRef.current || saving) return;
-    mutationRef.current = true; setMutation(true); setMessage(''); setMutationError('');
+    mutationRef.current = true;
+    setMutation(true);
+    setMessage('');
+    setMutationError('');
     const previous = records;
-    setRecords(current => current.map(item => item.id === deal.id ? { ...item, status: next, outcome: next === 'archived' ? archivedOutcome : 'none' } : item));
+    setRecords((current) =>
+      current.map((item) =>
+        item.id === deal.id ? { ...item, status: next, outcome: next === 'archived' ? archivedOutcome : 'none' } : item,
+      ),
+    );
     try {
       const updated = await deals.status(deal, next, archivedOutcome);
       if (mounted.current) {
-        setRecords(current => current.map(item => item.id === updated.id ? updated : item).filter(item => !status || item.status === status));
-        setDetail(current => current?.id === updated.id ? updated : current);
+        setRecords((current) =>
+          current
+            .map((item) => (item.id === updated.id ? updated : item))
+            .filter((item) => !status || item.status === status),
+        );
+        setDetail((current) => (current?.id === updated.id ? updated : current));
         setOutcome(updated.outcome);
         setMessage('Deal status updated.');
       }
+    } catch (cause) {
+      if (mounted.current) {
+        setRecords(previous);
+        setMutationError(errorMessage(cause));
+      }
+    } finally {
+      mutationRef.current = false;
+      if (mounted.current) {
+        setMutation(false);
+        refresh();
+      }
     }
-    catch (cause) { if (mounted.current) { setRecords(previous); setMutationError(errorMessage(cause)); } }
-    finally { mutationRef.current = false; if (mounted.current) { setMutation(false); refresh(); } }
   }
   function dragEnd(event: DragEndEvent) {
     setDragged(null);
-    const next = stages.find(stage => stage.id === event.over?.id)?.id;
-    const deal = records.find(item => item.id === event.active.id);
+    const next = stages.find((stage) => stage.id === event.over?.id)?.id;
+    const deal = records.find((item) => item.id === event.active.id);
     if (deal && next && deal.status !== next) void changeStatus(deal, next);
   }
   async function remove() {
     if (!deleting || mutationRef.current) return;
-    mutationRef.current = true; setMutation(true); setDeleteError('');
-    try { await deals.remove(deleting); if (mounted.current) { setRecords(current => current.filter(item => item.id !== deleting.id)); if (view === 'table' && records.length === 1 && tablePage > 1) setTablePage(value => value - 1); if (selected === deleting.id) closeDetail(); setDeleting(null); setMessage('Deal deleted.'); refresh(); onCountChanged?.(); } }
-    catch (cause) { if (mounted.current) { setDeleteError(errorMessage(cause)); setDeleteReason(cause instanceof ApiError ? cause.reason || '' : ''); } }
-    finally { mutationRef.current = false; if (mounted.current) setMutation(false); }
+    mutationRef.current = true;
+    setMutation(true);
+    setDeleteError('');
+    try {
+      await deals.remove(deleting);
+      if (mounted.current) {
+        setRecords((current) => current.filter((item) => item.id !== deleting.id));
+        if (view === 'table' && records.length === 1 && tablePage > 1) setTablePage((value) => value - 1);
+        if (selected === deleting.id) closeDetail();
+        setDeleting(null);
+        setMessage('Deal deleted.');
+        refresh();
+        onCountChanged?.();
+      }
+    } catch (cause) {
+      if (mounted.current) {
+        setDeleteError(errorMessage(cause));
+        setDeleteReason(cause instanceof ApiError ? cause.reason || '' : '');
+      }
+    } finally {
+      mutationRef.current = false;
+      if (mounted.current) setMutation(false);
+    }
   }
   const tableRecords = records;
   const companyClient = detail && clientMap.get(detail.client);
@@ -162,28 +437,417 @@ export default function DealsPage({ createRequested = false, onCreateHandled, on
   for (const total of totals) {
     if (!['new_lead', 'negotiation', 'in_progress'].includes(total.status)) continue;
     const [whole, fraction = ''] = total.amount.split('.');
-    pipeline.set(total.currency, (pipeline.get(total.currency) ?? 0n) + BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0')));
+    pipeline.set(
+      total.currency,
+      (pipeline.get(total.currency) ?? 0n) + BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0')),
+    );
   }
-  const pipelineAmounts = [...pipeline].sort(([a], [b]) => a.localeCompare(b)).map(([code, cents]) => money(`${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`, code));
+  const pipelineAmounts = [...pipeline]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([code, cents]) => money(`${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`, code));
 
-  return <section className="live-deals" aria-label="Company deals">
-    <div className="deal-toolbar"><div className="deal-view-switch" role="group" aria-label="Deal view"><button aria-pressed={view === 'board'} onClick={() => { setTablePage(1); setView('board'); }}>▥ Kanban</button><button aria-pressed={view === 'table'} onClick={() => { setTablePage(1); setView('table'); }}>☷ Table</button></div><form role="search" onSubmit={searchSubmit} className="deal-search"><input aria-label="Search deals" placeholder="Search deals or clients…" value={draft} onChange={event => setDraft(event.target.value)} /><button className="secondary"><ActionIcon name="search" />Search</button>{(search || draft) && <button className="secondary" type="button" onClick={() => { setDraft(''); setSearch(''); setTablePage(1); refresh(); }}>Clear</button>}</form><select aria-label="Filter by status" value={status} onChange={event => { setTablePage(1); setStatus(event.target.value); }}><option value="">All statuses</option>{stages.map(stage => <option key={stage.id} value={stage.id}>{stage.label}</option>)}</select><select aria-label="Filter by currency" value={currency} onChange={event => { setTablePage(1); setCurrency(event.target.value); }}><option value="">All currencies</option>{[...new Set([...currencies, currency].filter(Boolean))].map(value => <option key={value}>{value}</option>)}</select><button className="secondary" onClick={refresh} disabled={loading || mutation}><ActionIcon name="refresh" />Refresh</button>{showCreate && <button className="primary" onClick={() => setEditor({})}>+ New deal</button>}</div>
-    <div className="deal-list-caption"><span><strong>{count}</strong> {count === 1 ? 'deal' : 'deals'} <span className="deal-caption-divider">/</span> Keep the next step in sight.</span><span className="deal-pipeline-total">{currency ? <>Active pipeline <strong>{pipelineAmounts.length ? pipelineAmounts[0] : money('0.00', currency)}</strong></> : 'Choose a currency to see pipeline totals'}</span></div>
-    {message && <p className="notice success" role="status">{message}</p>}
-    {mutationError && !selected && <div className="deal-inline-error"><p role="alert">{mutationError}</p><button className="secondary" onClick={() => { setMutationError(''); reloadDetail(); }}>Reload current</button></div>}
-    {error && <div className="deal-inline-error"><p role="alert">{error}</p><button className="secondary" onClick={refresh}>Reload current</button></div>}
-    {loading && <p role="status" className="muted deal-loading">{loaded ? 'Refreshing deals…' : 'Loading deals…'}</p>}
-    {loaded && <>
-      {!error && !records.length && <div className="empty-state panel"><div className="empty-icon" aria-hidden="true">◇</div><h2>{search || status || currency ? 'No matching deals' : 'No deals yet'}</h2><p className="muted">{search || status || currency ? 'Try another search or clear your filters.' : 'Create your first opportunity and keep the next step in sight.'}</p><button className="primary" onClick={() => setEditor({})}>Create a deal</button></div>}
-      <div className="live-deal-layout">
-        <div className="live-deal-content">
-      {view === 'board' ? <><DndContext sensors={sensors} onDragStart={event => setDragged(String(event.active.id))} onDragCancel={() => setDragged(null)} onDragEnd={dragEnd}><div className="live-deal-board">{stages.map(stage => <Column key={stage.id} status={stage.id} deals={records.filter(deal => deal.status === stage.id)} totals={totals.filter(total => total.status === stage.id)} clients={clientMap} onOpen={openDetail} busy={mutation || loading} showTotals={!!currency} />)}</div><DragOverlay>{dragged && <div className="deal-drag-overlay">{records.find(deal => deal.id === dragged)?.title}</div>}</DragOverlay></DndContext>{records.length < count && <div className="deal-load-more"><button className="secondary" disabled={loading || mutation} onClick={() => setTablePage(value => value + 1)}>{loading ? 'Loading…' : `Load more deals (${records.length} of ${count})`}</button></div>}</> : <section className="panel deal-table-panel"><div className="deal-table-controls"><label>Sort by <select value={sort} onChange={event => { setSort(event.target.value); setTablePage(1); }}><option value="newest">Newest first</option><option value="title">Title</option><option value="client">Client</option><option value="deadline">Deadline</option></select></label></div><div className="deal-table-scroll"><table className="live-deal-table"><caption className="sr-only">Deals in your company workspace</caption><thead><tr><th>Deal</th><th>Client</th><th>Status</th><th>Amount / currency</th><th>Deadline</th><th>Actions</th></tr></thead><tbody>{tableRecords.map(deal => <tr key={deal.id}><th scope="row"><button className="client-name" onClick={event => openDetail(deal.id, event.currentTarget)}>{deal.title}</button></th><td>{clientMap.get(deal.client)?.name ?? 'Client unavailable'}</td><td><Badge status={deal.status} /></td><td>{money(deal.amount, deal.currency)}</td><td>{date(deal.deadline)}</td><td><div className="button-row"><button className="text-action" aria-label={`Edit ${deal.title}`} onClick={() => setEditor({ deal })}>Edit</button><button className="text-action danger" aria-label={`Delete ${deal.title}`} onClick={() => confirmDelete(deal)}>Delete</button></div></td></tr>)}</tbody></table></div><footer className="pagination"><span>{count} deals · Page {tablePage}</span><div className="button-row"><button className="secondary" disabled={loading || tablePage === 1} onClick={() => setTablePage(value => value - 1)}>Previous</button><button className="secondary" disabled={loading || tablePage * 20 >= count} onClick={() => setTablePage(value => value + 1)}>Next</button></div></footer></section>}
+  return (
+    <section className="live-deals" aria-label="Company deals">
+      <div className="deal-toolbar">
+        <div className="deal-view-switch" role="group" aria-label="Deal view">
+          <button
+            aria-pressed={view === 'board'}
+            onClick={() => {
+              setTablePage(1);
+              setView('board');
+            }}
+          >
+            ▥ Kanban
+          </button>
+          <button
+            aria-pressed={view === 'table'}
+            onClick={() => {
+              setTablePage(1);
+              setView('table');
+            }}
+          >
+            ☷ Table
+          </button>
         </div>
+        <form role="search" onSubmit={searchSubmit} className="deal-search">
+          <input
+            aria-label="Search deals"
+            placeholder="Search deals or clients…"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+          <button className="secondary">
+            <ActionIcon name="search" />
+            Search
+          </button>
+          {(search || draft) && (
+            <button
+              className="secondary"
+              type="button"
+              onClick={() => {
+                setDraft('');
+                setSearch('');
+                setTablePage(1);
+                refresh();
+              }}
+            >
+              Clear
+            </button>
+          )}
+        </form>
+        <select
+          aria-label="Filter by status"
+          value={status}
+          onChange={(event) => {
+            setTablePage(1);
+            setStatus(event.target.value);
+          }}
+        >
+          <option value="">All statuses</option>
+          {stages.map((stage) => (
+            <option key={stage.id} value={stage.id}>
+              {stage.label}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Filter by currency"
+          value={currency}
+          onChange={(event) => {
+            setTablePage(1);
+            setCurrency(event.target.value);
+          }}
+        >
+          <option value="">All currencies</option>
+          {[...new Set([...currencies, currency].filter(Boolean))].map((value) => (
+            <option key={value}>{value}</option>
+          ))}
+        </select>
+        <button className="secondary" onClick={refresh} disabled={loading || mutation}>
+          <ActionIcon name="refresh" />
+          Refresh
+        </button>
+        {showCreate && (
+          <button className="primary" onClick={() => setEditor({})}>
+            + New deal
+          </button>
+        )}
       </div>
-      <p className="deal-board-help">Drag a card’s handle to change its stage, or open the card and use Change status. Moving to Archived sets outcome to None; choose Lost or Cancelled in details.</p>
-    </>}
-    {selected && <Dialog title="Deal details" className="deal-detail-dialog" onClose={closeDetail} busy={mutation}><DealDetails key={selected} deal={detail} client={companyClient ?? undefined} loading={detailLoading} error={detailError} mutationError={mutationError} busy={mutation || loading} outcome={outcome} onOutcome={setOutcome} onReload={reloadDetail} onStatus={(next, nextOutcome = 'none') => { if (detail) void changeStatus(detail, next, nextOutcome); }} onEdit={() => { if (detail) setEditor({ deal: detail }); }} onDelete={() => { if (detail) confirmDelete(detail); }} onOpenClient={() => { if (companyClient) { closeDetail(); window.location.hash = `/clients?client=${encodeURIComponent(companyClient.id)}`; } }} /></Dialog>}
-    {editor && <Dialog title={editor.deal ? 'Edit deal' : 'New deal'} className="deal-editor-dialog" onClose={() => setEditor(null)} busy={saving}>{!loaded || loading && !clients.length ? <div className="dialog-body"><p role="status">Loading company clients…</p>{error && <><p role="alert">{error}</p><button className="secondary" onClick={refresh}>Retry</button></>}</div> : <DealForm initial={editor.deal} clients={clients} onCancel={() => setEditor(null)} onSaved={saved} onDiscard={discarded} onPending={setSaving} />}</Dialog>}
-    {deleting && <Dialog title="Delete deal" role="alertdialog" busy={mutation} onClose={() => setDeleting(null)}><div className="dialog-body"><p>Delete “{deleting.title}”? This action cannot be undone. The client and its history will be preserved.</p>{deleteError && <p className="notice error" role="alert">{deleteError}</p>}{deleteReason === 'version_conflict' && <button className="secondary" disabled={mutation} onClick={async () => { try { setDeleting(await deals.detail(deleting.id)); setDeleteReason(''); setDeleteError('Latest version loaded. Review the deal before confirming deletion again.'); refresh(); } catch (cause) { setDeleteError(errorMessage(cause)); } }}>Reload current</button>}<div className="dialog-actions"><button className="secondary" disabled={mutation} onClick={() => setDeleting(null)}>Cancel</button><button className="primary destructive" disabled={mutation || deleteReason === 'protected'} onClick={() => void remove()}>{mutation ? 'Deleting…' : 'Confirm deletion'}</button></div></div></Dialog>}
-  </section>;
+      <div className="deal-list-caption">
+        <span>
+          <strong>{count}</strong> {count === 1 ? 'deal' : 'deals'} <span className="deal-caption-divider">/</span> Keep
+          the next step in sight.
+        </span>
+        <span className="deal-pipeline-total">
+          {currency ? (
+            <>
+              Active pipeline <strong>{pipelineAmounts.length ? pipelineAmounts[0] : money('0.00', currency)}</strong>
+            </>
+          ) : (
+            'Choose a currency to see pipeline totals'
+          )}
+        </span>
+      </div>
+      {message && (
+        <p className="notice success" role="status">
+          {message}
+        </p>
+      )}
+      {mutationError && !selected && (
+        <div className="deal-inline-error">
+          <p role="alert">{mutationError}</p>
+          <button
+            className="secondary"
+            onClick={() => {
+              setMutationError('');
+              reloadDetail();
+            }}
+          >
+            Reload current
+          </button>
+        </div>
+      )}
+      {error && (
+        <div className="deal-inline-error">
+          <p role="alert">{error}</p>
+          <button className="secondary" onClick={refresh}>
+            Reload current
+          </button>
+        </div>
+      )}
+      {loading && (
+        <p role="status" className="muted deal-loading">
+          {loaded ? 'Refreshing deals…' : 'Loading deals…'}
+        </p>
+      )}
+      {loaded && (
+        <>
+          {!error && !records.length && (
+            <div className="empty-state panel">
+              <div className="empty-icon" aria-hidden="true">
+                ◇
+              </div>
+              <h2>{search || status || currency ? 'No matching deals' : 'No deals yet'}</h2>
+              <p className="muted">
+                {search || status || currency
+                  ? 'Try another search or clear your filters.'
+                  : 'Create your first opportunity and keep the next step in sight.'}
+              </p>
+              <button className="primary" onClick={() => setEditor({})}>
+                Create a deal
+              </button>
+            </div>
+          )}
+          <div className="live-deal-layout">
+            <div className="live-deal-content">
+              {view === 'board' ? (
+                <>
+                  <DndContext
+                    sensors={sensors}
+                    onDragStart={(event) => setDragged(String(event.active.id))}
+                    onDragCancel={() => setDragged(null)}
+                    onDragEnd={dragEnd}
+                  >
+                    <div className="live-deal-board">
+                      {stages.map((stage) => (
+                        <Column
+                          key={stage.id}
+                          status={stage.id}
+                          deals={records.filter((deal) => deal.status === stage.id)}
+                          totals={totals.filter((total) => total.status === stage.id)}
+                          clients={clientMap}
+                          onOpen={openDetail}
+                          busy={mutation || loading}
+                        />
+                      ))}
+                    </div>
+                    <DragOverlay>
+                      {dragged && (
+                        <div className="deal-drag-overlay">{records.find((deal) => deal.id === dragged)?.title}</div>
+                      )}
+                    </DragOverlay>
+                  </DndContext>
+                  {records.length < count && (
+                    <div className="deal-load-more">
+                      <button
+                        className="secondary"
+                        disabled={loading || mutation}
+                        onClick={() => setTablePage((value) => value + 1)}
+                      >
+                        {loading ? 'Loading…' : `Load more deals (${records.length} of ${count})`}
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <section className="panel deal-table-panel">
+                  <div className="deal-table-controls">
+                    <label>
+                      Sort by{' '}
+                      <select
+                        value={sort}
+                        onChange={(event) => {
+                          setSort(event.target.value);
+                          setTablePage(1);
+                        }}
+                      >
+                        <option value="newest">Newest first</option>
+                        <option value="title">Title</option>
+                        <option value="client">Client</option>
+                        <option value="deadline">Deadline</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="deal-table-scroll">
+                    <table className="live-deal-table">
+                      <caption className="sr-only">Deals in your company workspace</caption>
+                      <thead>
+                        <tr>
+                          <th>Deal</th>
+                          <th>Client</th>
+                          <th>Status</th>
+                          <th>Amount / currency</th>
+                          <th>Deadline</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tableRecords.map((deal) => (
+                          <tr key={deal.id}>
+                            <th scope="row">
+                              <button
+                                className="client-name"
+                                onClick={(event) => openDetail(deal.id, event.currentTarget)}
+                              >
+                                {deal.title}
+                              </button>
+                            </th>
+                            <td>{clientMap.get(deal.client)?.name ?? 'Client unavailable'}</td>
+                            <td>
+                              <Badge status={deal.status} />
+                            </td>
+                            <td>{money(deal.amount, deal.currency)}</td>
+                            <td>{date(deal.deadline)}</td>
+                            <td>
+                              <div className="button-row">
+                                <button
+                                  className="text-action"
+                                  aria-label={`Edit ${deal.title}`}
+                                  onClick={() => setEditor({ deal })}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  className="text-action danger"
+                                  aria-label={`Delete ${deal.title}`}
+                                  onClick={() => confirmDelete(deal)}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <footer className="pagination">
+                    <span>
+                      {count} deals · Page {tablePage}
+                    </span>
+                    <div className="button-row">
+                      <button
+                        className="secondary"
+                        disabled={loading || tablePage === 1}
+                        onClick={() => setTablePage((value) => value - 1)}
+                      >
+                        Previous
+                      </button>
+                      <button
+                        className="secondary"
+                        disabled={loading || tablePage * 20 >= count}
+                        onClick={() => setTablePage((value) => value + 1)}
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </footer>
+                </section>
+              )}
+            </div>
+          </div>
+          <p className="deal-board-help">
+            Drag a card’s handle to change its stage, or open the card and use Change status. Moving to Archived sets
+            outcome to None; choose Lost or Cancelled in details.
+          </p>
+        </>
+      )}
+      {selected && (
+        <Dialog title="Deal details" className="deal-detail-dialog" onClose={closeDetail} busy={mutation}>
+          <DealDetails
+            key={selected}
+            deal={detail}
+            client={companyClient ?? undefined}
+            loading={detailLoading}
+            error={detailError}
+            mutationError={mutationError}
+            busy={mutation || loading}
+            outcome={outcome}
+            onOutcome={setOutcome}
+            onReload={reloadDetail}
+            onStatus={(next, nextOutcome = 'none') => {
+              if (detail) void changeStatus(detail, next, nextOutcome);
+            }}
+            onEdit={() => {
+              if (detail) setEditor({ deal: detail });
+            }}
+            onDelete={() => {
+              if (detail) confirmDelete(detail);
+            }}
+            onOpenClient={() => {
+              if (companyClient) {
+                closeDetail();
+                window.location.hash = `/clients?client=${encodeURIComponent(companyClient.id)}`;
+              }
+            }}
+          />
+        </Dialog>
+      )}
+      {editor && (
+        <Dialog
+          title={editor.deal ? 'Edit deal' : 'New deal'}
+          className="deal-editor-dialog"
+          onClose={() => setEditor(null)}
+          busy={saving}
+        >
+          {!loaded || (loading && !clients.length) ? (
+            <div className="dialog-body">
+              <p role="status">Loading company clients…</p>
+              {error && (
+                <>
+                  <p role="alert">{error}</p>
+                  <button className="secondary" onClick={refresh}>
+                    Retry
+                  </button>
+                </>
+              )}
+            </div>
+          ) : (
+            <DealForm
+              initial={editor.deal}
+              clients={clients}
+              onCancel={() => setEditor(null)}
+              onSaved={saved}
+              onDiscard={discarded}
+              onPending={setSaving}
+            />
+          )}
+        </Dialog>
+      )}
+      {deleting && (
+        <Dialog title="Delete deal" role="alertdialog" busy={mutation} onClose={() => setDeleting(null)}>
+          <div className="dialog-body">
+            <p>
+              Delete “{deleting.title}”? This action cannot be undone. The client and its history will be preserved.
+            </p>
+            {deleteError && (
+              <p className="notice error" role="alert">
+                {deleteError}
+              </p>
+            )}
+            {deleteReason === 'version_conflict' && (
+              <button
+                className="secondary"
+                disabled={mutation}
+                onClick={async () => {
+                  try {
+                    setDeleting(await deals.detail(deleting.id));
+                    setDeleteReason('');
+                    setDeleteError('Latest version loaded. Review the deal before confirming deletion again.');
+                    refresh();
+                  } catch (cause) {
+                    setDeleteError(errorMessage(cause));
+                  }
+                }}
+              >
+                Reload current
+              </button>
+            )}
+            <div className="dialog-actions">
+              <button className="secondary" disabled={mutation} onClick={() => setDeleting(null)}>
+                Cancel
+              </button>
+              <button
+                className="primary destructive"
+                disabled={mutation || deleteReason === 'protected'}
+                onClick={() => void remove()}
+              >
+                {mutation ? 'Deleting…' : 'Confirm deletion'}
+              </button>
+            </div>
+          </div>
+        </Dialog>
+      )}
+    </section>
+  );
 }
