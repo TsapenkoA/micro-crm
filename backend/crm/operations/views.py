@@ -3,8 +3,8 @@ from datetime import timedelta
 from django.db.models import Case, CharField, DateTimeField, F, Value, When
 from django.db.models.functions import Cast, TruncDate
 from django.utils import timezone
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 

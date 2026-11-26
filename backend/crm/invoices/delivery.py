@@ -1,7 +1,7 @@
-from datetime import timedelta
 import logging
-import socket
 import smtplib
+import socket
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -10,11 +10,11 @@ from django.core.validators import validate_email
 from django.utils import timezone
 from rest_framework.exceptions import APIException, ValidationError
 
-from crm.models import InvoiceDelivery
+from crm.api.serializers import SingleLineField
 from crm.invoices.services import recorded_total
+from crm.models import InvoiceDelivery
 from crm.services.calculations import money_string
 from crm.services.pdf import render_invoice
-from crm.api.serializers import SingleLineField
 
 logger = logging.getLogger(__name__)
 
