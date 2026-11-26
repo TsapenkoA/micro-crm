@@ -1,5 +1,5 @@
-from django.http import JsonResponse
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.http import JsonResponse
 from rest_framework.exceptions import ValidationError
 from rest_framework.serializers import as_serializer_error
 from rest_framework.views import exception_handler as drf_exception_handler

@@ -1,8 +1,12 @@
 import { request } from '../../api/client';
 
 export type ActivityEvent = {
-  id: string; actor_name: string; entity_type: 'client' | 'deal' | 'task' | 'invoice' | 'workspace';
-  entity_id: string; entity_label: string; action: string;
+  id: string;
+  actor_name: string;
+  entity_type: 'client' | 'deal' | 'task' | 'invoice' | 'workspace';
+  entity_id: string;
+  entity_label: string;
+  action: string;
   changes: Record<string, { from: string | number | null; to: string | number | null } | string>;
   created_at: string;
 };

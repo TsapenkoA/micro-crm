@@ -9,10 +9,22 @@ function externalUrl(value: string): string | undefined {
   try {
     const url = new URL(value);
     return ['http:', 'https:'].includes(url.protocol) ? value : undefined;
-  } catch { return undefined; }
+  } catch {
+    return undefined;
+  }
 }
 
-function HistorySection({ clientId, kind, collapsibleForm, onChanged }: { clientId: string; kind: Kind; collapsibleForm: boolean; onChanged?: () => void }) {
+function HistorySection({
+  clientId,
+  kind,
+  collapsibleForm,
+  onChanged,
+}: {
+  clientId: string;
+  kind: Kind;
+  collapsibleForm: boolean;
+  onChanged?: () => void;
+}) {
   const [data, setData] = useState<HistoryPage<HistoryItem> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -41,20 +53,30 @@ function HistorySection({ clientId, kind, collapsibleForm, onChanged }: { client
     setError('');
     async function load() {
       let requestedPage = destination === 'latest' ? 1 : destination;
-      const fetchPage = (number: number) => isNote ? clients.notes(clientId, number, controller.signal) : clients.links(clientId, number, controller.signal);
+      const fetchPage = (number: number) =>
+        isNote
+          ? clients.notes(clientId, number, controller.signal)
+          : clients.links(clientId, number, controller.signal);
       let result = await fetchPage(requestedPage);
       if (destination === 'latest' && result.next && result.results.length) {
         requestedPage = Math.ceil(result.count / result.results.length);
         result = await fetchPage(requestedPage);
       }
-      if (!controller.signal.aborted) { setData(result); setPage(requestedPage); }
+      if (!controller.signal.aborted) {
+        setData(result);
+        setPage(requestedPage);
+      }
     }
-    load().catch(cause => {
-      if (controller.signal.aborted) return;
-      if (cause instanceof ApiError && cause.status === 404 && typeof destination === 'number' && destination > 1) {
-        setDestination(destination - 1);
-      } else setError(cause instanceof Error ? cause.message : `Unable to load ${kind}.`);
-    }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    load()
+      .catch((cause) => {
+        if (controller.signal.aborted) return;
+        if (cause instanceof ApiError && cause.status === 404 && typeof destination === 'number' && destination > 1) {
+          setDestination(destination - 1);
+        } else setError(cause instanceof Error ? cause.message : `Unable to load ${kind}.`);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
     return () => controller.abort();
   }, [clientId, kind, isNote, destination, revision]);
 
@@ -76,16 +98,20 @@ function HistorySection({ clientId, kind, collapsibleForm, onChanged }: { client
     }
     setPending(true);
     try {
-      if (isNote) { await clients.addNote(clientId, text.trim()); setText(''); }
-      else {
+      if (isNote) {
+        await clients.addNote(clientId, text.trim());
+        setText('');
+      } else {
         if (editingLink) await clients.updateLink(clientId, editingLink, label.trim(), url.trim());
         else await clients.addLink(clientId, label.trim(), url.trim());
-        setLabel(''); setUrl(''); setEditingLink(null);
+        setLabel('');
+        setUrl('');
+        setEditingLink(null);
       }
       setSuccess(isNote ? 'Note added.' : editingLink ? 'Link updated.' : 'Link added.');
       if (collapsibleForm) setShowForm(false);
       setDestination('latest');
-      setRevision(value => value + 1);
+      setRevision((value) => value + 1);
       onChanged?.();
     } catch (cause) {
       const invalid: Record<string, string> = {};
@@ -93,12 +119,20 @@ function HistorySection({ clientId, kind, collapsibleForm, onChanged }: { client
         for (const key of ['text', 'label', 'url']) {
           const value = (cause.details as Record<string, unknown>)[key];
           if (typeof value === 'string') invalid[key] = value;
-          else if (Array.isArray(value)) invalid[key] = value.filter(item => typeof item === 'string').join(' ');
+          else if (Array.isArray(value)) invalid[key] = value.filter((item) => typeof item === 'string').join(' ');
         }
       }
       setErrors(invalid);
-      setSubmitError(Object.keys(invalid).length ? 'Please correct the highlighted fields.' : cause instanceof Error ? cause.message : 'Unable to save.');
-    } finally { setPending(false); }
+      setSubmitError(
+        Object.keys(invalid).length
+          ? 'Please correct the highlighted fields.'
+          : cause instanceof Error
+            ? cause.message
+            : 'Unable to save.',
+      );
+    } finally {
+      setPending(false);
+    }
   }
 
   async function removeNote(noteId: string) {
@@ -111,73 +145,319 @@ function HistorySection({ clientId, kind, collapsibleForm, onChanged }: { client
       setDeleteTarget(null);
       setSuccess('Note deleted.');
       setDestination('latest');
-      setRevision(value => value + 1);
+      setRevision((value) => value + 1);
       onChanged?.();
     } catch (cause) {
-      setDeleteError(cause instanceof ApiError && cause.status === 403 ? 'Only the author can delete this note.'
-        : cause instanceof Error ? cause.message : 'Unable to delete the note.');
-    } finally { setDeleting(false); }
+      setDeleteError(
+        cause instanceof ApiError && cause.status === 403
+          ? 'Only the author can delete this note.'
+          : cause instanceof Error
+            ? cause.message
+            : 'Unable to delete the note.',
+      );
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function removeLink(linkId: string) {
     if (deleting || !window.confirm('Delete this link?')) return;
-    setDeleting(true); setDeleteError('');
-    try { await clients.removeLink(clientId, linkId); setSuccess('Link deleted.'); if (data?.results.length === 1 && page > 1) setDestination(page - 1); setRevision(value => value + 1); onChanged?.(); }
-    catch (cause) { setDeleteError(cause instanceof Error ? cause.message : 'Unable to delete the link.'); }
-    finally { setDeleting(false); }
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await clients.removeLink(clientId, linkId);
+      setSuccess('Link deleted.');
+      if (data?.results.length === 1 && page > 1) setDestination(page - 1);
+      setRevision((value) => value + 1);
+      onChanged?.();
+    } catch (cause) {
+      setDeleteError(cause instanceof Error ? cause.message : 'Unable to delete the link.');
+    } finally {
+      setDeleting(false);
+    }
   }
 
-  return <section aria-label={isNote ? 'Notes' : title} className="history-section">
-    <div className="history-heading"><h3>{title}</h3><div className="button-row">{collapsibleForm && <button className="text-action" onClick={() => setShowForm(value => !value)}>{showForm ? 'Cancel' : isNote ? 'Add note' : 'Add link'}</button>}<button className="text-action" disabled={loading} onClick={() => setRevision(value => value + 1)}>Refresh {kind}</button></div></div>
-    {isNote && <p className="history-description muted">Your team’s conversations and context, in one place.</p>}
-    {loading ? <p role="status" className="muted">Loading {kind}…</p> : error ? <div><p role="alert" className="notice error">{error}</p>
-      <button className="secondary" onClick={() => setRevision(value => value + 1)}>Retry {kind}</button></div>
-      : data?.results.length ? <>
-        <ol className={isNote ? 'note-timeline' : 'client-links'}>
-          {data.results.map(item => <li key={item.id}>{'text' in item ? <>
-            <p className="note-meta"><strong>{item.author.username}</strong><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</time></p>
-            <p className="note-text">{item.text}</p>
-            {item.can_delete && (deleteTarget === item.id ? <div className="note-delete-confirm" role="group" aria-label="Confirm note deletion">
-              <p>Delete this note? This cannot be undone.</p>
-              {deleteError && <p role="alert" className="field-error">{deleteError}</p>}
-              <div className="button-row"><button className="secondary" autoFocus disabled={deleting} onClick={() => { setDeleteTarget(null); setDeleteError(''); }}>Cancel</button>
-                <button className="primary destructive" disabled={deleting} onClick={() => removeNote(item.id)}>{deleting ? 'Deleting…' : 'Confirm deletion'}</button></div>
-            </div> : <button className="text-action danger" disabled={deleting} onClick={() => { setDeleteTarget(item.id); setDeleteError(''); }}>Delete note</button>)}
-          </> : <>{externalUrl(item.url) ? <a href={item.url} target="_blank" rel="noopener noreferrer">{item.label}</a> : <span>{item.label}</span>}
-            <p className="muted link-url">{item.url}</p>{!externalUrl(item.url) && <p className="field-error">Unsupported link scheme. This link cannot be opened here.</p>}<div className="button-row"><button className="text-action" onClick={() => { setEditingLink(item.id); setLabel(item.label); setUrl(item.url); setShowForm(true); }}>Edit link</button><button className="text-action danger" disabled={deleting} onClick={() => void removeLink(item.id)}>Delete link</button></div></>}</li>)}
-        </ol>
-        <div className="history-pagination"><span className="muted">{data.count} {kind} · Page {page}</span><div className="button-row">
-          <button className="secondary" disabled={!data.previous} onClick={() => setDestination(page - 1)}>Previous {kind}</button>
-          <button className="secondary" disabled={!data.next} onClick={() => setDestination(page + 1)}>Next {kind}</button>
-        </div></div>
-      </> : <p className="muted">{isNote ? 'No notes yet. Add the first update for your colleagues.' : 'No links yet. Add a brief, design, or repository URL.'}</p>}
-    {!isNote && deleteError && <p role="alert" className="notice error">{deleteError}</p>}
-    {success && !showForm && <p role="status" className="notice success">{success}</p>}
-    {showForm && <form className="history-form" noValidate onSubmit={submit}>
-      {isNote ? <div className="field"><label htmlFor={`${id}-text`}>New note</label>
-        <textarea id={`${id}-text`} name="text" rows={3} maxLength={10000} required value={text} onChange={event => setText(event.target.value)} disabled={pending}
-          aria-invalid={!!errors.text} aria-describedby={errors.text ? `${id}-text-error` : undefined} />
-        {errors.text && <p className="field-error" id={`${id}-text-error`}>{errors.text}</p>}
-      </div> : <>
-        <div className="field"><label htmlFor={`${id}-label`}>Link label</label>
-          <input id={`${id}-label`} name="label" value={label} maxLength={200} required onChange={event => setLabel(event.target.value)} disabled={pending}
-            aria-invalid={!!errors.label} aria-describedby={errors.label ? `${id}-label-error` : undefined} />
-          {errors.label && <p className="field-error" id={`${id}-label-error`}>{errors.label}</p>}
+  return (
+    <section aria-label={isNote ? 'Notes' : title} className="history-section">
+      <div className="history-heading">
+        <h3>{title}</h3>
+        <div className="button-row">
+          {collapsibleForm && (
+            <button className="text-action" onClick={() => setShowForm((value) => !value)}>
+              {showForm ? 'Cancel' : isNote ? 'Add note' : 'Add link'}
+            </button>
+          )}
+          <button className="text-action" disabled={loading} onClick={() => setRevision((value) => value + 1)}>
+            Refresh {kind}
+          </button>
         </div>
-        <div className="field"><label htmlFor={`${id}-url`}>Link URL</label>
-          <input id={`${id}-url`} name="url" type="url" value={url} maxLength={2048} required onChange={event => setUrl(event.target.value)} disabled={pending}
-            placeholder="https://example.com" aria-invalid={!!errors.url} aria-describedby={errors.url ? `${id}-url-error` : undefined} />
-          {errors.url && <p className="field-error" id={`${id}-url-error`}>{errors.url}</p>}
+      </div>
+      {isNote && <p className="history-description muted">Your team’s conversations and context, in one place.</p>}
+      {loading ? (
+        <p role="status" className="muted">
+          Loading {kind}…
+        </p>
+      ) : error ? (
+        <div>
+          <p role="alert" className="notice error">
+            {error}
+          </p>
+          <button className="secondary" onClick={() => setRevision((value) => value + 1)}>
+            Retry {kind}
+          </button>
         </div>
-      </>}
-      {success && <p role="status" className="notice success">{success}</p>}
-      {submitError && <p role="alert" className="notice error">{submitError}</p>}
-      <div className="button-row"><button className="primary" disabled={pending}>{pending ? isNote ? 'Adding…' : 'Saving…' : isNote ? 'Add note' : editingLink ? 'Save link' : 'Add link'}</button>{editingLink && <button type="button" className="secondary" onClick={() => { setEditingLink(null); setLabel(''); setUrl(''); }}>Cancel edit</button>}</div>
-    </form>}
-  </section>;
+      ) : data?.results.length ? (
+        <>
+          <ol className={isNote ? 'note-timeline' : 'client-links'}>
+            {data.results.map((item) => (
+              <li key={item.id}>
+                {'text' in item ? (
+                  <>
+                    <p className="note-meta">
+                      <strong>{item.author.username}</strong>
+                      <time dateTime={item.created_at}>
+                        {new Date(item.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+                      </time>
+                    </p>
+                    <p className="note-text">{item.text}</p>
+                    {item.can_delete &&
+                      (deleteTarget === item.id ? (
+                        <div className="note-delete-confirm" role="group" aria-label="Confirm note deletion">
+                          <p>Delete this note? This cannot be undone.</p>
+                          {deleteError && (
+                            <p role="alert" className="field-error">
+                              {deleteError}
+                            </p>
+                          )}
+                          <div className="button-row">
+                            <button
+                              className="secondary"
+                              autoFocus
+                              disabled={deleting}
+                              onClick={() => {
+                                setDeleteTarget(null);
+                                setDeleteError('');
+                              }}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              className="primary destructive"
+                              disabled={deleting}
+                              onClick={() => removeNote(item.id)}
+                            >
+                              {deleting ? 'Deleting…' : 'Confirm deletion'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          className="text-action danger"
+                          disabled={deleting}
+                          onClick={() => {
+                            setDeleteTarget(item.id);
+                            setDeleteError('');
+                          }}
+                        >
+                          Delete note
+                        </button>
+                      ))}
+                  </>
+                ) : (
+                  <>
+                    {externalUrl(item.url) ? (
+                      <a href={item.url} target="_blank" rel="noopener noreferrer">
+                        {item.label}
+                      </a>
+                    ) : (
+                      <span>{item.label}</span>
+                    )}
+                    <p className="muted link-url">{item.url}</p>
+                    {!externalUrl(item.url) && (
+                      <p className="field-error">Unsupported link scheme. This link cannot be opened here.</p>
+                    )}
+                    <div className="button-row">
+                      <button
+                        className="text-action"
+                        onClick={() => {
+                          setEditingLink(item.id);
+                          setLabel(item.label);
+                          setUrl(item.url);
+                          setShowForm(true);
+                        }}
+                      >
+                        Edit link
+                      </button>
+                      <button
+                        className="text-action danger"
+                        disabled={deleting}
+                        onClick={() => void removeLink(item.id)}
+                      >
+                        Delete link
+                      </button>
+                    </div>
+                  </>
+                )}
+              </li>
+            ))}
+          </ol>
+          <div className="history-pagination">
+            <span className="muted">
+              {data.count} {kind} · Page {page}
+            </span>
+            <div className="button-row">
+              <button className="secondary" disabled={!data.previous} onClick={() => setDestination(page - 1)}>
+                Previous {kind}
+              </button>
+              <button className="secondary" disabled={!data.next} onClick={() => setDestination(page + 1)}>
+                Next {kind}
+              </button>
+            </div>
+          </div>
+        </>
+      ) : (
+        <p className="muted">
+          {isNote
+            ? 'No notes yet. Add the first update for your colleagues.'
+            : 'No links yet. Add a brief, design, or repository URL.'}
+        </p>
+      )}
+      {!isNote && deleteError && (
+        <p role="alert" className="notice error">
+          {deleteError}
+        </p>
+      )}
+      {success && !showForm && (
+        <p role="status" className="notice success">
+          {success}
+        </p>
+      )}
+      {showForm && (
+        <form className="history-form" noValidate onSubmit={submit}>
+          {isNote ? (
+            <div className="field">
+              <label htmlFor={`${id}-text`}>New note</label>
+              <textarea
+                id={`${id}-text`}
+                name="text"
+                rows={3}
+                maxLength={10000}
+                required
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+                disabled={pending}
+                aria-invalid={!!errors.text}
+                aria-describedby={errors.text ? `${id}-text-error` : undefined}
+              />
+              {errors.text && (
+                <p className="field-error" id={`${id}-text-error`}>
+                  {errors.text}
+                </p>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="field">
+                <label htmlFor={`${id}-label`}>Link label</label>
+                <input
+                  id={`${id}-label`}
+                  name="label"
+                  value={label}
+                  maxLength={200}
+                  required
+                  onChange={(event) => setLabel(event.target.value)}
+                  disabled={pending}
+                  aria-invalid={!!errors.label}
+                  aria-describedby={errors.label ? `${id}-label-error` : undefined}
+                />
+                {errors.label && (
+                  <p className="field-error" id={`${id}-label-error`}>
+                    {errors.label}
+                  </p>
+                )}
+              </div>
+              <div className="field">
+                <label htmlFor={`${id}-url`}>Link URL</label>
+                <input
+                  id={`${id}-url`}
+                  name="url"
+                  type="url"
+                  value={url}
+                  maxLength={2048}
+                  required
+                  onChange={(event) => setUrl(event.target.value)}
+                  disabled={pending}
+                  placeholder="https://example.com"
+                  aria-invalid={!!errors.url}
+                  aria-describedby={errors.url ? `${id}-url-error` : undefined}
+                />
+                {errors.url && (
+                  <p className="field-error" id={`${id}-url-error`}>
+                    {errors.url}
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+          {success && (
+            <p role="status" className="notice success">
+              {success}
+            </p>
+          )}
+          {submitError && (
+            <p role="alert" className="notice error">
+              {submitError}
+            </p>
+          )}
+          <div className="button-row">
+            <button className="primary" disabled={pending}>
+              {pending
+                ? isNote
+                  ? 'Adding…'
+                  : 'Saving…'
+                : isNote
+                  ? 'Add note'
+                  : editingLink
+                    ? 'Save link'
+                    : 'Add link'}
+            </button>
+            {editingLink && (
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  setEditingLink(null);
+                  setLabel('');
+                  setUrl('');
+                }}
+              >
+                Cancel edit
+              </button>
+            )}
+          </div>
+        </form>
+      )}
+    </section>
+  );
 }
 
-export default function ClientHistory({ clientId, kind, collapsibleForm = false, onChanged }: { clientId: string; kind?: Kind; collapsibleForm?: boolean; onChanged?: () => void }) {
-  if (kind) return <HistorySection clientId={clientId} kind={kind} collapsibleForm={collapsibleForm} onChanged={onChanged} />;
-  return <><HistorySection clientId={clientId} kind="notes" collapsibleForm={collapsibleForm} onChanged={onChanged} /><HistorySection clientId={clientId} kind="links" collapsibleForm={collapsibleForm} onChanged={onChanged} /></>;
+export default function ClientHistory({
+  clientId,
+  kind,
+  collapsibleForm = false,
+  onChanged,
+}: {
+  clientId: string;
+  kind?: Kind;
+  collapsibleForm?: boolean;
+  onChanged?: () => void;
+}) {
+  if (kind)
+    return <HistorySection clientId={clientId} kind={kind} collapsibleForm={collapsibleForm} onChanged={onChanged} />;
+  return (
+    <>
+      <HistorySection clientId={clientId} kind="notes" collapsibleForm={collapsibleForm} onChanged={onChanged} />
+      <HistorySection clientId={clientId} kind="links" collapsibleForm={collapsibleForm} onChanged={onChanged} />
+    </>
+  );
 }

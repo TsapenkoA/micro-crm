@@ -18,7 +18,6 @@ from crm.auth.verification import VerificationEmailUnavailable, new_token
 from crm.auth.views import SecurityView, user_data
 from crm.models import PendingEmailChange
 
-
 INVALID_TOKEN = "This link is invalid or has expired. Request another email change."
 logger = logging.getLogger(__name__)
 

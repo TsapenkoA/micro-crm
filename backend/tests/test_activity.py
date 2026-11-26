@@ -9,7 +9,6 @@ from rest_framework.test import APIClient
 
 from crm.models import ActivityEvent
 
-
 pytestmark = pytest.mark.django_db
 
 

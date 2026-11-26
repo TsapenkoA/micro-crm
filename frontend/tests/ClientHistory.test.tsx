@@ -5,8 +5,22 @@ import { ApiError } from '../src/api/client';
 import ClientHistory from '../src/features/clients/ClientHistory';
 import { clients, type ClientLink, type ClientNote } from '../src/features/clients/api';
 
-const note: ClientNote = { id: 'note-1', client: 'client-1', deal: null, author: { id: 1, username: 'alice' }, text: 'Kickoff completed', created_at: '2026-01-01T12:00:00Z', can_delete: true };
-const link: ClientLink = { id: 'link-1', client: 'client-1', label: 'Project brief', url: 'https://docs.google.com/document/d/example', created_at: '2026-01-01T12:00:00Z' };
+const note: ClientNote = {
+  id: 'note-1',
+  client: 'client-1',
+  deal: null,
+  author: { id: 1, username: 'alice' },
+  text: 'Kickoff completed',
+  created_at: '2026-01-01T12:00:00Z',
+  can_delete: true,
+};
+const link: ClientLink = {
+  id: 'link-1',
+  client: 'client-1',
+  label: 'Project brief',
+  url: 'https://docs.google.com/document/d/example',
+  created_at: '2026-01-01T12:00:00Z',
+};
 const page = <T,>(results: T[] = []) => ({ count: results.length, results, next: null, previous: null });
 
 beforeEach(() => {
@@ -22,17 +36,21 @@ it('renders note text safely with a personal author and local timestamp', async 
   const text = '<img src=x onerror="alert(1)">\n<script>alert(2)</script>';
   vi.mocked(clients.notes).mockResolvedValue(page([{ ...note, text }]));
   const { container } = render(<ClientHistory clientId="client-1" />);
-  const paragraph = await screen.findByText(value => value.includes('<img src=x'));
+  const paragraph = await screen.findByText((value) => value.includes('<img src=x'));
   expect(paragraph.textContent).toBe(text);
   expect(container.querySelector('script, img')).toBeNull();
   expect(screen.getByText('alice')).toBeInTheDocument();
   const timestamp = container.querySelector('time')!;
   expect(timestamp).toHaveAttribute('datetime', note.created_at);
-  expect(timestamp).toHaveTextContent(new Date(note.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }));
+  expect(timestamp).toHaveTextContent(
+    new Date(note.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }),
+  );
 });
 
 it('opens validated external URLs safely and does not activate unsafe legacy URLs', async () => {
-  vi.mocked(clients.links).mockResolvedValue(page([link, { ...link, id: 'legacy', label: '<script>Legacy</script>', url: 'javascript:alert(1)' }]));
+  vi.mocked(clients.links).mockResolvedValue(
+    page([link, { ...link, id: 'legacy', label: '<script>Legacy</script>', url: 'javascript:alert(1)' }]),
+  );
   render(<ClientHistory clientId="client-1" />);
   const anchor = await screen.findByRole('link', { name: link.label });
   expect(anchor).toHaveAttribute('href', link.url);
@@ -44,7 +62,11 @@ it('opens validated external URLs safely and does not activate unsafe legacy URL
 
 it('adds a note only after server confirmation and reloads it after remount', async () => {
   let resolve!: (value: ClientNote) => void;
-  vi.mocked(clients.addNote).mockReturnValue(new Promise(done => { resolve = done; }));
+  vi.mocked(clients.addNote).mockReturnValue(
+    new Promise((done) => {
+      resolve = done;
+    }),
+  );
   const view = render(<ClientHistory clientId="client-1" />);
   await screen.findByText('No notes yet. Add the first update for your colleagues.');
   await userEvent.type(screen.getByLabelText('New note'), note.text);
@@ -85,7 +107,12 @@ it('renders history load errors independently and retries', async () => {
 });
 
 it('offers deletion only for notes the server identifies as belonging to the current author', async () => {
-  vi.mocked(clients.notes).mockResolvedValue(page([note, { ...note, id: 'colleague', author: { id: 2, username: 'bob' }, text: 'Colleague note', can_delete: false }]));
+  vi.mocked(clients.notes).mockResolvedValue(
+    page([
+      note,
+      { ...note, id: 'colleague', author: { id: 2, username: 'bob' }, text: 'Colleague note', can_delete: false },
+    ]),
+  );
   render(<ClientHistory clientId="client-1" />);
   const own = (await screen.findByText(note.text)).closest('li')!;
   const colleague = screen.getByText('Colleague note').closest('li')!;
@@ -96,7 +123,11 @@ it('offers deletion only for notes the server identifies as belonging to the cur
 it('confirms note deletion, disables duplicate requests and refetches persisted history', async () => {
   vi.mocked(clients.notes).mockResolvedValue(page([note]));
   let resolve!: () => void;
-  vi.mocked(clients.removeNote).mockReturnValue(new Promise<void>(done => { resolve = done; }));
+  vi.mocked(clients.removeNote).mockReturnValue(
+    new Promise<void>((done) => {
+      resolve = done;
+    }),
+  );
   const view = render(<ClientHistory clientId="client-1" />);
   await userEvent.click(await screen.findByRole('button', { name: 'Delete note' }));
   expect(clients.removeNote).not.toHaveBeenCalled();
@@ -127,14 +158,17 @@ it('keeps the note and confirmation visible after a rejected deletion', async ()
   expect(clients.notes).toHaveBeenCalledTimes(1);
 });
 
-
 it('returns to the previous page after removing its last link', async () => {
   let deleted = false;
   vi.spyOn(window, 'confirm').mockReturnValue(true);
-  vi.spyOn(clients, 'removeLink').mockImplementation(async () => { deleted = true; });
+  vi.spyOn(clients, 'removeLink').mockImplementation(async () => {
+    deleted = true;
+  });
   vi.mocked(clients.links).mockImplementation(async (_id, number) => ({
-    count: deleted ? 20 : 21, results: [{ ...link, label: number === 2 ? 'Last link' : 'Earlier link' }],
-    next: number === 1 && !deleted ? 'next' : null, previous: number === 2 ? 'previous' : null,
+    count: deleted ? 20 : 21,
+    results: [{ ...link, label: number === 2 ? 'Last link' : 'Earlier link' }],
+    next: number === 1 && !deleted ? 'next' : null,
+    previous: number === 2 ? 'previous' : null,
   }));
   render(<ClientHistory clientId="client-1" kind="links" />);
   await screen.findByText('Earlier link');

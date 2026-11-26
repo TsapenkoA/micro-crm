@@ -1,11 +1,11 @@
-from django.conf import settings
-from django.core.exceptions import ValidationError
-from django.core.validators import validate_email
-from django.http import HttpResponseRedirect
 from allauth.account.adapter import DefaultAccountAdapter
 from allauth.core.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
 from allauth.socialaccount.models import SocialAccount
+from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
+from django.http import HttpResponseRedirect
 
 from .security import email_in_use, email_lock, recent_auth
 

@@ -1,4 +1,4 @@
-from django.db import connection, DatabaseError
+from django.db import DatabaseError, connection
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET
 

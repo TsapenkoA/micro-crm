@@ -7,7 +7,17 @@ import ClientsPage from '../src/features/clients/ClientsPage';
 import ClientForm from '../src/features/clients/ClientForm';
 import { clients, type Client, type ClientInput, type ClientPage } from '../src/features/clients/api';
 
-const record: Client = { id: 'client-1', workspace: 'company-1', created_by: 1, name: 'Acme contact', company: 'Acme Studio', email: 'hello@example.com', phone: '+49 123', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' };
+const record: Client = {
+  id: 'client-1',
+  workspace: 'company-1',
+  created_by: 1,
+  name: 'Acme contact',
+  company: 'Acme Studio',
+  email: 'hello@example.com',
+  phone: '+49 123',
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+};
 const page = (results: Client[] = []): ClientPage => ({ count: results.length, results, next: null, previous: null });
 
 beforeEach(() => {
@@ -56,11 +66,15 @@ it('includes payer bank details when saving a client', async () => {
   await userEvent.type(screen.getByLabelText('Name'), 'Client');
   await userEvent.type(screen.getByLabelText('Account number'), '12345678');
   await userEvent.click(screen.getByRole('button', { name: 'Save client' }));
-  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ bank_details: { account_number: '12345678' } })));
+  await waitFor(() =>
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ bank_details: { account_number: '12345678' } })),
+  );
 });
 
 it('places server 400 messages under fields and preserves entered values', async () => {
-  const save = vi.fn().mockRejectedValue(new ApiError(400, 'Validation failed.', { email: ['Enter a valid email address.'] }));
+  const save = vi
+    .fn()
+    .mockRejectedValue(new ApiError(400, 'Validation failed.', { email: ['Enter a valid email address.'] }));
   render(<ClientForm onSave={save} onCancel={vi.fn()} onPending={vi.fn()} />);
   await userEvent.type(screen.getByLabelText('Name'), 'Keep my input');
   await userEvent.type(screen.getByLabelText(/^Email/), 'local@example');
@@ -71,13 +85,16 @@ it('places server 400 messages under fields and preserves entered values', async
   expect(screen.getByLabelText('Name')).toHaveValue('Keep my input');
 });
 
-it.each([new ApiError(500, 'Server error.'), new Error('Network unavailable.')])('reports save errors without clearing the form: %s', async error => {
-  render(<ClientForm onSave={vi.fn().mockRejectedValue(error)} onCancel={vi.fn()} onPending={vi.fn()} />);
-  await userEvent.type(screen.getByLabelText('Name'), 'Unsaved contact');
-  await userEvent.click(screen.getByRole('button', { name: 'Save client' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent(error.message);
-  expect(screen.getByLabelText('Name')).toHaveValue('Unsaved contact');
-});
+it.each([new ApiError(500, 'Server error.'), new Error('Network unavailable.')])(
+  'reports save errors without clearing the form: %s',
+  async (error) => {
+    render(<ClientForm onSave={vi.fn().mockRejectedValue(error)} onCancel={vi.fn()} onPending={vi.fn()} />);
+    await userEvent.type(screen.getByLabelText('Name'), 'Unsaved contact');
+    await userEvent.click(screen.getByRole('button', { name: 'Save client' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(error.message);
+    expect(screen.getByLabelText('Name')).toHaveValue('Unsaved contact');
+  },
+);
 
 it('refetches after create and edit, then confirms a persisted deletion', async () => {
   vi.mocked(clients.list).mockResolvedValue(page([record]));
@@ -95,7 +112,12 @@ it('refetches after create and edit, then confirms a persisted deletion', async 
   await userEvent.type(screen.getByLabelText('Name'), 'Edited contact');
   await userEvent.click(screen.getByRole('button', { name: 'Save client' }));
   expect(await screen.findByText('Client updated.')).toBeInTheDocument();
-  expect(clients.update).toHaveBeenCalledWith(record.id, { name: 'Edited contact', company: record.company, email: record.email, phone: record.phone });
+  expect(clients.update).toHaveBeenCalledWith(record.id, {
+    name: 'Edited contact',
+    company: record.company,
+    email: record.email,
+    phone: record.phone,
+  });
   await waitFor(() => expect(clients.list).toHaveBeenCalledTimes(3));
   await userEvent.click(screen.getByRole('button', { name: `Open ${record.name}` }));
   await userEvent.click(await screen.findByRole('button', { name: 'Delete client' }));
@@ -121,7 +143,20 @@ it('keeps protected clients visible when deletion returns 409', async () => {
 
 it('opens real details, traps focus and restores focus after Escape', async () => {
   vi.mocked(clients.list).mockResolvedValue(page([record]));
-  vi.mocked(clients.detail).mockResolvedValue({ ...record, contacts: [], deals: [{ id: 'deal-1', title: 'Brand project', amount: '123.45', currency: 'EUR', status: 'in_progress', deadline: null }] });
+  vi.mocked(clients.detail).mockResolvedValue({
+    ...record,
+    contacts: [],
+    deals: [
+      {
+        id: 'deal-1',
+        title: 'Brand project',
+        amount: '123.45',
+        currency: 'EUR',
+        status: 'in_progress',
+        deadline: null,
+      },
+    ],
+  });
   render(<ClientsPage />);
   const trigger = await screen.findByRole('button', { name: record.name });
   await userEvent.click(trigger);
@@ -129,7 +164,9 @@ it('opens real details, traps focus and restores focus after Escape', async () =
   expect(document.body.style.overflow).toBe('hidden');
   expect(await within(dialog).findByText('Brand project')).toBeInTheDocument();
   await userEvent.click(within(dialog).getByRole('button', { name: /^Notes(?: \d+)?$/ }));
-  expect(await within(dialog).findByText('No notes yet. Add the first update for your colleagues.')).toBeInTheDocument();
+  expect(
+    await within(dialog).findByText('No notes yet. Add the first update for your colleagues.'),
+  ).toBeInTheDocument();
   expect(clients.detail).toHaveBeenCalledWith(record.id, expect.any(AbortSignal));
   await userEvent.click(within(dialog).getByRole('button', { name: /^Links(?: \d+)?$/ }));
   await within(dialog).findByText('No links yet. Add a brief, design, or repository URL.');
@@ -169,7 +206,12 @@ it('keeps the seven overview cards compact and opens note editing only on reques
 
 it('expands payer bank details on request', async () => {
   vi.mocked(clients.list).mockResolvedValue(page([record]));
-  vi.mocked(clients.detail).mockResolvedValue({ ...record, deals: [], contacts: [], bank_details: { bank_name: 'Example Bank' } });
+  vi.mocked(clients.detail).mockResolvedValue({
+    ...record,
+    deals: [],
+    contacts: [],
+    bank_details: { bank_name: 'Example Bank' },
+  });
   render(<ClientsPage />);
   await userEvent.click(await screen.findByRole('button', { name: record.name }));
   const dialog = screen.getByRole('dialog', { name: 'Client details' });
@@ -182,25 +224,77 @@ it('expands payer bank details on request', async () => {
 
 it('shows linked invoices and saves an additional primary contact', async () => {
   vi.mocked(clients.list).mockResolvedValue(page([record]));
-  vi.mocked(clients.invoices).mockResolvedValue({ count: 1, next: null, previous: null, results: [{ id: 'invoice-1', invoice_number: 'INV-001', status: 'sent', currency: 'EUR', total_amount: '150.00', due_date: '2026-12-01', overdue: false }] });
-  vi.spyOn(clients, 'addContact').mockResolvedValue({ id: 'contact-2', client: record.id, name: 'Billing person', role: 'Finance', email: 'billing@example.com', phone: '', is_primary: true, created_at: '', updated_at: '' });
+  vi.mocked(clients.invoices).mockResolvedValue({
+    count: 1,
+    next: null,
+    previous: null,
+    results: [
+      {
+        id: 'invoice-1',
+        invoice_number: 'INV-001',
+        status: 'sent',
+        currency: 'EUR',
+        total_amount: '150.00',
+        due_date: '2026-12-01',
+        overdue: false,
+      },
+    ],
+  });
+  vi.spyOn(clients, 'addContact').mockResolvedValue({
+    id: 'contact-2',
+    client: record.id,
+    name: 'Billing person',
+    role: 'Finance',
+    email: 'billing@example.com',
+    phone: '',
+    is_primary: true,
+    created_at: '',
+    updated_at: '',
+  });
   render(<ClientsPage />);
   await userEvent.click(await screen.findByRole('button', { name: record.name }));
   const dialog = screen.getByRole('dialog', { name: 'Client details' });
-  expect(await within(dialog).findByRole('link', { name: 'INV-001' })).toHaveAttribute('href', '#/invoices?invoice=invoice-1');
+  expect(await within(dialog).findByRole('link', { name: 'INV-001' })).toHaveAttribute(
+    'href',
+    '#/invoices?invoice=invoice-1',
+  );
   await userEvent.click(within(dialog).getByRole('button', { name: 'Contacts 0' }));
   await userEvent.click(within(dialog).getByRole('button', { name: 'Add contact' }));
   await userEvent.type(within(dialog).getByRole('textbox', { name: 'Name' }), 'Billing person');
   await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Primary contact' }));
   await userEvent.click(within(dialog).getByRole('button', { name: 'Save contact' }));
-  await waitFor(() => expect(clients.addContact).toHaveBeenCalledWith(record.id, expect.objectContaining({ name: 'Billing person', is_primary: true })));
+  await waitFor(() =>
+    expect(clients.addContact).toHaveBeenCalledWith(
+      record.id,
+      expect.objectContaining({ name: 'Billing person', is_primary: true }),
+    ),
+  );
 });
 
 it('edits a saved link and uploads a client file', async () => {
   vi.mocked(clients.list).mockResolvedValue(page([record]));
-  vi.mocked(clients.links).mockResolvedValue({ count: 1, next: null, previous: null, results: [{ id: 'link-1', client: record.id, label: 'Brief', url: 'https://example.com/brief', created_at: '' }] });
-  vi.spyOn(clients, 'updateLink').mockResolvedValue({ id: 'link-1', client: record.id, label: 'Updated brief', url: 'https://example.com/brief', created_at: '' });
-  vi.spyOn(clients, 'addAttachment').mockResolvedValue({ id: 'file-1', client: record.id, name: 'brief.pdf', content_type: 'application/pdf', size: 10, uploaded_by: 1, created_at: '' });
+  vi.mocked(clients.links).mockResolvedValue({
+    count: 1,
+    next: null,
+    previous: null,
+    results: [{ id: 'link-1', client: record.id, label: 'Brief', url: 'https://example.com/brief', created_at: '' }],
+  });
+  vi.spyOn(clients, 'updateLink').mockResolvedValue({
+    id: 'link-1',
+    client: record.id,
+    label: 'Updated brief',
+    url: 'https://example.com/brief',
+    created_at: '',
+  });
+  vi.spyOn(clients, 'addAttachment').mockResolvedValue({
+    id: 'file-1',
+    client: record.id,
+    name: 'brief.pdf',
+    content_type: 'application/pdf',
+    size: 10,
+    uploaded_by: 1,
+    created_at: '',
+  });
   render(<ClientsPage />);
   await userEvent.click(await screen.findByRole('button', { name: record.name }));
   const dialog = screen.getByRole('dialog', { name: 'Client details' });
@@ -209,7 +303,9 @@ it('edits a saved link and uploads a client file', async () => {
   await userEvent.clear(within(dialog).getByRole('textbox', { name: 'Link label' }));
   await userEvent.type(within(dialog).getByRole('textbox', { name: 'Link label' }), 'Updated brief');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Save link' }));
-  await waitFor(() => expect(clients.updateLink).toHaveBeenCalledWith(record.id, 'link-1', 'Updated brief', 'https://example.com/brief'));
+  await waitFor(() =>
+    expect(clients.updateLink).toHaveBeenCalledWith(record.id, 'link-1', 'Updated brief', 'https://example.com/brief'),
+  );
   await userEvent.click(within(dialog).getByRole('button', { name: /^Files(?: \d+)?$/ }));
   await userEvent.click(within(dialog).getByRole('button', { name: 'Add file' }));
   const file = new File(['%PDF-1.4'], 'brief.pdf', { type: 'application/pdf' });
@@ -235,13 +331,24 @@ it('opens the global create action with the saved theme', async () => {
 
 it('shows a colleague’s newly created client after a fresh request and clears data across accounts', async () => {
   let currentUser = 'alice';
-  const users = { alice: { id: 1, username: 'alice', email: '' }, bob: { id: 2, username: 'bob', email: '' }, outsider: { id: 3, username: 'outsider', email: '' } };
+  const users = {
+    alice: { id: 1, username: 'alice', email: '' },
+    bob: { id: 2, username: 'bob', email: '' },
+    outsider: { id: 3, username: 'outsider', email: '' },
+  };
   const shared: Client[] = [];
   vi.spyOn(auth, 'me').mockResolvedValue({ user: users.alice });
   vi.spyOn(auth, 'logout').mockResolvedValue(undefined);
-  vi.spyOn(auth, 'login').mockImplementation(async username => { currentUser = username; return users[username as keyof typeof users]; });
+  vi.spyOn(auth, 'login').mockImplementation(async (username) => {
+    currentUser = username;
+    return users[username as keyof typeof users];
+  });
   vi.mocked(clients.list).mockImplementation(async () => page(currentUser === 'outsider' ? [] : [...shared]));
-  vi.mocked(clients.create).mockImplementation(async (data: ClientInput) => { const created = { ...record, ...data }; shared.push(created); return created; });
+  vi.mocked(clients.create).mockImplementation(async (data: ClientInput) => {
+    const created = { ...record, ...data };
+    shared.push(created);
+    return created;
+  });
   render(<App />);
   await userEvent.click(await screen.findByRole('button', { name: 'New client' }));
   await userEvent.type(screen.getByLabelText('Name'), 'Company contact');
@@ -267,11 +374,29 @@ it('shows a colleague’s newly created client after a fresh request and clears 
 
 it('refreshes note counts and overview after adding and deleting without closing details', async () => {
   vi.mocked(clients.list).mockResolvedValue(page([record]));
-  const note = { id: 'note-new', client: record.id, deal: null, author: { id: 1, username: 'alex' }, text: 'Updated requirements', created_at: '2026-11-18T12:00:00Z', can_delete: true };
+  const note = {
+    id: 'note-new',
+    client: record.id,
+    deal: null,
+    author: { id: 1, username: 'alex' },
+    text: 'Updated requirements',
+    created_at: '2026-11-18T12:00:00Z',
+    can_delete: true,
+  };
   let saved = false;
-  vi.mocked(clients.notes).mockImplementation(async () => ({ count: saved ? 1 : 0, results: saved ? [note] : [], next: null, previous: null }));
-  vi.spyOn(clients, 'addNote').mockImplementation(async () => { saved = true; return note; });
-  vi.spyOn(clients, 'removeNote').mockImplementation(async () => { saved = false; });
+  vi.mocked(clients.notes).mockImplementation(async () => ({
+    count: saved ? 1 : 0,
+    results: saved ? [note] : [],
+    next: null,
+    previous: null,
+  }));
+  vi.spyOn(clients, 'addNote').mockImplementation(async () => {
+    saved = true;
+    return note;
+  });
+  vi.spyOn(clients, 'removeNote').mockImplementation(async () => {
+    saved = false;
+  });
   render(<ClientsPage />);
   await userEvent.click(await screen.findByRole('button', { name: record.name }));
   const dialog = screen.getByRole('dialog', { name: 'Client details' });

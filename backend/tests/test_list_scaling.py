@@ -6,8 +6,14 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
-from crm.models import Client, Deal, Invoice, InvoiceDelivery, InvoiceDueDateCorrection, InvoicePayment
-
+from crm.models import (
+    Client,
+    Deal,
+    Invoice,
+    InvoiceDelivery,
+    InvoiceDueDateCorrection,
+    InvoicePayment,
+)
 
 pytestmark = pytest.mark.django_db
 

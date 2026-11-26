@@ -5,14 +5,23 @@ import uuid
 from pathlib import Path
 
 import psycopg
+from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
 from psycopg import sql
 from psycopg.errors import InsufficientPrivilege
 
-from django.conf import settings
-from django.core.management.base import BaseCommand, CommandError
-
-from crm.models import BackupCheck, Client, ClientLink, ClientNote, Deal, FxRate, Invoice, InvoiceItem, Workspace, WorkspaceMembership
-
+from crm.models import (
+    BackupCheck,
+    Client,
+    ClientLink,
+    ClientNote,
+    Deal,
+    FxRate,
+    Invoice,
+    InvoiceItem,
+    Workspace,
+    WorkspaceMembership,
+)
 
 MODELS_TO_CHECK = (Workspace, WorkspaceMembership, Client, ClientNote, ClientLink, Deal, Invoice, InvoiceItem, FxRate)
 

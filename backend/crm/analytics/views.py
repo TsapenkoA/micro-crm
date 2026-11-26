@@ -1,9 +1,10 @@
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
 from crm.analytics.serializers import DashboardFilters
-from crm.api.permissions import IsWorkspaceMember
 from crm.analytics.services import dashboard_data
+from crm.api.permissions import IsWorkspaceMember
 
 
 class Dashboard(APIView):

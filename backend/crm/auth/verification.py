@@ -4,8 +4,10 @@ from datetime import timedelta
 
 from allauth.account.models import EmailAddress
 from django.conf import settings
-from django.contrib.auth import get_user_model, login as session_login
-from django.contrib.auth.hashers import make_password, check_password as matches_password
+from django.contrib.auth import get_user_model
+from django.contrib.auth import login as session_login
+from django.contrib.auth.hashers import check_password as matches_password
+from django.contrib.auth.hashers import make_password
 from django.core.mail import send_mail
 from django.middleware.csrf import get_token
 from django.utils import timezone
@@ -16,10 +18,15 @@ from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 
 from crm.auth.security import email_in_use, email_lock
-from crm.auth.serializers import EmailSerializer, SignupSerializer, SignupVerificationSerializer, UsernameSerializer, check_password
+from crm.auth.serializers import (
+    EmailSerializer,
+    SignupSerializer,
+    SignupVerificationSerializer,
+    UsernameSerializer,
+    check_password,
+)
 from crm.auth.views import PublicAuthView, user_data
 from crm.models import PendingSignup
-
 
 SIGNUP_MESSAGE = "If this address can be registered, check your email for a verification link."
 INVALID_TOKEN = "This verification link is invalid or has expired. Please sign up again."

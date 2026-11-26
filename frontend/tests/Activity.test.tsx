@@ -15,7 +15,16 @@ it('shows an empty history and filters workspace events', async () => {
 });
 
 it('renders changes as text and links to the record', async () => {
-  const event: ActivityEvent = { id: 'event', actor_name: 'Sam', entity_type: 'deal', entity_id: 'deal-1', entity_label: '<script>Project</script>', action: 'updated', changes: { status: { from: 'new_lead', to: 'in_progress' } }, created_at: '2026-11-12T12:00:00Z' };
+  const event: ActivityEvent = {
+    id: 'event',
+    actor_name: 'Sam',
+    entity_type: 'deal',
+    entity_id: 'deal-1',
+    entity_label: '<script>Project</script>',
+    action: 'updated',
+    changes: { status: { from: 'new_lead', to: 'in_progress' } },
+    created_at: '2026-11-12T12:00:00Z',
+  };
   vi.spyOn(activity, 'list').mockResolvedValue({ count: 1, next: null, previous: null, results: [event] });
   const { container } = render(<ActivityPage />);
   expect(await screen.findByText('<script>Project</script>')).toBeInTheDocument();
@@ -26,8 +35,26 @@ it('renders changes as text and links to the record', async () => {
 
 it('shows file names and bank-update actions without private values', async () => {
   const events: ActivityEvent[] = [
-    { id: 'file', actor_name: 'Maya', entity_type: 'client', entity_id: 'client-1', entity_label: 'Aurora Studio', action: 'attachment_added', changes: { file: 'project-brief.pdf' }, created_at: '2026-11-12T12:00:00Z' },
-    { id: 'bank', actor_name: 'Admin', entity_type: 'client', entity_id: 'client-1', entity_label: 'Aurora Studio', action: 'payer_bank_updated', changes: {}, created_at: '2026-11-12T11:00:00Z' },
+    {
+      id: 'file',
+      actor_name: 'Maya',
+      entity_type: 'client',
+      entity_id: 'client-1',
+      entity_label: 'Aurora Studio',
+      action: 'attachment_added',
+      changes: { file: 'project-brief.pdf' },
+      created_at: '2026-11-12T12:00:00Z',
+    },
+    {
+      id: 'bank',
+      actor_name: 'Admin',
+      entity_type: 'client',
+      entity_id: 'client-1',
+      entity_label: 'Aurora Studio',
+      action: 'payer_bank_updated',
+      changes: {},
+      created_at: '2026-11-12T11:00:00Z',
+    },
   ];
   vi.spyOn(activity, 'list').mockResolvedValue({ count: 2, next: null, previous: null, results: events });
   render(<ActivityPage />);

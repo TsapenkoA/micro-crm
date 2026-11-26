@@ -1,14 +1,34 @@
 import { request } from '../../api/client';
 
 export type Task = {
-  id: string; client: string; client_name: string; deal: string | null; deal_title: string | null;
-  title: string; assignee: number | null; assignee_name: string | null; due_at: string;
-  status: 'open' | 'done'; completed_at: string | null; created_by: number; created_at: string; updated_at: string;
+  id: string;
+  client: string;
+  client_name: string;
+  deal: string | null;
+  deal_title: string | null;
+  title: string;
+  assignee: number | null;
+  assignee_name: string | null;
+  due_at: string;
+  status: 'open' | 'done';
+  completed_at: string | null;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
 };
 export type TaskCounts = Record<'mine' | 'team' | 'overdue' | 'upcoming' | 'done', number>;
 export type TaskPage = { count: number; next: string | null; previous: string | null; results: Task[] };
 export type TaskInput = { client: string; deal: string | null; title: string; assignee: number; due_at: string };
-export type TaskFilters = { mine?: boolean; status?: 'open' | 'done'; due?: 'overdue' | 'upcoming'; search?: string; client?: string; deal?: string; page?: number; page_size?: number };
+export type TaskFilters = {
+  mine?: boolean;
+  status?: 'open' | 'done';
+  due?: 'overdue' | 'upcoming';
+  search?: string;
+  client?: string;
+  deal?: string;
+  page?: number;
+  page_size?: number;
+};
 
 export const tasks = {
   counts(filters: Pick<TaskFilters, 'search' | 'client' | 'deal'> = {}, signal?: AbortSignal) {

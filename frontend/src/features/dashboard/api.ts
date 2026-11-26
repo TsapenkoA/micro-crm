@@ -11,7 +11,17 @@ export type DashboardData = {
   revenue: string | null;
   revenue_rows: { period: string; revenue: string | null }[];
   deal_counts: { status: string; count: number }[];
-  recent_deals: { id: string; title: string; client__name: string; client__company: string; status: string; deadline: string; overdue: boolean; amount: string; currency: string }[];
+  recent_deals: {
+    id: string;
+    title: string;
+    client__name: string;
+    client__company: string;
+    status: string;
+    deadline: string;
+    overdue: boolean;
+    amount: string;
+    currency: string;
+  }[];
   fx: {
     source: string;
     pipeline_rate_date: string | null;

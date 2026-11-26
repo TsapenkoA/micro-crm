@@ -77,9 +77,9 @@ Open http://127.0.0.1:5173. Keep the recovery key outside the repository and pro
 1. Sign in or register and verify your email to create a personal workspace. Send a join request from Settings > Workspace when company data should be shared. Trusted administrators can still use the backend management command.
 2. Open Clients and create a customer. Its details contain a primary and additional contacts, related invoices, shared notes, editable links and private files.
 3. Open Deals and create a deal for that client. Move it through the board or edit its status in the details panel. In Tasks, assign a next step to a teammate with a due time. Check My tasks, Team, Overdue and Upcoming; the Dashboard also shows your next open tasks.
-4. In Settings, update your profile photo or workspace name and review members. The workspace owner can send a join request to an existing account; its owner must accept in Settings > Workspace while their personal workspace is empty. The workspace owner can also save both the seller profile and payment details after a recent identity check. Add a client's payer bank details in the client form. Open Invoices, create a draft with line items, a due date and optional deal for the same client. New drafts copy the saved seller profile; older invoices keep their original details. Issue without email or explicitly email the PDF when SMTP is configured. Review overdue invoices, preview and confirm reminders, and record confirmed partial or full payments. Linked invoices and deals open from each other's details; their statuses remain independent.
+4. In Settings, update your profile photo or workspace name and review members. The workspace owner can configure the business time zone (IANA name; UTC by default), send a join request to an existing account, and save seller/payment details after a recent identity check. The recipient must accept the request in Settings > Workspace while their personal workspace is empty. Add a client's payer bank details in the client form. Open Invoices, create a draft with line items, a due date and optional deal for the same client. New drafts copy the saved seller profile; older invoices keep their original details. Issue without email or explicitly email the PDF when SMTP is configured. Review overdue invoices, preview and confirm reminders, and record confirmed partial or full payments. Linked invoices and deals open from each other's details; their statuses remain independent.
 5. Open Dashboard to inspect deal metrics and revenue from recorded invoice payments. Choose USD, EUR, GBP, PLN, AUD, CAD, CHF or JPY as your personal reporting currency; supported original currencies are converted using stored ECB reference rates. The original amounts remain unchanged.
-6. Open Operations to review assigned tasks and upcoming or overdue invoice and deal deadlines. Complete a task there or review the text before manually sending an overdue invoice reminder. Open Activity to see who created, changed or deleted a client, deal, task or invoice. The journal starts when the activity migration is applied; earlier actions cannot be reconstructed.
+6. Open Operations to review assigned tasks and upcoming or overdue invoice and deal deadlines. Complete a task there or review the text before manually sending an overdue invoice reminder. Platform administrators can also resolve uncertain invoice email outcomes after investigating the mail provider; resolving as failed enables retry and may produce a duplicate if acceptance was misjudged. Open Activity to see who created, changed or deleted a client, deal, task or invoice. The journal starts when the activity migration is applied; earlier actions cannot be reconstructed.
 
 Import ECB rates before using converted analytics, then refresh them daily after publication:
 
@@ -100,7 +100,7 @@ The backend tests use PostgreSQL. Django creates a separate `test_<PGDATABASE>` 
 ```powershell
 cd backend
 python -m pip install -r requirements-tools.txt
-ruff check crm/services/calculations.py crm/services/fx.py
+ruff check .
 mypy crm/services/calculations.py crm/services/fx.py
 uv run python manage.py check
 uv run python manage.py makemigrations --check --dry-run
@@ -112,7 +112,7 @@ npm.cmd test
 npm.cmd run build
 ```
 
-On Linux/macOS, use `python -m pip` and `npm` in place of `npm.cmd`; the remaining checks are the same. Ruff and mypy currently check the financial and FX services from `backend/requirements-tools.txt`; React Hooks lint and Prettier are installed with the frontend's locked development dependencies. Back up existing application data before applying migrations.
+On Linux/macOS, use `python -m pip` and `npm` in place of `npm.cmd`; the remaining checks are the same. Ruff checks the backend; mypy is focused on the financial and FX services. React Hooks lint and Prettier are installed with the frontend's locked development dependencies. Back up existing application data before applying migrations.
 
 ## Security prerequisites
 

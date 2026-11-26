@@ -1,14 +1,14 @@
-from datetime import timedelta
 import time
+from datetime import timedelta
 
 import pytest
-from django.db import connection
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import RequestFactory
+from django.db import connection
 from django.http import JsonResponse
+from django.test import RequestFactory
 from django.utils import timezone
-from rest_framework.test import APIClient
 from rest_framework.exceptions import ValidationError
+from rest_framework.test import APIClient
 
 from crm.api.middleware import PrivateResponseMiddleware
 from crm.models import Client, ClientAttachment, WorkspaceJoinRequest, WorkspaceMembership
@@ -33,16 +33,21 @@ def test_scanner_requires_a_complete_clean_verdict(settings, monkeypatch, verdic
         def recv(self, size): return verdict
     monkeypatch.setattr('crm.services.uploads.socket.create_connection', lambda *args, **kwargs: Scanner())
     if exception:
-        with pytest.raises(exception): scan_upload(b'%PDF-1.4 test')
+        with pytest.raises(exception):
+            scan_upload(b'%PDF-1.4 test')
     else:
         scan_upload(b'%PDF-1.4 test')
 
 
 def test_scanner_unavailable_is_not_a_clean_result(settings, monkeypatch):
     settings.FILE_SCAN_HOST = ''
-    with pytest.raises(FileScanUnavailable): scan_upload(b'file')
+    with pytest.raises(FileScanUnavailable):
+        scan_upload(b'file')
     settings.FILE_SCAN_HOST = 'localhost'
-    def unavailable(*args, **kwargs): raise OSError('private connection details')
+
+    def unavailable(*args, **kwargs):
+        raise OSError('private connection details')
+
     monkeypatch.setattr('crm.services.uploads.socket.create_connection', unavailable)
     with pytest.raises(FileScanUnavailable, match='File security scanning is unavailable'):
         scan_upload(b'file')
@@ -50,12 +55,16 @@ def test_scanner_unavailable_is_not_a_clean_result(settings, monkeypatch):
 
 def test_scanner_check_requires_real_detection(monkeypatch):
     from io import StringIO
+
     from django.core.management import call_command
     from django.core.management.base import CommandError
+
     path = 'crm.management.commands.check_file_scanner.scan_upload'
+
     def scanner(content):
         if b'EICAR-STANDARD-ANTIVIRUS-TEST-FILE' in content:
             raise ValidationError({'file': 'Rejected'})
+
     monkeypatch.setattr(path, scanner)
     output = StringIO()
     call_command('check_file_scanner', stdout=output)

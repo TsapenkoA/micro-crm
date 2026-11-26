@@ -1,4 +1,5 @@
 from rest_framework import serializers
+
 from crm.services.calculations import CURRENCY_PLACES
 
 

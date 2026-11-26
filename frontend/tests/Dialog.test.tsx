@@ -2,12 +2,22 @@ import { render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import Dialog from '../src/components/Dialog';
 
-it.each(['together', 'outer first', 'inner first'])('restores scroll after multiple dialogs close: %s', order => {
+it.each(['together', 'outer first', 'inner first'])('restores scroll after multiple dialogs close: %s', (order) => {
   document.body.style.overflow = 'auto';
-  const dialogs = (outer: boolean, inner: boolean) => <>
-    {outer && <Dialog title="Details" onClose={vi.fn()}>Details content</Dialog>}
-    {inner && <Dialog title="Delete" onClose={vi.fn()}>Confirm deletion</Dialog>}
-  </>;
+  const dialogs = (outer: boolean, inner: boolean) => (
+    <>
+      {outer && (
+        <Dialog title="Details" onClose={vi.fn()}>
+          Details content
+        </Dialog>
+      )}
+      {inner && (
+        <Dialog title="Delete" onClose={vi.fn()}>
+          Confirm deletion
+        </Dialog>
+      )}
+    </>
+  );
   const view = render(dialogs(true, false));
   view.rerender(dialogs(true, true));
   expect(document.body.style.overflow).toBe('hidden');

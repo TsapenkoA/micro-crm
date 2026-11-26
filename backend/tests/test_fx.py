@@ -2,16 +2,14 @@ from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO
 
+import pytest
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
-
-import pytest
 
 from crm.models import Client, Deal, FxRate, FxSyncRun, Invoice, InvoicePayment, WorkspaceMembership
 from crm.services.fx import ECB_CURRENCIES, convert, rate_date_for
-
 
 pytestmark = pytest.mark.django_db
 URL = "/api/v1/analytics/dashboard"

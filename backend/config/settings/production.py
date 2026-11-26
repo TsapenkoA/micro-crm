@@ -1,7 +1,8 @@
 from django.core.exceptions import ImproperlyConfigured
 
-from .base import *
 from crm.fields import encryption
+
+from .base import *
 
 encryption()
 

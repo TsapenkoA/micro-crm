@@ -1,5 +1,6 @@
-import crm.fields
 from django.db import migrations
+
+import crm.fields
 from crm.services import data_protection
 
 

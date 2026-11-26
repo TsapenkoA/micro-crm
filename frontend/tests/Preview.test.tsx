@@ -8,12 +8,44 @@ import type { PreviewData } from '../src/features/preview/data';
 afterEach(() => vi.restoreAllMocks());
 
 const preview: PreviewData = {
-  clients: Array.from({ length: 10 }, (_, index) => ({ id: `client-${index}`, name: `Client ${index + 1}`, company: `Company ${index + 1}`, email: `client${index + 1}@example.test`, phone: '', initials: 'CL', color: 'blue' })),
-  deals: Array.from({ length: 21 }, (_, index) => ({ id: `deal-${index}`, title: `Project ${index + 1}`, client: `client-${index % 10}`, amount: 0, currency: 'USD', status: 'new_lead', deadline: '2026-11-04', category: 'Project' })),
-  invoices: Array.from({ length: 12 }, (_, index) => ({ id: `INV-${index + 1}`, client: `client-${index % 10}`, description: 'Service', amount: 0, status: 'draft', date: '2026-11-04' })),
+  clients: Array.from({ length: 10 }, (_, index) => ({
+    id: `client-${index}`,
+    name: `Client ${index + 1}`,
+    company: `Company ${index + 1}`,
+    email: `client${index + 1}@example.test`,
+    phone: '',
+    initials: 'CL',
+    color: 'blue',
+  })),
+  deals: Array.from({ length: 21 }, (_, index) => ({
+    id: `deal-${index}`,
+    title: `Project ${index + 1}`,
+    client: `client-${index % 10}`,
+    amount: 0,
+    currency: 'USD',
+    status: 'new_lead',
+    deadline: '2026-11-04',
+    category: 'Project',
+  })),
+  invoices: Array.from({ length: 12 }, (_, index) => ({
+    id: `INV-${index + 1}`,
+    client: `client-${index % 10}`,
+    description: 'Service',
+    amount: 0,
+    status: 'draft',
+    date: '2026-11-04',
+  })),
   profile: { name: 'Preview User', username: 'preview.user', email: 'preview@example.test', avatar: '' },
   workspaceName: 'Preview Workspace',
-  content: { dealNextStep: 'Next step', dealNote: 'Sample deal note', dealNoteTime: 'Today', clientNote: 'Sample client note', clientNoteTime: 'Today', linkLabel: 'Sample link', invoiceFromDescription: 'Sample services' },
+  content: {
+    dealNextStep: 'Next step',
+    dealNote: 'Sample deal note',
+    dealNoteTime: 'Today',
+    clientNote: 'Sample client note',
+    clientNoteTime: 'Today',
+    linkLabel: 'Sample link',
+    invoiceFromDescription: 'Sample services',
+  },
 };
 
 async function openPreview(page = 'deals') {
@@ -29,7 +61,10 @@ it('loads workspace preview through its dedicated API', async () => {
   expect(screen.queryByText('Design preview')).not.toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Back to application' })).toHaveAttribute('href', '/');
   expect(document.title).toBe('MicroFlow · Preview');
-  expect(document.querySelector('link[rel="icon"]')).toHaveAttribute('href', expect.stringContaining('data:image/svg+xml'));
+  expect(document.querySelector('link[rel="icon"]')).toHaveAttribute(
+    'href',
+    expect.stringContaining('data:image/svg+xml'),
+  );
   expect(workspace.preview).toHaveBeenCalledOnce();
 });
 

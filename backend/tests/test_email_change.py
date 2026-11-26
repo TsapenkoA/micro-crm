@@ -9,7 +9,6 @@ from django.utils import timezone
 
 from crm.models import PendingEmailChange, WorkspaceMembership
 
-
 pytestmark = pytest.mark.django_db
 
 

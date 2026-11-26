@@ -1,13 +1,85 @@
-.date-input { display: grid; gap: 6px; min-width: 0; }
-.date-input-control { display: flex; position: relative; align-items: center; min-width: 0; }
-.date-input-control > input { width: 100%; min-width: 0; padding-right: 38px; }
-.date-input-control > .date-input-trigger { display: grid; place-items: center; position: absolute; right: 5px; width: 28px; height: 28px; min-height: 0; padding: 4px; background: transparent; color: var(--text-muted); border: 0; box-shadow: none; }
-.date-input-calendar { display: grid; gap: 10px; padding: 12px; width: 270px; max-width: 100%; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); }
-.date-input-heading, .date-input-actions { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 13px; }
-.date-input-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; text-align: center; }
-.date-input-grid > small { font-size: 11px; color: var(--text-muted); padding: 5px 0; }
-.date-input-calendar button { min-width: 0; min-height: 28px; border: 0; padding: 4px; background: transparent; color: var(--text); border-radius: 5px; font-size: 12px; box-shadow: none; }
-.date-input-calendar button:hover { background: var(--surface-raised); }
-.date-input-calendar button[aria-pressed="true"] { background: var(--nav-text); color: var(--surface); }
-.date-input-calendar .outside-month { color: var(--text-muted); }
-.date-input-calendar button:disabled { opacity: .35; cursor: default; }
+.date-input {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.date-input-control {
+  display: flex;
+  position: relative;
+  align-items: center;
+  min-width: 0;
+}
+.date-input-control > input {
+  width: 100%;
+  min-width: 0;
+  padding-right: 38px;
+}
+.date-input-control > .date-input-trigger {
+  display: grid;
+  place-items: center;
+  position: absolute;
+  right: 5px;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  padding: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  border: 0;
+  box-shadow: none;
+}
+.date-input-calendar {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  width: 270px;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+}
+.date-input-heading,
+.date-input-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 13px;
+}
+.date-input-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+  text-align: center;
+}
+.date-input-grid > small {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 5px 0;
+}
+.date-input-calendar button {
+  min-width: 0;
+  min-height: 28px;
+  border: 0;
+  padding: 4px;
+  background: transparent;
+  color: var(--text);
+  border-radius: 5px;
+  font-size: 12px;
+  box-shadow: none;
+}
+.date-input-calendar button:hover {
+  background: var(--surface-raised);
+}
+.date-input-calendar button[aria-pressed='true'] {
+  background: var(--nav-text);
+  color: var(--surface);
+}
+.date-input-calendar .outside-month {
+  color: var(--text-muted);
+}
+.date-input-calendar button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}

@@ -13,7 +13,6 @@ from django.utils import timezone
 from crm.models import FxRate, FxSyncRun
 from crm.services.fx import ECB_CURRENCIES
 
-
 BASE_URL = "https://data-api.ecb.europa.eu/service/data/EXR/"
 MAX_RESPONSE_BYTES = 5_000_000
 

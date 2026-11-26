@@ -15,7 +15,7 @@ Do not move models between application labels or reset migration history. Before
 
 ## API
 
-Routes below start with `/api/v1` and have no trailing slash except OAuth callbacks. Business endpoints require a session and workspace membership, including for administrators. Foreign records return 404. Writes require the CSRF cookie and `X-CSRFToken`; login rotates the token. Errors retain `{error: {code, details}}`. Handled API exceptions also include `reason`, distinguishing `version_conflict` from `protected`; `code` remains the HTTP status. All API responses are private and non-cacheable.
+Routes below start with `/api/v1` and have no trailing slash except OAuth callbacks. Business endpoints require a session and workspace membership; platform operations endpoints explicitly require an active platform superuser. Foreign records return 404. Writes require the CSRF cookie and `X-CSRFToken`; login rotates the token. Errors retain `{error: {code, details}}`. Handled API exceptions also include `reason`, distinguishing `version_conflict` from `protected`; `code` remains the HTTP status. All API responses are private and non-cacheable.
 
 These are the implemented contracts, not assumptions from generic REST examples: browser requests use sessions and CSRF rather than bearer tokens; draft edits use `PATCH`; and invoice status, payments, delivery and due-date corrections have separate action endpoints. Refer to the route and contract tables below and [the architecture decisions](../docs/architecture-decisions.md) when updating clients.
 
@@ -32,6 +32,7 @@ These are the implemented contracts, not assumptions from generic REST examples:
 | /auth/profile | PATCH: username only |
 | /auth/email-change, /auth/email-change/confirm | POST: request or confirm an email change |
 | /auth/avatar | GET/POST/DELETE: current user's profile photo |
+| /auth/sessions/revoke-others | POST: invalidate this user's other sessions after recent authentication; keep the current session |
 | /auth/reporting-currency | PATCH: personal reporting currency (EUR, USD, GBP, PLN, AUD, CAD, CHF or JPY) |
 | /auth/password, /auth/reauthenticate | POST: change password or confirm identity |
 | /auth/providers, /auth/methods | GET: provider configuration and connected methods |
@@ -39,7 +40,7 @@ These are the implemented contracts, not assumptions from generic REST examples:
 | /auth/oauth/<provider>/start | POST: start provider login or connection |
 | /auth/oauth/<provider>/callback/ | GET: provider callback; trailing slash required |
 | /workspace/counts, /workspace/preview | GET: workspace counts or isolated design-preview data |
-| /workspace/settings | GET: name and members; PATCH: shared workspace name |
+| /workspace/settings | GET: name, IANA time zone and members; PATCH: workspace name or owner-managed time zone |
 | /workspace/members | POST: owner sends a request; recipient consent is required |
 | /workspace/join-requests/<id> | POST: recipient accepts or declines after recent authentication |
 | /workspace/members/<user_id> | DELETE: owner removes a member after recent authentication |
@@ -65,6 +66,8 @@ These are the implemented contracts, not assumptions from generic REST examples:
 | /tasks/<id> | GET/PATCH/DELETE: view, update or remove a workspace task |
 | /activity | GET: paginated workspace activity; optional entity_type, entity_id, actor, date_from and date_to filters |
 | /operations/overview | GET: current user's due tasks and shared invoice/deal deadlines; page and undated_page select 20-record pages |
+| /operations/invoice-deliveries | GET: unresolved email attempts; platform superuser only |
+| /operations/invoice-deliveries/<id>/resolve | POST: resolve an attempt as accepted or failed with an audit reason; platform superuser only |
 | /invoices | GET/POST: search/filter invoices or create a draft |
 | /invoices/summary | GET: original-currency totals across matching workspace records |
 | /invoices/<id> | GET/PATCH: details or draft changes |
@@ -86,13 +89,14 @@ These are the implemented contracts, not assumptions from generic REST examples:
 - Definite SMTP rejections are recorded as failed and can be retried. Timeouts and other uncertain results remain unknown and block resend until reviewed. Issuing an invoice and delivering email are separate events: a failed delivery does not revert an issued document. Logs contain delivery IDs and error classes, without recipient addresses, credentials or raw SMTP responses.
 - One membership per user. Registration provisions an independent workspace only after email confirmation. Matching email domains never join a company. Owner requests expire after seven days; recipients must explicitly accept after confirming identity. Acceptance rechecks ownership and an empty personal workspace. Removal retains company records, creates a personal workspace and invalidates the former member's sessions. Any member can rename the workspace.
 - Clients sort by `-created_at`, `-id`, support name/company/email search and pagination. Details include related workspace deals. Primary contacts mirror client name/email/phone; changing the primary contact leaves issued invoice snapshots intact. Related history and financial records block deletion with 409. Notes are plain text with server-supplied author/time; only the author can delete a note. Links accept HTTP/HTTPS only. Attachments are private, signature-checked and scanned, at most 5 MB each and 50 per client.
-- Deals use decimal string amounts, a timezone-qualified deadline, five stages and archived outcomes `none`, `lost`, `cancelled`. Updates/deletion require the observed integer `version`; conflicts return 409 without partial changes. Description is independent of shared notes. List filters: `search`, `status`, `currency`, `page`, `page_size`, `ordering=newest|title|client|deadline`. Totals cover the complete matching selection.
+- Deals use decimal string amounts, a timezone-qualified deadline, five stages and archived outcomes `none`, `lost`, `cancelled`, `won`. Archiving a paid deal preserves its payment timestamp and FX date; older archived rows are not reclassified. Updates/deletion require the observed integer `version`; conflicts return 409 without partial changes. Description is independent of shared notes. List filters: `search`, `status`, `currency`, `page`, `page_size`, `ordering=newest|title|client|deadline`. Totals cover the complete matching selection.
 - Tasks belong to a client and optionally its deal. Assignees must be active workspace members; omission defaults to the current user. Client/deal cannot change after creation. Completion sets `completed_at`; reopening clears it. List filters include `mine=1`, `status=open|done`, `due=overdue|upcoming`, `search`, `client`, `deal` and pagination. Member removal leaves tasks unassigned.
-- Invoices calculate totals server-side with currency-specific precision. Only drafts can change client, seller, currency or items. Optional `deal` must belong to the same client/workspace; linked deals cannot move clients or be deleted. New drafts copy seller/payer details; saved snapshots do not change when settings change. Issuing defaults a missing due date to 30 days. Existing undated sent invoices require an explicit due-date correction with a reason.
+- Invoices calculate totals server-side with currency-specific precision. Only drafts can change client, seller, currency or items. Optional `deal` must belong to the same client/workspace; linked deals cannot move clients or be deleted. New drafts copy seller/payer details; saved snapshots do not change when settings change. Issuing records a fixed `issued_on` business date and defaults a missing due date to 30 days. Existing undated sent invoices require an explicit due-date correction with a reason.
 - Confirmed partial/full payments are recorded manually, never collected online. Overpayments, future dates and excess precision are rejected. Reversal requires a reason and retains history; legacy backfilled payments cannot be reversed. Cancellation requires a reason and no active payments. Deal stages remain independent of invoice payments.
 - Invoice lists omit bank snapshots, items, payments and delivery details; open the detail endpoint for the full document. `search`, `status`, `currency`, `overdue=true` and pagination filter rows. Summary totals keep original currencies separate and cover all pages. PDF and HTML use the saved document data.
 - Email and reminders require explicit confirmation and SMTP. `accepted` means mail-server acceptance, not inbox delivery. Failed attempts allow retry; pending/unknown outcomes block it. Reminders require an overdue balance and allow one accepted send per seven days. No automatic reminder scheduler is configured.
 - Operations returns assigned open tasks and shared invoice/deal deadlines, overdue or due within seven days. `page` and `undated_page` select 20-record pages. Activity records successful changes transactionally, with allowlisted metadata; note bodies, file contents, bank values and payment references are omitted. It is not a tamper-proof audit log.
+- A workspace owner may set an IANA `time_zone` in Workspace settings; new workspaces default to `UTC`. Business dates and calendar boundaries use that zone per request; stored instants remain UTC and issued invoice dates are fixed. Platform superusers can review unresolved email outcomes in Operations; marking an attempt failed permits retry and can cause duplicate delivery if provider acceptance was misjudged.
 
 ## Authentication and email
 
@@ -127,6 +131,8 @@ For trusted administrator assignment, create a user with `createsuperuser` or Dj
 
 For backups, use `backup_database --output <absolute-new-archive-path> --pg-bin <PostgreSQL-bin-directory>`. Archives must be outside the repository; existing paths are refused. `--verify-restore` restores into a unique temporary database, compares business-table counts and removes only that database. If the application role lacks CREATEDB, supply `--maintenance-user <role>` with `PGMAINTENANCEPASSWORD` only in that process environment. Keep protected off-device copies and the separate encryption key. Scheduling and storage are external responsibilities.
 
-For an unknown invoice email outcome, investigate provider acceptance before using `resolve_invoice_delivery <attempt-uuid> --outcome accepted|failed --operator <superuser> --reason <evidence>`. The original attempt and resolution remain in history; never mark an uncertain outcome failed merely to retry.
+For an unknown invoice email outcome, platform superusers can investigate provider acceptance and resolve the attempt in Operations. The API records the operator and reason; marking it failed permits retry and may produce a duplicate if acceptance was misjudged. The audited command remains available: `resolve_invoice_delivery <attempt-uuid> --outcome accepted|failed --operator <superuser> --reason <evidence>`.
+
+To populate a development workspace with clearly marked fictional records, enable `DEBUG` and run `uv run --directory backend python manage.py seed_demo_data <workspace-uuid> --confirm`. The command refuses production settings, requires explicit confirmation, uses `.example.test` addresses, never sends email, and refuses to overwrite existing demo markers.
 
 Invoice PDFs use the bundled DejaVu Sans fonts in `assets/fonts`; their redistribution license is included there. System font installation is not required.

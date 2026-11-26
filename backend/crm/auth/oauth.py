@@ -1,17 +1,18 @@
+from allauth.socialaccount.providers.github import views as github
+from allauth.socialaccount.providers.google import views as google
+from allauth.socialaccount.providers.microsoft import views as microsoft
 from django.conf import settings
 from django.http import HttpResponseRedirect, QueryDict
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
-from rest_framework.authentication import SessionAuthentication
-from allauth.socialaccount.providers.google import views as google
-from allauth.socialaccount.providers.github import views as github
-from allauth.socialaccount.providers.microsoft import views as microsoft
+
+from crm.auth.views import PublicAuthView, configured_provider
 
 from .security import recent_auth
-from crm.auth.views import PublicAuthView, configured_provider
 
 PROVIDERS = {"google": google, "github": github, "microsoft": microsoft}
 

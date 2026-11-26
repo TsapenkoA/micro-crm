@@ -21,14 +21,33 @@ export default function LoginForm({ onLogin }: { onLogin: (user: User) => void }
     }
   }
 
-  return <form onSubmit={submit} className="auth-form">
-        <label className="field">Email or username
-          <input name="username" autoComplete="username" required maxLength={254} disabled={pending} autoCapitalize="none" spellCheck={false} />
-        </label>
-        <PasswordField name="password" current disabled={pending} />
-        {error && <p role="alert" className="field-error">{error}</p>}
-        <button className="primary" disabled={pending}>{pending ? 'Signing in…' : 'Sign in'}</button>
-        <AuthLink to="/forgot-password">Forgot password?</AuthLink>
-        <p className="muted">New to MicroFlow? <AuthLink to="/sign-up">Create an account</AuthLink></p>
-      </form>;
+  return (
+    <form onSubmit={submit} className="auth-form">
+      <label className="field">
+        Email or username
+        <input
+          name="username"
+          autoComplete="username"
+          required
+          maxLength={254}
+          disabled={pending}
+          autoCapitalize="none"
+          spellCheck={false}
+        />
+      </label>
+      <PasswordField name="password" current disabled={pending} />
+      {error && (
+        <p role="alert" className="field-error">
+          {error}
+        </p>
+      )}
+      <button className="primary" disabled={pending}>
+        {pending ? 'Signing in…' : 'Sign in'}
+      </button>
+      <AuthLink to="/forgot-password">Forgot password?</AuthLink>
+      <p className="muted">
+        New to MicroFlow? <AuthLink to="/sign-up">Create an account</AuthLink>
+      </p>
+    </form>
+  );
 }

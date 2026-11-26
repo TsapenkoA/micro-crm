@@ -1,14 +1,14 @@
 import hashlib
 import time
-from ipaddress import ip_address, ip_network
 from contextlib import contextmanager
+from ipaddress import ip_address, ip_network
 
+from allauth.account.models import EmailAddress
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import connection, transaction
 from django.utils import timezone
 from rest_framework.throttling import BaseThrottle
-from allauth.account.models import EmailAddress
 
 from crm.models import AuthAttempt
 

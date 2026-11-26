@@ -1,14 +1,13 @@
 from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
-from rest_framework import generics
-from rest_framework import serializers
-from rest_framework.response import Response
+from rest_framework import generics, serializers
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.response import Response
 
+from crm.activity.services import log_activity, snapshot
 from crm.api.pagination import ClientPagination
 from crm.api.permissions import IsWorkspaceMember, WorkspaceQuerysetMixin
-from crm.activity.services import log_activity, snapshot
 from crm.models import Task, WorkspaceMembership
 from crm.tasks.serializers import TaskSerializer
 

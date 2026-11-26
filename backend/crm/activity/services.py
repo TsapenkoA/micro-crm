@@ -4,7 +4,6 @@ from decimal import Decimal
 from crm.models import ActivityEvent, Client, Deal, Invoice, Task
 from crm.services.calculations import money_string
 
-
 FIELDS = {
     Client: ("name", "company"),
     Deal: ("title", "status", "amount", "currency", "deadline"),
