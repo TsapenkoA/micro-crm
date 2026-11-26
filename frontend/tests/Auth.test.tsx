@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ApiError, auth, workspace } from '../src/api/client';
@@ -7,13 +7,27 @@ import AuthScreen from '../src/features/auth/AuthScreen';
 import AccountSettings from '../src/features/auth/AccountSettings';
 import EmailSettings from '../src/features/auth/EmailSettings';
 
-const user = { id: 1, username: 'alex', email: 'alex@example.com', workspace: { id: 'workspace', name: 'Example Studio' } };
-const providers = [{ id: 'google', name: 'Google', configured: false }, { id: 'github', name: 'GitHub', configured: false }, { id: 'microsoft', name: 'Microsoft', configured: false }];
+const user = {
+  id: 1,
+  username: 'alex',
+  email: 'alex@example.com',
+  workspace: { id: 'workspace', name: 'Example Studio' },
+};
+const providers = [
+  { id: 'google', name: 'Google', configured: false },
+  { id: 'github', name: 'GitHub', configured: false },
+  { id: 'microsoft', name: 'Microsoft', configured: false },
+];
 
 beforeEach(() => {
   vi.spyOn(auth, 'providers').mockResolvedValue({ providers });
   vi.spyOn(auth, 'methods').mockResolvedValue({ password: true, recent_auth: true, providers: [] });
-  vi.spyOn(workspace, 'settings').mockResolvedValue({ id: 'workspace', name: 'Example Studio', can_manage_members: true, members: [{ id: 1, username: 'alex', name: '', email: user.email }] });
+  vi.spyOn(workspace, 'settings').mockResolvedValue({
+    id: 'workspace',
+    name: 'Example Studio',
+    can_manage_members: true,
+    members: [{ id: 1, username: 'alex', name: '', email: user.email }],
+  });
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -32,6 +46,32 @@ it('supports password visibility and keyboard email login', async () => {
   await userEvent.keyboard('{Enter}');
   expect(login).toHaveBeenCalledWith(user.email, 'test-password-123');
   expect(onLogin).toHaveBeenCalledWith(user);
+});
+
+it('lets the workspace owner set an IANA business time zone', async () => {
+  const updateTimeZone = vi
+    .spyOn(workspace, 'updateTimeZone')
+    .mockResolvedValue({ id: 'workspace', time_zone: 'Europe/Kyiv' });
+  render(<AccountSettings user={user} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+  const input = await screen.findByLabelText('IANA time zone');
+  await userEvent.clear(input);
+  await userEvent.type(input, 'Europe/Kyiv');
+  await userEvent.click(screen.getByRole('button', { name: 'Save time zone' }));
+  expect(updateTimeZone).toHaveBeenCalledWith('Europe/Kyiv');
+  expect(await screen.findByText(/New business dates use this time zone/)).toBeInTheDocument();
+});
+
+it('confirms before signing out other sessions', async () => {
+  const revoke = vi.spyOn(auth, 'revokeOtherSessions').mockResolvedValue({ revoked: 2 });
+  render(<AccountSettings user={user} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Security' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Sign out other sessions' }));
+  const dialog = screen.getByRole('alertdialog', { name: 'Sign out other sessions' });
+  expect(within(dialog).getByText(/This browser will remain signed in/)).toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm sign out' }));
+  expect(revoke).toHaveBeenCalledOnce();
+  expect(await screen.findByText('Other sessions signed out.')).toBeInTheDocument();
 });
 
 it('reports a configured provider failure and permits a retry', async () => {
@@ -55,7 +95,10 @@ it('opens Dashboard after a successful OAuth signup or sign-in', async () => {
 });
 
 it('validates signup, preserves server field errors and requests verification', async () => {
-  const signup = vi.spyOn(auth, 'signup').mockRejectedValueOnce(new ApiError(400, 'Check the form.', { email: ['Unable to create account.'] })).mockResolvedValue({ message: 'Check your email for a verification link.' });
+  const signup = vi
+    .spyOn(auth, 'signup')
+    .mockRejectedValueOnce(new ApiError(400, 'Check the form.', { email: ['Unable to create account.'] }))
+    .mockResolvedValue({ message: 'Check your email for a verification link.' });
   const onLogin = vi.fn();
   render(<AuthScreen path="/sign-up" onLogin={onLogin} />);
   await userEvent.click(screen.getByRole('button', { name: 'Create account' }));
@@ -91,7 +134,9 @@ it('verifies a signup link before opening the workspace', async () => {
 });
 
 it('resends a verification link without exposing account existence', async () => {
-  const resend = vi.spyOn(auth, 'resendVerification').mockResolvedValue({ message: 'Check your email for a verification link.' });
+  const resend = vi
+    .spyOn(auth, 'resendVerification')
+    .mockResolvedValue({ message: 'Check your email for a verification link.' });
   render(<AuthScreen path="/resend-verification" onLogin={vi.fn()} />);
   await userEvent.type(screen.getByLabelText('Email'), user.email);
   await userEvent.click(screen.getByRole('button', { name: 'Resend email' }));
@@ -114,7 +159,9 @@ it('updates an existing technical username from Settings and returns the refresh
 });
 
 it('requires identity confirmation before requesting an email change', async () => {
-  const request = vi.spyOn(auth, 'requestEmailChange').mockResolvedValue({ message: 'Check the new email address for a confirmation link.' });
+  const request = vi
+    .spyOn(auth, 'requestEmailChange')
+    .mockResolvedValue({ message: 'Check the new email address for a confirmation link.' });
   const onOpenSecurity = vi.fn();
   const { rerender } = render(<EmailSettings user={user} recentAuth={false} onOpenSecurity={onOpenSecurity} />);
   expect(screen.getByLabelText('New email address')).toBeDisabled();
@@ -140,7 +187,7 @@ it('confirms an email change link and refreshes the account', async () => {
 
 it('saves workspace payment details for new invoices', async () => {
   const load = vi.spyOn(workspace, 'bankDetails').mockResolvedValue({ bank_name: 'Example Bank' });
-  const save = vi.spyOn(workspace, 'saveBankDetails').mockImplementation(async value => value);
+  const save = vi.spyOn(workspace, 'saveBankDetails').mockImplementation(async (value) => value);
   render(<AccountSettings user={user} />);
   await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));
   expect(await screen.findByRole('button', { name: 'Reveal payment details' })).toBeInTheDocument();
@@ -149,7 +196,11 @@ it('saves workspace payment details for new invoices', async () => {
   expect(await screen.findByDisplayValue('Example Bank')).toBeInTheDocument();
   await userEvent.type(screen.getByLabelText('IBAN'), 'DE89370400440532013000');
   await userEvent.click(screen.getByRole('button', { name: 'Save payment details' }));
-  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ bank_name: 'Example Bank', iban: 'DE89370400440532013000' })));
+  await waitFor(() =>
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({ bank_name: 'Example Bank', iban: 'DE89370400440532013000' }),
+    ),
+  );
   expect(load).toHaveBeenCalledTimes(1);
   await userEvent.click(screen.getByRole('button', { name: 'Hide details' }));
   expect(screen.queryByDisplayValue('Example Bank')).not.toBeInTheDocument();
@@ -160,7 +211,9 @@ it('asks the owner to confirm identity before revealing payment details', async 
   render(<AccountSettings user={user} />);
   await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));
   await userEvent.click(await screen.findByRole('button', { name: 'Reveal payment details' }));
-  expect(await screen.findByText('Confirm your identity in Security, then return to reveal payment details.')).toBeInTheDocument();
+  expect(
+    await screen.findByText('Confirm your identity in Security, then return to reveal payment details.'),
+  ).toBeInTheDocument();
   expect(load).toHaveBeenCalledTimes(1);
   expect(screen.queryByLabelText('IBAN')).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Confirm identity in Security' }));
@@ -168,7 +221,12 @@ it('asks the owner to confirm identity before revealing payment details', async 
 });
 
 it('does not request or show bank details to a workspace member', async () => {
-  vi.mocked(workspace.settings).mockResolvedValue({ id: 'workspace', name: 'Example Studio', can_manage_members: false, members: [{ id: 1, username: 'alex', name: '', email: user.email }] });
+  vi.mocked(workspace.settings).mockResolvedValue({
+    id: 'workspace',
+    name: 'Example Studio',
+    can_manage_members: false,
+    members: [{ id: 1, username: 'alex', name: '', email: user.email }],
+  });
   const load = vi.spyOn(workspace, 'bankDetails');
   render(<AccountSettings user={user} />);
   await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));
@@ -178,22 +236,33 @@ it('does not request or show bank details to a workspace member', async () => {
 });
 
 it('lets the owner save the seller profile for new invoice drafts', async () => {
-  const load = vi.spyOn(workspace, 'sellerDetails').mockResolvedValue({ name: 'Example Agency', email: 'billing@example.test', address: '12 Main Street' });
-  const save = vi.spyOn(workspace, 'saveSellerDetails').mockImplementation(async value => value);
+  const load = vi
+    .spyOn(workspace, 'sellerDetails')
+    .mockResolvedValue({ name: 'Example Agency', email: 'billing@example.test', address: '12 Main Street' });
+  const save = vi.spyOn(workspace, 'saveSellerDetails').mockImplementation(async (value) => value);
   render(<AccountSettings user={user} />);
   await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));
   await userEvent.click(await screen.findByRole('button', { name: 'Reveal seller profile' }));
   expect(await screen.findByDisplayValue('Example Agency')).toBeInTheDocument();
   await userEvent.type(screen.getByLabelText('Tax ID'), 'GB123456789');
   await userEvent.click(screen.getByRole('button', { name: 'Save seller profile' }));
-  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ name: 'Example Agency', email: 'billing@example.test', tax_id: 'GB123456789' })));
+  await waitFor(() =>
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Example Agency', email: 'billing@example.test', tax_id: 'GB123456789' }),
+    ),
+  );
   expect(load).toHaveBeenCalledTimes(1);
   await userEvent.click(screen.getByRole('button', { name: 'Hide profile' }));
   expect(screen.queryByDisplayValue('Example Agency')).not.toBeInTheDocument();
 });
 
 it('keeps the saved seller profile hidden from workspace members', async () => {
-  vi.mocked(workspace.settings).mockResolvedValue({ id: 'workspace', name: 'Example Studio', can_manage_members: false, members: [] });
+  vi.mocked(workspace.settings).mockResolvedValue({
+    id: 'workspace',
+    name: 'Example Studio',
+    can_manage_members: false,
+    members: [],
+  });
   const load = vi.spyOn(workspace, 'sellerDetails');
   render(<AccountSettings user={user} />);
   await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));
@@ -211,7 +280,9 @@ it('renames the shared workspace and shows its members', async () => {
   await userEvent.type(screen.getByLabelText('Name'), 'Northstar Studio');
   await userEvent.click(screen.getByRole('button', { name: 'Save workspace name' }));
   await waitFor(() => expect(rename).toHaveBeenCalledWith('Northstar Studio'));
-  expect(onUserUpdated).toHaveBeenCalledWith(expect.objectContaining({ workspace: { id: 'workspace', name: 'Northstar Studio' } }));
+  expect(onUserUpdated).toHaveBeenCalledWith(
+    expect.objectContaining({ workspace: { id: 'workspace', name: 'Northstar Studio' } }),
+  );
 });
 
 it('keeps platform checks out of account settings', async () => {
@@ -224,21 +295,30 @@ it('keeps platform checks out of account settings', async () => {
 });
 
 it('sends a join request without granting immediate workspace access', async () => {
-  const add = vi.spyOn(workspace, 'addMember').mockResolvedValue({ request: { id: 'request-1', username: 'colleague', expires_at: '2026-12-01T00:00:00Z' } });
+  const add = vi
+    .spyOn(workspace, 'addMember')
+    .mockResolvedValue({ request: { id: 'request-1', username: 'colleague', expires_at: '2026-12-01T00:00:00Z' } });
   render(<AccountSettings user={user} />);
   await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));
   await userEvent.type(await screen.findByLabelText('Username'), 'colleague');
   await userEvent.click(screen.getByRole('button', { name: 'Send join request' }));
   await waitFor(() => expect(add).toHaveBeenCalledWith('colleague'));
-  expect(await screen.findByText('colleague must accept the request in their Workspace settings before gaining access.')).toBeInTheDocument();
+  expect(
+    await screen.findByText('colleague must accept the request in their Workspace settings before gaining access.'),
+  ).toBeInTheDocument();
   expect(screen.queryByText('Sam Parker')).not.toBeInTheDocument();
 });
 
 it('confirms member removal and updates the workspace directory', async () => {
-  vi.mocked(workspace.settings).mockResolvedValue({ id: 'workspace', name: 'Example Studio', can_manage_members: true, members: [
-    { id: 1, username: 'alex', name: '', email: user.email },
-    { id: 2, username: 'colleague', name: 'Sam Parker', email: 'sam@example.test' },
-  ] });
+  vi.mocked(workspace.settings).mockResolvedValue({
+    id: 'workspace',
+    name: 'Example Studio',
+    can_manage_members: true,
+    members: [
+      { id: 1, username: 'alex', name: '', email: user.email },
+      { id: 2, username: 'colleague', name: 'Sam Parker', email: 'sam@example.test' },
+    ],
+  });
   const remove = vi.spyOn(workspace, 'removeMember').mockResolvedValue(undefined);
   render(<AccountSettings user={user} />);
   await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));
@@ -286,12 +366,19 @@ it('saves a non-USD reporting currency in Settings', async () => {
 
 it('submits a reset token and removes it from the URL after success', async () => {
   window.history.replaceState(null, '', '/reset-password?uid=MQ&token=reset-token');
-  const reset = vi.spyOn(auth, 'resetPassword').mockResolvedValue({ message: 'Password updated. Sign in with your new password.' });
+  const reset = vi
+    .spyOn(auth, 'resetPassword')
+    .mockResolvedValue({ message: 'Password updated. Sign in with your new password.' });
   render(<AuthScreen path="/reset-password" onLogin={vi.fn()} />);
   await userEvent.type(screen.getByLabelText('Password'), 'new-password-123');
   await userEvent.type(screen.getByLabelText('Confirm password'), 'new-password-123');
   await userEvent.click(screen.getByRole('button', { name: 'Save new password' }));
-  expect(reset).toHaveBeenCalledWith({ uid: 'MQ', token: 'reset-token', password: 'new-password-123', password_confirm: 'new-password-123' });
+  expect(reset).toHaveBeenCalledWith({
+    uid: 'MQ',
+    token: 'reset-token',
+    password: 'new-password-123',
+    password_confirm: 'new-password-123',
+  });
   expect(await screen.findByRole('status')).toHaveTextContent('Password updated.');
   expect(window.location.search).toBe('');
 });
@@ -339,13 +426,22 @@ it('requires confirmation before disconnecting and refreshes methods after savin
   await userEvent.type(screen.getByLabelText('New password'), 'new-password-123');
   await userEvent.type(screen.getByLabelText('Confirm new password'), 'new-password-123');
   await userEvent.click(screen.getByRole('button', { name: 'Save password' }));
-  expect(change).toHaveBeenCalledWith({ current_password: 'old-password-123', password: 'new-password-123', password_confirm: 'new-password-123' });
+  expect(change).toHaveBeenCalledWith({
+    current_password: 'old-password-123',
+    password: 'new-password-123',
+    password_confirm: 'new-password-123',
+  });
   expect(auth.methods).toHaveBeenCalledTimes(3);
 });
 
-
 it('shows company requests and lets the recipient decline without changing members', async () => {
-  vi.mocked(workspace.settings).mockResolvedValue({ id: 'workspace', name: 'Personal', can_manage_members: true, members: [], join_requests: [{ id: 'join-1', workspace_name: 'Other Company', expires_at: '2026-12-01T00:00:00Z' }] });
+  vi.mocked(workspace.settings).mockResolvedValue({
+    id: 'workspace',
+    name: 'Personal',
+    can_manage_members: true,
+    members: [],
+    join_requests: [{ id: 'join-1', workspace_name: 'Other Company', expires_at: '2026-12-01T00:00:00Z' }],
+  });
   const respond = vi.spyOn(workspace, 'respondToJoin').mockResolvedValue(undefined);
   render(<AccountSettings user={user} />);
   await userEvent.click(screen.getByRole('button', { name: 'Workspace' }));

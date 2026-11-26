@@ -4,6 +4,9 @@ from io import BytesIO, StringIO
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
+import pytest
+from allauth.account.models import EmailAddress
+from allauth.socialaccount.models import SocialAccount, SocialLogin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.core import mail
@@ -11,14 +14,17 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.db import close_old_connections, connections
 from django.utils import timezone
-
-import pytest
 from PIL import Image
-from allauth.account.models import EmailAddress
-from allauth.socialaccount.models import SocialAccount, SocialLogin
 from rest_framework.test import APIClient
 
-from crm.models import AuthAttempt, Client, ClientNote, PendingSignup, Workspace, WorkspaceMembership
+from crm.models import (
+    AuthAttempt,
+    Client,
+    ClientNote,
+    PendingSignup,
+    Workspace,
+    WorkspaceMembership,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -36,7 +42,8 @@ def test_login_me_logout_and_csrf_rotation(api, user):
     assert response.json()["user"] == {
         "id": user.pk, "username": user.username, "email": user.email,
         "avatar_url": None,
-            "is_workspace_owner": True,
+        "is_platform_admin": False,
+        "is_workspace_owner": True,
         "reporting_currency": "USD",
         "workspace": {"id": str(user.workspace_membership.workspace_id), "name": user.workspace_membership.workspace.name},
     }
@@ -46,7 +53,35 @@ def test_login_me_logout_and_csrf_rotation(api, user):
     assert api.post("/api/v1/auth/logout", HTTP_X_CSRFTOKEN=old_token).status_code == 403
     token = response.json()["csrfToken"]
     assert api.post("/api/v1/auth/logout", HTTP_X_CSRFTOKEN=token).status_code == 204
-    assert api.get("/api/v1/auth/me").status_code == 403
+
+
+def test_platform_admin_flag_is_available_to_the_current_user(api):
+    operator = get_user_model().objects.create_superuser(
+        username="operator", email="operator@example.test", password="test-password-123"
+    )
+    api.force_login(operator)
+    assert api.get("/api/v1/auth/me").json()["user"]["is_platform_admin"] is True
+
+
+def test_user_can_revoke_other_sessions_after_recent_authentication(api, user):
+    api.force_login(user)
+    csrf_token = api.get("/api/v1/auth/csrf").json()["csrfToken"]
+    other_session = APIClient()
+    other_session.force_login(user)
+    assert other_session.get("/api/v1/auth/me").status_code == 200
+    session = api.session
+    session["reauth_user"] = str(user.pk)
+    session["auth_time"] = timezone.now().timestamp()
+    session.save()
+    response = api.post(
+        "/api/v1/auth/sessions/revoke-others",
+        {},
+        format="json",
+        HTTP_X_CSRFTOKEN=csrf_token,
+    )
+    assert response.status_code == 200 and response.json()["revoked"] == 1
+    assert api.get("/api/v1/auth/me").status_code == 200
+    assert other_session.get("/api/v1/auth/me").status_code == 403
 
 
 def test_login_rejects_missing_csrf_even_before_authentication(api, user):
@@ -280,6 +315,7 @@ def test_signup_username_validation_does_not_reveal_registered_email(api, user):
 
 def test_forwarded_ip_requires_explicit_trusted_proxy(settings):
     from django.test import RequestFactory
+
     from crm.auth.security import client_ip
 
     request = RequestFactory().get("/", REMOTE_ADDR="127.0.0.1", HTTP_X_FORWARDED_FOR="192.0.2.8")

@@ -1,21 +1,22 @@
 from django.urls import path
 
+from crm.activity import views as activity_views
+from crm.analytics import views as analytics_views
 from crm.api.health import health
-from crm.auth import views as auth_views
-from crm.auth import verification as verification_views
 from crm.auth import email_change as email_change_views
+from crm.auth import verification as verification_views
+from crm.auth import views as auth_views
 from crm.auth.avatar import AvatarView
+from crm.auth.oauth import PROVIDERS, OAuthStartView, callback
+from crm.clients import views as client_views
+from crm.deals import views as deal_views
+from crm.invoices import operations as invoice_operations
+from crm.invoices import views as invoice_views
+from crm.operations.views import OperationsOverview
+from crm.tasks import views as task_views
 from crm.workspaces import views as workspace_views
 from crm.workspaces.join_requests import WorkspaceJoinDecision
 from crm.workspaces.operations import operations_status
-from crm.clients import views as client_views
-from crm.deals import views as deal_views
-from crm.invoices import views as invoice_views
-from crm.analytics import views as analytics_views
-from crm.tasks import views as task_views
-from crm.activity import views as activity_views
-from crm.operations.views import OperationsOverview
-from crm.auth.oauth import OAuthStartView, PROVIDERS, callback
 
 handler500 = "crm.api.errors.server_error"
 
@@ -24,6 +25,7 @@ urlpatterns = [
     path("api/v1/auth/csrf", auth_views.csrf),
     path("api/v1/auth/login", auth_views.login),
     path("api/v1/auth/logout", auth_views.logout),
+    path("api/v1/auth/sessions/revoke-others", auth_views.revoke_other_sessions),
     path("api/v1/auth/me", auth_views.me),
     path("api/v1/workspace/counts", workspace_views.workspace_counts),
     path("api/v1/workspace/operations", operations_status),
@@ -70,6 +72,8 @@ urlpatterns = [
     path("api/v1/tasks/<uuid:pk>", task_views.TaskDetail.as_view()),
     path("api/v1/activity", activity_views.ActivityList.as_view()),
     path("api/v1/operations/overview", OperationsOverview.as_view()),
+    path("api/v1/operations/invoice-deliveries", invoice_operations.InvoiceDeliveryResolutionList.as_view()),
+    path("api/v1/operations/invoice-deliveries/<uuid:pk>/resolve", invoice_operations.InvoiceDeliveryResolutionDetail.as_view()),
     path("api/v1/invoices", invoice_views.InvoiceList.as_view()),
     path("api/v1/invoices/summary", invoice_views.InvoiceSummary.as_view()),
     path("api/v1/invoices/<uuid:pk>", invoice_views.InvoiceDetail.as_view()),

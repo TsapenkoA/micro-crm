@@ -1,26 +1,45 @@
 import logging
 import time
 import uuid
+
+from allauth.socialaccount.models import SocialAccount
 from django.conf import settings
-from django.contrib.auth import authenticate, get_user_model, login as session_login, logout as session_logout, update_session_auth_hash
+from django.contrib.auth import authenticate, get_user_model, update_session_auth_hash
+from django.contrib.auth import login as session_login
+from django.contrib.auth import logout as session_logout
 from django.contrib.auth.tokens import default_token_generator
+from django.contrib.sessions.models import Session
 from django.core.mail import send_mail
 from django.db import transaction
 from django.middleware.csrf import get_token
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.views.decorators.csrf import csrf_protect
-from allauth.socialaccount.models import SocialAccount
 from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
 from crm.api.permissions import IsWorkspaceMember
-from crm.auth.security import AuthThrottle, clear_login_attempts, email_lock, email_user, recent_auth
-from crm.auth.serializers import LoginSerializer, EmailSerializer, ResetSerializer, UsernameSerializer, NewPasswordSerializer, check_password
+from crm.auth.security import (
+    AuthThrottle,
+    clear_login_attempts,
+    email_lock,
+    email_user,
+    recent_auth,
+)
+from crm.auth.serializers import (
+    EmailSerializer,
+    LoginSerializer,
+    NewPasswordSerializer,
+    ResetSerializer,
+    UsernameSerializer,
+    check_password,
+)
 from crm.models import UserAvatar, Workspace, WorkspaceMembership
 from crm.services.fx import ECB_CURRENCIES
 
@@ -34,6 +53,7 @@ def user_data(user):
     avatar_url = f"/api/v1/auth/avatar?v={avatar_updated.timestamp()}" if avatar_updated else None
     return {"id": user.pk, "username": user.username, "email": user.email, "workspace": workspace,
             "is_workspace_owner": bool(membership and membership.workspace.owner_id == user.pk),
+            "is_platform_admin": user.is_superuser,
             "reporting_currency": membership.reporting_currency if membership else "USD", "avatar_url": avatar_url}
 
 
@@ -75,6 +95,20 @@ login = LoginView.as_view()
 def logout(request):
     session_logout(request)
     return Response(status=204)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def revoke_other_sessions(request):
+    if not recent_auth(request):
+        raise PermissionDenied("Confirm your identity before signing out other sessions.")
+    current_key = request.session.session_key
+    revoked = 0
+    for session in Session.objects.filter(expire_date__gt=timezone.now()).iterator():
+        if session.session_key != current_key and session.get_decoded().get("_auth_user_id") == str(request.user.pk):
+            session.delete()
+            revoked += 1
+    return Response({"revoked": revoked})
 
 
 @api_view(["GET"])

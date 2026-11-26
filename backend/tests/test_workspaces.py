@@ -1,19 +1,34 @@
 import uuid
+from datetime import datetime
+from datetime import timezone as datetime_timezone
 from decimal import Decimal
 from io import StringIO
 from unittest.mock import patch
 
+import pytest
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import IntegrityError, OperationalError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
+from django.http import HttpResponse
+from django.test import RequestFactory, override_settings
 from django.utils import timezone
-
-import pytest
 from rest_framework.test import APIClient
 
-from crm.models import BackupCheck, Client, ClientNote, Deal, FxRate, FxSyncRun, Invoice, PreviewDataset, Task, Workspace, WorkspaceMembership
+from crm.models import (
+    BackupCheck,
+    Client,
+    ClientNote,
+    Deal,
+    FxRate,
+    FxSyncRun,
+    Invoice,
+    PreviewDataset,
+    Task,
+    Workspace,
+    WorkspaceMembership,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -163,6 +178,65 @@ def test_workspace_settings_rename_is_shared_and_isolated(api, user, other_user)
     same.force_login(colleague)
     assert same.get(path).json()["name"] == "Northstar Studio"
     assert {member["username"] for member in same.get(path).json()["members"]} == {user.username, colleague.username}
+
+
+def test_workspace_time_zone_is_owner_managed_and_drives_local_business_dates(api, user, other_user, monkeypatch):
+    from crm.api.middleware import WorkspaceTimezoneMiddleware
+
+    path = "/api/v1/workspace/settings"
+    company = user.workspace_membership.workspace
+    api.force_login(user)
+    token = api.get("/api/v1/auth/csrf").json()["csrfToken"]
+    assert api.get(path).json()["time_zone"] == "UTC"
+    assert api.patch(path, {"time_zone": "Invalid/Zone"}, format="json", HTTP_X_CSRFTOKEN=token).status_code == 400
+    changed = api.patch(path, {"time_zone": "Asia/Tokyo"}, format="json", HTTP_X_CSRFTOKEN=token)
+    assert changed.status_code == 200 and changed.json()["time_zone"] == "Asia/Tokyo"
+    call_command("assign_workspace", other_user.username, str(company.pk), stdout=StringIO())
+    colleague = APIClient(enforce_csrf_checks=True)
+    colleague.force_login(other_user)
+    colleague_token = colleague.get("/api/v1/auth/csrf").json()["csrfToken"]
+    assert colleague.get(path).json()["time_zone"] == "Asia/Tokyo"
+    assert colleague.patch(path, {"time_zone": "Europe/Kyiv"}, format="json", HTTP_X_CSRFTOKEN=colleague_token).status_code == 403
+
+    request = RequestFactory().get("/")
+    request.user = user
+    middleware = WorkspaceTimezoneMiddleware(lambda current: HttpResponse(
+        f"{timezone.localdate().isoformat()}|{timezone.localtime().isoformat()}"
+    ))
+    instants = [
+        datetime(2026, 1, 1, 16, 0, tzinfo=datetime_timezone.utc),
+        datetime(2026, 3, 29, 0, 30, tzinfo=datetime_timezone.utc),
+        datetime(2026, 3, 29, 1, 30, tzinfo=datetime_timezone.utc),
+    ]
+    for instant in instants:
+        monkeypatch.setattr("django.utils.timezone.now", lambda instant=instant: instant)
+        result = middleware(request).content.decode()
+        if instant.month == 1:
+            assert result.startswith("2026-01-02|2026-01-02T01:00:00+09:00")
+            company.time_zone = "Europe/Warsaw"
+            company.save(update_fields=["time_zone"])
+        elif instant.hour == 0:
+            assert result.startswith("2026-03-29|2026-03-29T01:30:00+01:00")
+        else:
+            assert result.startswith("2026-03-29|2026-03-29T03:30:00+02:00")
+
+
+def test_demo_seed_requires_explicit_development_confirmation_and_uses_synthetic_records(user):
+    with override_settings(DEBUG=False), pytest.raises(CommandError, match="DEBUG"):
+        call_command("seed_demo_data", str(user.workspace_membership.workspace_id), confirm=True, stdout=StringIO())
+    with override_settings(DEBUG=True), pytest.raises(CommandError, match="--confirm"):
+        call_command("seed_demo_data", str(user.workspace_membership.workspace_id), stdout=StringIO())
+
+    with override_settings(DEBUG=True):
+        output = StringIO()
+        call_command("seed_demo_data", str(user.workspace_membership.workspace_id), confirm=True, stdout=output)
+        assert "2 synthetic clients" in output.getvalue()
+        demo_client = Client.objects.get(company="[DEMO] Cedar & Finch Studio")
+        assert demo_client.email.endswith(".example.test")
+        assert Deal.objects.filter(workspace=demo_client.workspace, title__startswith="[DEMO]").count() == 2
+        assert Invoice.objects.filter(workspace=demo_client.workspace, invoice_number="DEMO-INV-001").exists()
+        with pytest.raises(CommandError, match="already exist"):
+            call_command("seed_demo_data", str(user.workspace_membership.workspace_id), confirm=True, stdout=StringIO())
 
 
 def test_only_owner_can_add_an_existing_account_with_an_empty_personal_workspace(api, user, other_user):
@@ -372,6 +446,7 @@ def test_migration_preserves_all_business_records_and_admin(legacy_database):
         if model == "invoice":
             assert actual.pop("deal_id") is None
             assert actual.pop("due_date") is None
+            assert actual.pop("issued_on") is None
             assert actual.pop("payment_terms") == ""
             assert actual.pop("cancelled_at") is None
             assert actual.pop("cancellation_reason") == ""
@@ -416,7 +491,7 @@ def test_migration_rejects_inconsistent_legacy_data_atomically(legacy_database, 
 
 def test_private_data_migrations_preserve_values_in_both_directions(legacy_database):
     executor = MigrationExecutor(connection)
-    before_targets = [(label, {"accounts": "0015_pending_email_change", "clients": "0006_clientnote_deal", "invoices": "0011_invoicedelivery_resolution_reason_and_more"}.get(label, migration)) for label, migration in executor.loader.graph.leaf_nodes()]
+    before_targets = [(label, {"accounts": "0015_pending_email_change", "clients": "0006_clientnote_deal", "deals": "0005_deal_description", "invoices": "0011_invoicedelivery_resolution_reason_and_more"}.get(label, migration)) for label, migration in executor.loader.graph.leaf_nodes()]
     executor.migrate(before_targets)
     old = executor.loader.project_state(before_targets).apps
     user = old.get_model("auth", "User").objects.create(username="private-migration")
